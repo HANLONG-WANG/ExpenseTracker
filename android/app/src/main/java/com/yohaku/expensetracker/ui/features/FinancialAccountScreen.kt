@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.verticalScroll
@@ -243,7 +244,7 @@ import kotlinx.serialization.encodeToString
     if(addArrangement)FinancialAddArrangement(account,{addArrangement=false;if(createContract!=null){contractLink=createContract;createContract=null}},{addArrangement=false;manual=true},{addArrangement=false;prediction=""},{addArrangement=false;poolTarget=finance.plans.firstOrNull{it.accountId==account.id&&it.active&&it.origin=="POOL"}?.id?:""},contract=createContract!=null)
     contractLink?.let{id->finance.contracts.firstOrNull{it.id==id}?.let{c->
         FinancialContractPlanPicker(s,finance,c,vm,createdPlan,{contractLink=null},{createContract=c.id;contractLink=null;addArrangement=true},
-            {p->vm.execute(onSuccess={contractLink=null;createdPlan=null}){vm.repository.linkFinancialContractPlan(s.book.id,c.id,p)}})
+            {p->vm.execute(onSuccess={vm.haptic(Haptic.Done);contractLink=null;createdPlan=null}){vm.repository.linkFinancialContractPlan(s.book.id,c.id,p)}})
     }}
     prediction?.let{id->FinancialPredictionEditor(s,account,finance,if(id.isEmpty())null else finance.plans.first{it.id==id},vm,{prediction=null;if(createContract!=null){contractLink=createContract;createContract=null}},finance.contracts.firstOrNull{it.id==createContract},::planSaved)}
     if(manual)ManualFinancialPlanEditor(s,account,vm,{manual=false;if(createContract!=null){contractLink=createContract;createContract=null}},finance.contracts.firstOrNull{it.id==createContract},::planSaved)

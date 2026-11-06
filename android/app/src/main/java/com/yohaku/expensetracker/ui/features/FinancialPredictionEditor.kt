@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
@@ -130,7 +131,7 @@ import java.time.LocalDate
                 encoded=vm.repository.json.encodeToString(predictionCandidates(activeMode,n,start,LocalDate.parse(firstDate),LocalDate.parse(firstEnd),selectedRule,event)
                     .map{(date,window)->PredictionPeriodDraft(date,window.start,window.end)})
             }
-        },Modifier.testTag("prediction-generate"),enabled=!busy)
+        },Modifier.testTag("prediction-generate"),enabled=!busy,haptic=Haptic.Select)
         if(rows.isNotEmpty())YText(word("以下为候选日期，请逐期核对；保存前可以修改。","以下は候補日です。各回を確認し、保存前に修正できます。"),11,color=LocalYohaku.current.muted)
         rows.forEachIndexed{i,row->Panel(Modifier.testTag("prediction-period-$i")) {
             YText(word("第${i+1}期","第${i+1}回"),15)

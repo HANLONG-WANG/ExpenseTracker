@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -47,6 +49,11 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     val reviewRefreshed=MutableStateFlow(false)
     val entryReturnRoute=MutableStateFlow("home")
     val busy=MutableStateFlow(false)
+    val hapticsEnabled=preferences.hapticsEnabled.map<Boolean,Boolean?>{it}.stateIn(viewModelScope,SharingStarted.Eagerly,null)
+    fun setHapticsEnabled(value:Boolean)=execute{preferences.setHapticsEnabled(value)}
+    private val hapticEvents=MutableSharedFlow<Haptic>(extraBufferCapacity=8)
+    val haptics=hapticEvents.asSharedFlow()
+    fun haptic(h:Haptic){hapticEvents.tryEmit(h)}
     val photoSaveOriginal=preferences.photoSaveOriginal.map<Boolean,Boolean?>{it}.stateIn(viewModelScope,SharingStarted.Eagerly,null)
     val mediaImportOption=MutableStateFlow<MediaImportOption?>(null)
     val mediaImportProgress=MutableStateFlow<MediaImportProgress?>(null)
@@ -68,28 +75,36 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     // Loading appears only initially and for an explicit retry. A subscription restarted after the app returns
     // from the background (camera, another app) keeps the last state, so open sheets and page positions stay composed.
     private var servedReadRequest=0L
+    private var failedReadRequest=0L
+    private fun readFailed(request:Long){if(request>0&&failedReadRequest!=request){failedReadRequest=request;haptic(Haptic.Error)}}
     val state=combine(readRequests,today){request,date->request to date}.flatMapLatest{(request,date)->
-        val retry=request!=servedReadRequest;servedReadRequest=request
+        val retry=request!=servedReadRequest;servedReadRequest=request;var retryPending=retry
         combine(repository.dao.bookOverviews(java.time.YearMonth.from(date).toString()),preferences.activeBook,preferences.setupDraft){overviews,id,first->Triple(overviews,overviews.map{it.book}.let{books->books.find{it.id==id&&it.deletedAt==null} ?: books.firstOrNull{!it.archived&&it.deletedAt==null}},first).also{selectedBookMetadata.value=it.second}}
         .flatMapLatest{(overviews,book,first)-> val books=overviews.map{it.book};if(book==null)flowOf<AppState>(AppState.Ready(books,null,first,overviews)) else repository.snapshot(book).map{AppState.Ready(books,it,first,overviews)}}
-        .catch{emit(AppState.Failure(it.message ?: "数据库读取失败 / データ読込失敗"))}
+        .onEach{retryPending=false}
+        .catch{if(retryPending){retryPending=false;readFailed(request)};emit(AppState.Failure(it.message ?: "数据库读取失败 / データ読込失敗"))}
         .onStart{if(retry)emit(AppState.Loading)}
     }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),AppState.Loading)
     val financialReadFailure=MutableStateFlow<String?>(null)
-    val financialState=combine(state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged(),readRequests){bookId,_->bookId}
-        .flatMapLatest{bookId->
+    private var handledFinancialReadRequest=0L
+    val financialState=combine(state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged(),readRequests){bookId,request->bookId to request}
+        .flatMapLatest{(bookId,request)->
             financialReadFailure.value=null
             if(bookId==null)flowOf(null)else repository.db.financialDao().graph(bookId)
-                .catch{financialReadFailure.value=it.message ?: "金融资料读取失败 / 金融情報の読込に失敗しました";error.value=financialReadFailure.value;emit(null)}
+                .onEach{handledFinancialReadRequest=request}
+                .catch{if(request>handledFinancialReadRequest)readFailed(request);handledFinancialReadRequest=request;financialReadFailure.value=it.message ?: "金融资料读取失败 / 金融情報の読込に失敗しました";error.value=financialReadFailure.value;emit(null)}
         }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),null)
     val financialPredictionReview=MutableStateFlow<FinancialPredictionReview?>(null)
     val financialRuleReview=MutableStateFlow<FinancialRuleReview?>(null)
     val manualFinancialPlanReview=MutableStateFlow<ManualFinancialPlanReview?>(null)
-    val creditLimitState=combine(state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged(),readRequests){bookId,_->bookId}
-        .flatMapLatest{bookId->if(bookId==null)flowOf(null)else repository.db.creditLimitDao().graph(bookId)
-            .catch{error.value=it.message ?: "额度资料读取失败 / 利用枠情報の読込に失敗しました";emit(null)}}
+    private var handledCreditReadRequest=0L
+    val creditLimitState=combine(state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged(),readRequests){bookId,request->bookId to request}
+        .flatMapLatest{(bookId,request)->
+            if(bookId==null)flowOf(null)else repository.db.creditLimitDao().graph(bookId)
+            .onEach{handledCreditReadRequest=request}
+            .catch{if(request>handledCreditReadRequest)readFailed(request);handledCreditReadRequest=request;error.value=it.message ?: "额度资料读取失败 / 利用枠情報の読込に失敗しました";emit(null)}}
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),null)
     val financialArrangementReview=MutableStateFlow<FinancialArrangementReview?>(null)
     val financialLedgerReview=MutableStateFlow<FinancialLedgerReview?>(null)
@@ -102,7 +117,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             busy.value=true
             try { withContext(Dispatchers.IO){action()};onSuccess() }
             catch(e:CancellationException){throw e}
-            catch(e:Exception){error.value=e.message ?: "操作失败 / 操作できませんでした"}
+            catch(e:Exception){error.value=e.message ?: "操作失败 / 操作できませんでした";haptic(Haptic.Error)}
             finally {busy.value=false;onComplete()}
         }
     } }
@@ -128,11 +143,11 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val review=bookOperationReview.value?:return
         var saved=false
         execute(onSuccess={
-            if(saved){bookOperationReview.value=null;entry.value=null;backStack.clear();route.value="book-management"}
+            if(saved){haptic(when(review.operation){BookOperation.TRASH,BookOperation.PURGE->Haptic.Removed;BookOperation.RESTORE,BookOperation.UNARCHIVE->Haptic.Restored;BookOperation.ARCHIVE->Haptic.Done});bookOperationReview.value=null;entry.value=null;backStack.clear();route.value="book-management"}
         }) {
             saved=repository.commitBookOperation(review)
             if(!saved) {
-                bookOperationReview.value=repository.previewBookOperation(review.scope.book.id,review.operation);bookOperationRefreshed.value=true
+                bookOperationReview.value=repository.previewBookOperation(review.scope.book.id,review.operation);bookOperationRefreshed.value=true;haptic(Haptic.Warning)
             }else {
                 if(preferences.activeBook.first()==review.scope.book.id&&review.operation in listOf(BookOperation.ARCHIVE,BookOperation.TRASH,BookOperation.PURGE))preferences.clearSelection()
                 repository.collectUnusedMedia()
@@ -142,7 +157,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         }
     }
     fun recentCategories(bookId:String,kind:EntryKind)=repository.dao.recentCategoryIds(bookId,kind.name)
-    fun updateBook(book:BookEntity)=execute { repository.updateBook(book) }
+    fun updateBook(book:BookEntity)=execute { repository.updateBook(book);haptic(Haptic.Done) }
     fun appearance(bookId:String,theme:String?=null,language:String?=null)=execute {repository.updateAppearance(bookId,theme,language)}
     fun saveSetup(draft:SetupDraft)=execute {preferences.saveSetup(draft)}
     fun setupStep(bookId:String,step:Int)=execute {repository.setupStep(bookId,step)}
@@ -216,9 +231,9 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun confirmBudget(onDone:()->Unit={}) {
         val review=budgetReview.value?:return
         var saved=false
-        execute(onSuccess={if(saved){budgetReview.value=null;onDone()}}) {
+        execute(onSuccess={if(saved){haptic(Haptic.Done);budgetReview.value=null;onDone()}}) {
             saved=repository.commitBudget(review)
-            if(!saved){budgetReview.value=repository.previewBudget(review.setting.bookId,review.setting.month,review.setting.categoryId,review.setting.amountMinor?.let{Money(Currency.valueOf(review.snapshot.book.currency),it)});budgetReviewRefreshed.value=true}
+            if(!saved){budgetReview.value=repository.previewBudget(review.setting.bookId,review.setting.month,review.setting.categoryId,review.setting.amountMinor?.let{Money(Currency.valueOf(review.snapshot.book.currency),it)});budgetReviewRefreshed.value=true;haptic(Haptic.Warning)}
         }
     }
     fun previewOccurrenceLink(bookId:String,occurrenceId:String,eventId:String)=execute {
@@ -229,12 +244,12 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val paymentDraft=entry.value?.takeIf{it.isOccurrencePaymentDraft(review.occurrence.id)}
         var saved=false
         execute(onSuccess={if(saved){
-            occurrenceLinkReview.value=null
+            haptic(Haptic.Done);occurrenceLinkReview.value=null
             if(paymentDraft!=null){entry.value=null;backStack.clear();route.value=entryReturnRoute.value;execute{repository.collectUnusedMedia()}}
             onDone()
         }}) {
             saved=repository.commitOccurrenceLink(review,discardPaymentDraft=paymentDraft!=null)
-            if(!saved){occurrenceLinkReview.value=repository.previewOccurrenceLink(review.occurrence.bookId,review.occurrence.id,review.event.id);occurrenceLinkRefreshed.value=true}
+            if(!saved){occurrenceLinkReview.value=repository.previewOccurrenceLink(review.occurrence.bookId,review.occurrence.id,review.event.id);occurrenceLinkRefreshed.value=true;haptic(Haptic.Warning)}
         }
     }
     fun startTemplate(snapshot:BookSnapshot,template:EntryTemplateEntity) {
@@ -276,13 +291,13 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val current=occurrenceConfirmation.value?:return
         val review=current.review?:return
         if(!negativeAccepted&&review.negativeBalanceChanges().isNotEmpty()) {
-            occurrenceConfirmation.value=current.copy(confirmingNegative=true);return
+            occurrenceConfirmation.value=current.copy(confirmingNegative=true);haptic(Haptic.Warning);return
         }
         savingEntry=true
         var saved=false
         execute(onSuccess={
-            if(saved){occurrenceConfirmation.value=null;notice.value=AppNotice(++noticeSequence,current.bookId,"记录已保存","記録を保存しました")}
-            else {occurrenceConfirmation.value=current.copy(review=null,refreshed=true,confirmingNegative=false);refreshOccurrencePreview()}
+            if(saved){haptic(Haptic.Saved);occurrenceConfirmation.value=null;notice.value=AppNotice(++noticeSequence,current.bookId,"记录已保存","記録を保存しました")}
+            else {haptic(Haptic.Warning);occurrenceConfirmation.value=current.copy(review=null,refreshed=true,confirmingNegative=false);refreshOccurrencePreview()}
         },onComplete={savingEntry=false}) {
             saved=repository.commitOccurrencePayment(current.bookId,review)!=null
         }
@@ -358,11 +373,13 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     private suspend fun importNotice(bookId:String,result:MediaBatchResult)=withContext(Dispatchers.Main){
         val (success,fallback,failed,firstFailure)=result
+        haptic(when{success==0->Haptic.Error;failed>0->Haptic.Warning;else->Haptic.Done})
         val zh=listOfNotNull("已导入 $success 个文件",fallback.takeIf{it>0}?.let{"$it 张图片无法优化，已原样保存"},firstFailure?.let{"失败 $failed 个：${it.substringBefore(" / ")}"}).joinToString("；")
         val ja=listOfNotNull("$success 件を取り込みました",fallback.takeIf{it>0}?.let{"$it 枚は最適化できず、そのまま保存しました"},firstFailure?.let{"失敗 $failed 件：${it.substringAfter(" / ",it)}"}).joinToString("。")
         notice.value=AppNotice(++noticeSequence,bookId,zh,ja)
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {
+        haptic(Haptic.Saved)
         negativeBalanceReview.value=null;entryBaseline=null;entryReview.value=null;reviewRefreshed.value=false
         entry.value=null;backStack.clear();route.value=if(entryReturnRoute.value=="statements")"statements"else"ledger"
         execute{repository.collectUnusedMedia()}
@@ -380,13 +397,14 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         var saved=false
         var review:LedgerChangeReview?=null
         var negative:PendingEntrySave?=null
-        execute(onSuccess={if(saved)entrySaved(bookId,d)else {negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=false}},onComplete={savingEntry=false}) {
+        var stale=false
+        execute(onSuccess={if(saved)entrySaved(bookId,d)else {negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=stale;if(negative!=null||stale)haptic(Haptic.Warning)}},onComplete={savingEntry=false}) {
             val needsReview=repository.entryNeedsReview(bookId,d)
             val prepared=repository.previewEntry(bookId,d)
             if(prepared.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(prepared,needsReview)
             else if(needsReview)review=prepared else {
                 saved=repository.commitEntryReview(bookId,prepared)!=null
-                if(!saved){val fresh=repository.previewEntry(bookId,d);if(fresh.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(fresh,false)else review=fresh}
+                if(!saved){stale=true;val fresh=repository.previewEntry(bookId,d);if(fresh.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(fresh,false)else review=fresh}
             }
         }
     }
@@ -398,6 +416,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val d=entry.value?:return
         savingEntry=true
         var saved=false;var stale=false
+        // A stale commit replays the normal save path, which reports Saved or a fresh Warning itself.
         execute(onSuccess={negativeBalanceReview.value=null;if(saved)entrySaved(bookId,d)},onComplete={savingEntry=false;if(stale)saveEntry(bookId)}){saved=repository.commitEntryReview(bookId,pending.review)!=null;stale=!saved}
     }
     fun confirmEntryReview(bookId:String) {
@@ -407,12 +426,12 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         savingEntry=true
         var saved=false
         var refreshed:LedgerChangeReview?=null
-        execute(onSuccess={if(saved)entrySaved(bookId,d)else {entryReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isEmpty()};negativeBalanceReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isNotEmpty()}?.let{PendingEntrySave(it,true)};reviewRefreshed.value=true}},onComplete={savingEntry=false}) {
+        execute(onSuccess={if(saved)entrySaved(bookId,d)else {haptic(Haptic.Warning);entryReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isEmpty()};negativeBalanceReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isNotEmpty()}?.let{PendingEntrySave(it,true)};reviewRefreshed.value=true}},onComplete={savingEntry=false}) {
             saved=repository.commitEntryReview(bookId,review)!=null
             if(!saved)refreshed=repository.previewEntry(bookId,d)
         }
     }
-    fun discardEntry(bookId:String) =execute({entry.value=null;route.value="home";execute{repository.collectUnusedMedia()}}) {repository.clearDraft(bookId)}
+    fun discardEntry(bookId:String) =execute({haptic(Haptic.Removed);entry.value=null;route.value="home";execute{repository.collectUnusedMedia()}}) {repository.clearDraft(bookId)}
     fun keepEntry(bookId:String) {persistDraft(bookId);entry.value=null;route.value="home"}
     companion object {
         fun factory(application:YohakuApplication)=object:ViewModelProvider.Factory {

@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.*
 import android.graphics.Bitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -54,8 +55,9 @@ class EntryLifecycleFlowTest {
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
         val repo=LedgerRepository(db,java.time.Clock.fixed(java.time.Instant.parse("2026-10-16T00:00:00Z"),java.time.ZoneOffset.UTC));val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         fun current()=(vm.state.value as? AppState.Ready)?.snapshot
+        val haptics=RecordingHapticOutput()
         try {
-            ui.setContent{NativeApp(vm)}
+            ui.setContent{NativeApp(vm,haptics=haptics)}
             for((theme,language) in testLooks(this@EntryLifecycleFlowTest)) {
                 val b=repo.createBook("生活 / 暮らし",Currency.JPY,theme,language,budgetMinor=10000)
                 repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
@@ -75,11 +77,14 @@ class EntryLifecycleFlowTest {
                 ui.onAllNodesWithTag("record-cover").assertCountEquals(0)
                 assertEquals(8700L,current()!!.balance(current()!!.accounts.first{it.id==bank}))
                 ui.runOnIdle{vm.navigate("home")}
+                ui.runOnIdle{haptics.clear()}
                 ui.revealOnPage("event-$event");tap("event-$event");tap("record-trash-preview")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
                 ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥9,200 → ¥10,000")
+                ui.runOnIdle{assertTrue(haptics.calls.isEmpty())}
                 shot("$theme-$language-trash");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==1&&!vm.busy.value}
+                ui.runOnIdle{assertEquals(listOf(Haptic.Removed),haptics.calls.map{it.second});haptics.clear()}
                 assertEquals(9500L,current()!!.balance(current()!!.accounts.first{it.id==bank}))
                 assertEquals("ledger",vm.route.value);ui.runOnIdle{vm.back()};assertEquals("home",vm.route.value);ui.onNodeWithTag("record-cover").assertDoesNotExist()
                 ui.runOnIdle{vm.navigate("trash")}
@@ -88,6 +93,7 @@ class EntryLifecycleFlowTest {
                 ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥10,000 → ¥9,200")
                 shot("$theme-$language-restore");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==3&&!vm.busy.value}
+                ui.runOnIdle{assertEquals(listOf(Haptic.Restored),haptics.calls.map{it.second})}
                 val restored=current()!!
                 assertEquals(1,restored.visibleEvents.first{it.id==event}.revision)
                 assertEquals(8700L,restored.balance(restored.accounts.first{it.id==bank}))

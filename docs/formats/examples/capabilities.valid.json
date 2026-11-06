@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "ccd577f7f86d51a0cbf97265a079c6c416f9ffa605ff2ca099d80828697bab9f",
+    "catalogDigest": "1e28d3ffc04d22f5bcd9bcb3ca170b0e11789e62de6e1100804bf36988226e78",
     "commands": [
         {
             "comparisonFields": [
@@ -19088,6 +19088,39 @@
             },
             "mode": "post-commit",
             "name": "preferences.photoStorage",
+            "outputs": {},
+            "prerequisites": "Preference before value must still match at application time.",
+            "unavailable": "Invalid settings/targets reject the batch before commit. A changed preference at application time leaves its post-commit effect retryable; already committed ledger changes are not rolled back.",
+            "undo": "后续步骤完成后可恢复原偏好；若当前值已改变则阻止整批撤销。系统权限不随偏好撤销。 / 後続処理の完了後に元の設定へ戻せます。現在の値が変わっている場合は全体の取消を停止します。システム権限は取り消しません。",
+            "version": 1
+        },
+        {
+            "comparisonFields": [
+                "exact preference before/after and referenced book identity",
+                "permission requirement and execution mode"
+            ],
+            "confirmationTypes": [
+                "INFORMATION"
+            ],
+            "defaults": "enabled required; no input default; app preference defaults to true and is shared by all books.",
+            "description": "Set the haptic feedback preference shared by all books; system touch vibration settings still apply.",
+            "example": {
+                "enabled": true
+            },
+            "inputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "enabled"
+                ],
+                "type": "object"
+            },
+            "mode": "post-commit",
+            "name": "preferences.haptics",
             "outputs": {},
             "prerequisites": "Preference before value must still match at application time.",
             "unavailable": "Invalid settings/targets reject the batch before commit. A changed preference at application time leaves its post-commit effect retryable; already committed ledger changes are not rolled back.",

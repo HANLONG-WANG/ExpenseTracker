@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.*
@@ -27,7 +28,7 @@ import kotlinx.coroutines.launch
 
 /** Editor row: the icon in use, why it is in use, and name-based alternatives one tap away. */
 @Composable internal fun CategoryIconField(shown:String,note:String,suggestions:List<String>,onOpen:()->Unit,onPick:(String)->Unit) {
-    val t=LocalYohaku.current
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     Column(Modifier.fillMaxWidth().testTag("category-icon-field")) {
         FieldLabel(word("分类图标","カテゴリのアイコン"),Modifier.padding(bottom=if(journal)6.dp else if(objects)9.dp else 10.dp))
@@ -50,7 +51,7 @@ import kotlinx.coroutines.launch
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){suggestions.forEach{id->
                 val chip=when(t.id){"magazine"->Modifier.border(1.dp,t.line).padding(7.dp);"objects"->Modifier.background(Color(0xfffff6e4),RoundedCornerShape(12.dp)).padding(5.dp);else->Modifier.padding(2.dp)}
                 val label=iconLabel(id)
-                Box(Modifier.testTag("category-icon-suggest-$id").semantics{contentDescription=label}.clickable(role=Role.Button){onPick(id)}.then(chip)){CategoryIconBadge(id)}
+                Box(Modifier.testTag("category-icon-suggest-$id").semantics{contentDescription=label}.clickable(role=Role.Button){haptics.perform(Haptic.Select);onPick(id)}.then(chip)){CategoryIconBadge(id)}
             }}
         }
     }
@@ -73,7 +74,7 @@ import kotlinx.coroutines.launch
         CategoryIconPreview(pending,categoryName)
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
             YLink("← "+word("返回编辑","編集に戻る"),onBack,Modifier.testTag("category-icon-back"))
-            if(parentName!=null)YLink(word("沿用一级「$parentName」","親「$parentName」と同じ"),onInherit,Modifier.testTag("category-icon-inherit"))
+            if(parentName!=null)YLink(word("沿用一级「$parentName」","親「$parentName」と同じ"),onInherit,Modifier.testTag("category-icon-inherit"),haptic=Haptic.Select)
         }
         YSearch(word("搜索图标","アイコンを検索"),query,{query=it},category=true,displayPlaceholder=word("搜索图标：咖啡、電車、gift…","検索：カフェ、電車、gift…"))
         val results=searchCategoryIcons(query)
@@ -97,7 +98,7 @@ import kotlinx.coroutines.launch
         val sheetPaper=if(journal)Color(0xfffaf4e4) else if(objects)Color(0xfffff9ed) else t.bg
         // The paper runs to the sheet edges so selection marks that overhang a cell stay covered.
         Box(Modifier.fillMaxWidth().sheetSticky(top=false).drawBehind{drawRect(sheetPaper,Offset(-32.dp.toPx(),0f),Size(size.width+64.dp.toPx(),size.height))}.padding(top=10.dp,bottom=6.dp)) {
-            YButton(word("使用这个图标","このアイコンを使う"),{onUse(pending)},Modifier.testTag("category-icon-use"),primary=true)
+            YButton(word("使用这个图标","このアイコンを使う"),{onUse(pending)},Modifier.testTag("category-icon-use"),primary=true,haptic=Haptic.Select)
         }
         YText("Icons · $CATEGORY_ICON_SOURCE · MIT",if(journal)11 else 9,color=t.muted)
     }
@@ -123,7 +124,7 @@ import kotlinx.coroutines.launch
 
 /** Tabs scroll sideways; the tab that holds the current pick carries a dot. */
 @Composable private fun CategoryIconTabs(tabs:List<Triple<String,String,Boolean>>,active:String,modifier:Modifier,onSelect:(String)->Unit) {
-    val t=LocalYohaku.current
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     val row=rememberScrollState()
     val centers=remember{mutableMapOf<String,Pair<Int,Int>>()}
@@ -149,7 +150,7 @@ import kotlinx.coroutines.launch
                 else->Modifier.then(if(selected)Modifier.drawBehind{drawLine(t.ink,Offset(0f,size.height-1.dp.toPx()),Offset(size.width,size.height-1.dp.toPx()),2.dp.toPx())} else Modifier).padding(top=9.dp,bottom=10.dp)
             }
             val color=when{objects&&selected->Color.White;journal&&selected->t.warm;selected->t.ink;else->t.muted}
-            Row(Modifier.testTag("category-icon-tab-$id").onGloballyPositioned{centers[id]=it.positionInParent().x.toInt() to it.size.width}.selectable(selected,role=Role.Tab){onSelect(id)}.then(surface),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.testTag("category-icon-tab-$id").onGloballyPositioned{centers[id]=it.positionInParent().x.toInt() to it.size.width}.selectable(selected,role=Role.Tab){if(!selected)haptics.perform(Haptic.TabSwitch);onSelect(id)}.then(surface),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                 YText((if(id=="tips")"★ " else "")+label,if(journal)14 else 11,color=color,letterSpacing=if(t.id=="magazine").4f else 0f,lineHeightMultiplier=1.4f)
                 if(picked)Box(Modifier.size(5.dp).clearAndSetSemantics{}.background(if(objects&&selected)Color.White else if(journal)t.warm else if(objects)t.accent else t.ink,if(t.id=="magazine")RoundedCornerShape(0.dp) else RoundedCornerShape(50)))
             }
@@ -188,14 +189,14 @@ import kotlinx.coroutines.launch
 }
 
 @Composable private fun CategoryIconCell(id:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
-    val t=LocalYohaku.current
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
     val label=iconLabel(id)
     val cell=when(t.id){
         "magazine"->Modifier.background(if(selected)t.ink else Color.Transparent).drawBehind{drawLine(t.line,Offset(size.width,0f),Offset(size.width,size.height),1.dp.toPx());drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}
         "objects"->Modifier.offset(y=if(selected)(-2).dp else 0.dp).drawBehind{drawRoundRect(Color(0xffeadfca),Offset(0f,3.dp.toPx()),cornerRadius=CornerRadius(14.dp.toPx()))}.background(Color(0xfffffaf0),RoundedCornerShape(14.dp)).then(if(selected)Modifier.border(2.dp,t.accent,RoundedCornerShape(14.dp)) else Modifier)
         else->Modifier
     }
-    Box(modifier.aspectRatio(1f).testTag("category-icon-cell-$id").semantics{contentDescription=label}.selectable(selected,role=Role.RadioButton,onClick=onClick).then(cell),contentAlignment=Alignment.Center) {
+    Box(modifier.aspectRatio(1f).testTag("category-icon-cell-$id").semantics{contentDescription=label}.selectable(selected,role=Role.RadioButton,onClick={haptics.perform(Haptic.Select);onClick()}).then(cell),contentAlignment=Alignment.Center) {
         CategoryIconBadge(id,CategoryBadge.CELL,selected=selected)
         if(selected&&t.id=="journal")YText("✓",15,Modifier.align(Alignment.TopEnd).padding(end=2.dp).rotate(8f).clearAndSetSemantics{},color=t.warm,lineHeightMultiplier=1f)
         if(selected&&t.id=="objects")Box(Modifier.align(Alignment.TopEnd).offset(x=5.dp,y=(-5).dp).size(17.dp).background(t.accent,RoundedCornerShape(50)).clearAndSetSemantics{},contentAlignment=Alignment.Center){YText("✓",10,color=Color.White,lineHeightMultiplier=1f)}

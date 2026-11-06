@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,8 +62,8 @@ import java.time.format.DateTimeFormatter
         reviews.forEach{YText(it.scope.book.name,15);BookScopeFacts(it.scope)}
         YButton(word("确认永久清空","完全に空にする"),{vm.execute {
             if(vm.repository.commitEmptyBookTrash(reviews)) {
-                emptyReview=null;vm.repository.collectUnusedMedia();vm.preferences.pruneBookPreferences(vm.repository.books.first().map{it.id}.toSet());vm.reminders?.rebuildSafely(false)
-            }else {emptyReview=vm.repository.previewEmptyBookTrash();emptyChanged=true}
+                vm.haptic(Haptic.Removed);emptyReview=null;vm.repository.collectUnusedMedia();vm.preferences.pruneBookPreferences(vm.repository.books.first().map{it.id}.toSet());vm.reminders?.rebuildSafely(false)
+            }else {emptyReview=vm.repository.previewEmptyBookTrash();emptyChanged=true;vm.haptic(Haptic.Warning)}
         }},Modifier.testTag("confirm-empty-book-trash"),primary=true,enabled=!busy)
     }}
 }

@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -31,6 +33,7 @@ import java.time.*
 }
 
 @Composable internal fun CalendarBody(label:String,month:YearMonth,selected:LocalDate,onMonth:(YearMonth)->Unit,onPick:(LocalDate)->Unit,onDone:()->Unit,timeFields:(@Composable ()->Unit)?=null){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val targetSize=if(journal)16 else if(objects)11 else 10
     var targetBaseline by remember(label){mutableFloatStateOf(0f)}
@@ -61,15 +64,16 @@ import java.time.*
     if(timeFields!=null){Spacer(Modifier.height(13.dp));timeFields()}
     Spacer(Modifier.height(15.dp));CalendarRule(t.line,journal);Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
-        FooterButton(word("今天","今日")){onPick(LocalDate.now())}
+        FooterButton(word("今天","今日")){haptics.perform(Haptic.Select);onPick(LocalDate.now())}
         FooterButton(word("完成","完了"),Modifier.testTag("calendar-done"),onDone)
     }
 }
 
 @Composable private fun MonthButton(text:String,label:String,onClick:()->Unit){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=RoundedCornerShape(if(objects)9.dp else if(journal)1.dp else 0.dp)
-    Box(Modifier.size(29.dp).semantics{contentDescription=label}.clickable(role=Role.Button,onClick=onClick).then(if(journal)Modifier.rotate(-3f) else Modifier).then(if(objects)Modifier.drawBehind{drawRoundRect(Color(0x1bc6ab80),topLeft=Offset(0f,2.dp.toPx()),size=size,cornerRadius=androidx.compose.ui.geometry.CornerRadius(9.dp.toPx()))} else Modifier).background(if(objects)Color(0xffecd9bb) else if(journal)Color(0xffe8eadc) else Color.Transparent,shape).then(if(journal)Modifier.drawBehind{drawRect(t.line,topLeft=Offset(.5.dp.toPx(),.5.dp.toPx()),size=androidx.compose.ui.geometry.Size(size.width-1.dp.toPx(),size.height-1.dp.toPx()),style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))} else Modifier),contentAlignment=Alignment.Center){YText(text,if(journal)14 else 13,color=if(objects)Color(0xffa98354) else t.ink,lineHeightMultiplier=if(journal)20f/14 else 19f/13,cssLineBox=true)}
+    Box(Modifier.size(29.dp).semantics{contentDescription=label}.clickable(role=Role.Button,onClick={haptics.perform(Haptic.Step);onClick()}).then(if(journal)Modifier.rotate(-3f) else Modifier).then(if(objects)Modifier.drawBehind{drawRoundRect(Color(0x1bc6ab80),topLeft=Offset(0f,2.dp.toPx()),size=size,cornerRadius=androidx.compose.ui.geometry.CornerRadius(9.dp.toPx()))} else Modifier).background(if(objects)Color(0xffecd9bb) else if(journal)Color(0xffe8eadc) else Color.Transparent,shape).then(if(journal)Modifier.drawBehind{drawRect(t.line,topLeft=Offset(.5.dp.toPx(),.5.dp.toPx()),size=androidx.compose.ui.geometry.Size(size.width-1.dp.toPx(),size.height-1.dp.toPx()),style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))} else Modifier),contentAlignment=Alignment.Center){YText(text,if(journal)14 else 13,color=if(objects)Color(0xffa98354) else t.ink,lineHeightMultiplier=if(journal)20f/14 else 19f/13,cssLineBox=true)}
 }
 
 private val inkCircle=GenericShape{size,_->
@@ -80,10 +84,11 @@ private val inkCircle=GenericShape{size,_->
     lineTo(0f,h*.4f);cubicTo(0f,h*.4f*(1-k),w*.4f*(1-k),0f,w*.4f,0f);close()
 }
 @Composable private fun CalendarDay(date:LocalDate?,chosen:Boolean,onPick:(LocalDate)->Unit,modifier:Modifier){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=if(journal&&chosen)inkCircle else RoundedCornerShape(if(objects)8.dp else 0.dp)
     val frame=if(date==null)Modifier else if(objects)Modifier.drawBehind{drawRoundRect(if(chosen)Color(0x35906344) else Color(0x18c6ab80),topLeft=Offset(0f,if(chosen)2.dp.toPx() else 1.dp.toPx()),size=size,cornerRadius=androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))}.background(if(chosen)Color(0xffb77d57) else Color(0xfff0e5d0),shape) else if(journal){if(chosen)Modifier.border(1.dp,t.warm,shape) else Modifier} else Modifier.background(if(chosen)t.soft else Color.Transparent).drawBehind{val width=if(chosen)2.dp.toPx() else 1.dp.toPx();drawLine(if(chosen)t.ink else t.line,Offset(0f,size.height-width/2),Offset(size.width,size.height-width/2),width)}
-    Box(modifier.heightIn(min=32.dp).then(if(journal&&chosen)Modifier.rotate(-8f) else Modifier).then(frame).then(if(date!=null)Modifier.semantics{contentDescription=date.toString()}.selectable(chosen,role=Role.Button,onClick={onPick(date)}) else Modifier),contentAlignment=Alignment.Center){
+    Box(modifier.heightIn(min=32.dp).then(if(journal&&chosen)Modifier.rotate(-8f) else Modifier).then(frame).then(if(date!=null)Modifier.semantics{contentDescription=date.toString()}.selectable(chosen,role=Role.Button,onClick={haptics.perform(Haptic.Select);onPick(date)}) else Modifier),contentAlignment=Alignment.Center){
         if(date!=null)YText(date.dayOfMonth.toString(),if(journal)16 else if(objects)13 else 12,number=true,color=if(chosen)if(objects)Color(0xfffff8e7) else if(journal)t.warm else t.accent else t.ink,lineHeightMultiplier=if(journal)23f/16 else if(objects)19f/13 else 14f/12,cssLineBox=true)
     }
 }

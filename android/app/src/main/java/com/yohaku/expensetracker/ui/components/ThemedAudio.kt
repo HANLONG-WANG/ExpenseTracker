@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
@@ -22,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun ThemedAudio(name:String,bytes:Long,position:Int,duration:Int,playing:Boolean,ready:Boolean,onPlay:()->Unit,onSeek:(Int)->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val playLabel=if(playing)word("暂停","一時停止")else word("播放","再生")
     Column(Modifier.fillMaxWidth().padding(vertical=12.dp).testTag("themed-audio"),horizontalAlignment=Alignment.CenterHorizontally) {
@@ -50,7 +53,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 "journal"->Modifier.border(1.dp,t.accent,RoundedCornerShape(19.dp,16.dp,19.dp,16.dp))
                 else->Modifier.drawBehind{drawRoundRect(Color(0x309d673d),topLeft=Offset(0f,3.dp.toPx()),cornerRadius=androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()))}.background(Color(0xffb77b53),RoundedCornerShape(14.dp))
             }
-            Box(Modifier.size(42.dp).testTag("media-audio-play").then(playFrame).semantics(mergeDescendants=true){text=AnnotatedString(playLabel)}.clickable(enabled=ready,role=Role.Button,onClick=onPlay),contentAlignment=Alignment.Center) {
+            Box(Modifier.size(42.dp).testTag("media-audio-play").then(playFrame).semantics(mergeDescendants=true){text=AnnotatedString(playLabel)}.clickable(enabled=ready,role=Role.Button,onClick={haptics.perform(Haptic.Media);onPlay()}),contentAlignment=Alignment.Center) {
                 Canvas(Modifier.size(20.dp)) {
                     val color=if(t.id=="objects")Color(0xfffff9e9)else t.accent
                     if(playing){drawRect(color,Offset(size.width*.15f,0f),androidx.compose.ui.geometry.Size(size.width*.23f,size.height));drawRect(color,Offset(size.width*.62f,0f),androidx.compose.ui.geometry.Size(size.width*.23f,size.height))}
@@ -81,6 +84,7 @@ private fun audioTime(milliseconds:Int):String="%02d:%02d".format(milliseconds/6
     }
 }
 @Composable private fun AudioSeek(position:Int,duration:Int,ready:Boolean,onSeek:(Int)->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;var width by remember{mutableIntStateOf(1)}
     val seekLabel=word("播放进度","再生位置")
     fun seek(value:Float){onSeek(value.toInt().coerceIn(0,duration))}
@@ -89,7 +93,7 @@ private fun audioTime(milliseconds:Int):String="%02d:%02d".format(milliseconds/6
     Canvas(Modifier.fillMaxWidth().height(22.dp).testTag("media-audio-progress").onSizeChanged{width=it.width.coerceAtLeast(1)}.semantics {
         contentDescription=seekLabel;progressBarRangeInfo=ProgressBarRangeInfo(position.toFloat(),0f..duration.coerceAtLeast(1).toFloat())
         if(ready)setProgress{seek(it);true}else disabled()
-    }.draggable(drag,Orientation.Horizontal,enabled=ready,startDragImmediately=true,onDragStarted={start->dragPosition=start.x*duration/width;seek(dragPosition)})) {
+    }.draggable(drag,Orientation.Horizontal,enabled=ready,startDragImmediately=true,onDragStarted={start->haptics.perform(Haptic.Grab);dragPosition=start.x*duration/width;seek(dragPosition)})) {
         val fraction=if(duration==0)0f else position.toFloat()/duration
         val radius=if(t.id=="magazine")0f else 3.dp.toPx();val thickness=(if(t.id=="magazine")2 else 3).dp.toPx();val y=(size.height-thickness)/2
         drawRoundRect(t.line,Offset(0f,y),androidx.compose.ui.geometry.Size(size.width,thickness),androidx.compose.ui.geometry.CornerRadius(radius))

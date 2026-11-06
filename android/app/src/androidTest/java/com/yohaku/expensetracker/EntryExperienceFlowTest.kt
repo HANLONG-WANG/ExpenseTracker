@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.viewModelScope
@@ -22,11 +23,12 @@ class EntryExperienceFlowTest {
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
     private lateinit var root:File
+    private val haptics=RecordingHapticOutput()
     @Before fun setup() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         root=File(context.cacheDir,"entry-experience-${java.util.UUID.randomUUID()}").apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db,mediaRoot=root)
-        val prefs=AppPreferences(context);vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock));ui.setContent{NativeApp(vm)}
+        val prefs=AppPreferences(context);vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock));runBlocking{prefs.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=haptics)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
     private fun snapshot()=(vm.state.value as AppState.Ready).snapshot!!
@@ -80,11 +82,15 @@ class EntryExperienceFlowTest {
             ui.runOnIdle{vm.startEntry(s);vm.changeEntry(book,vm.entry.value!!.copy(accountId=cash,categoryId=s.categories.first{it.kind=="EXPENSE"}.id,amount="150"));vm.navigate("entry")}
             // The save line floats over the form until its own slot scrolls into view.
             ui.waitUntil(10000){ui.onAllNodesWithTag("entry-save-button").fetchSemanticsNodes().isNotEmpty()};ui.settleKeyboard();shot("$theme-$language-floating-save")
+            ui.runOnIdle{haptics.clear()}
             ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.negativeBalanceReview.value!=null&&!vm.busy.value};assertTrue(snapshot().events.isEmpty());shot("$theme-$language-negative-balance")
+            ui.runOnIdle{assertEquals(listOf(Haptic.Warning),haptics.calls.map{it.second})}
             ui.onNodeWithTag("negative-balance-edit").performScrollTo().performClick();assertEquals("150",vm.entry.value!!.amount)
             ui.entryAction("entry-save-button").performClick();ui.waitUntil(10000){vm.negativeBalanceReview.value!=null&&!vm.busy.value}
+            ui.runOnIdle{haptics.clear()}
             ui.onNodeWithTag("negative-balance-save").performScrollTo().performClick();ui.waitUntil(10000){vm.entry.value==null&&snapshot().events.size==1&&!vm.busy.value}
+            ui.runOnIdle{assertEquals(listOf(Haptic.Saved),haptics.calls.map{it.second})}
             assertEquals(-50L,snapshot().balance(s.accounts.first{it.id==cash}))
             ui.runOnIdle{vm.startTransfer(snapshot(),cash,bank);vm.changeEntry(book,vm.entry.value!!.copy(amount="10",toAmount="10",fromConfirmed=true,toConfirmed=true));vm.saveEntry(book)}
             ui.waitUntil(10000){vm.negativeBalanceReview.value!=null&&!vm.busy.value}
@@ -93,6 +99,16 @@ class EntryExperienceFlowTest {
             ui.runOnIdle{vm.confirmEntryReview(book)};ui.waitUntil(10000){vm.entry.value==null&&snapshot().events.size==2&&!vm.busy.value}
             assertEquals(-60L,snapshot().balance(s.accounts.first{it.id==cash}))
         }
+    }
+    @Test fun staleNegativeBalanceConfirmationReplaysSaveAfterBalanceRecovers() {
+        val s=fresh("magazine","zh");val book=s.book.id;val cash=s.accounts.first{it.type=="CASH"}
+        ui.runOnIdle{vm.startEntry(s);vm.changeEntry(book,vm.entry.value!!.copy(accountId=cash.id,categoryId=s.categories.first{it.kind=="EXPENSE"}.id,amount="150"));vm.saveEntry(book)}
+        ui.waitUntil(10000){vm.negativeBalanceReview.value!=null&&!vm.busy.value}
+        runBlocking{repo.dao.putAccount(cash.copy(openingMinor=200))}
+        ui.runOnIdle{haptics.clear();vm.confirmNegativeBalance(book)}
+        ui.waitUntil(10000){vm.entry.value==null&&snapshot().events.size==1&&!vm.busy.value}
+        ui.runOnIdle{assertEquals(listOf(Haptic.Saved),haptics.calls.map{it.second})}
+        assertEquals(50L,snapshot().balance(snapshot().accounts.first{it.id==cash.id}))
     }
     @Test fun merchantSuggestionsSearchAndSelectionWorkAcrossThemes() {
         for((theme,language) in testLooks(this@EntryExperienceFlowTest)) {

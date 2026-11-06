@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -33,9 +34,9 @@ import java.time.YearMonth
                 var eventPage by remember(value){mutableIntStateOf(0)}
                 value.events.drop(eventPage*30).take(30).forEach{e->YText(e.date+" · "+entryKindName(EntryKind.valueOf(e.kind))+" · "+Money(Currency.valueOf(e.currency),e.amountMinor).display(),12)}
                 if(value.events.size>30)YActionRow {
-                    YButton(word("上一页","前へ"),{eventPage--},enabled=eventPage>0)
+                    YButton(word("上一页","前へ"),{eventPage--},haptic=Haptic.Step,enabled=eventPage>0)
                     YText("${eventPage+1} / ${(value.events.size+29)/30}",12)
-                    YButton(word("下一页","次へ"),{eventPage++},enabled=(eventPage+1)*30<value.events.size)
+                    YButton(word("下一页","次へ"),{eventPage++},haptic=Haptic.Step,enabled=(eventPage+1)*30<value.events.size)
                 }
             }
             YText(if(permanent)word("无法恢复。清理本组账目、修订及媒体引用，并放弃编辑本组的草稿；其他记录仍引用的文件保留。独立还款、合同、已确认账单与流水核对原始资料保留。","復元できません。対象記録・変更履歴・メディア参照と編集下書きを削除。他の記録が参照するファイルは保持。独立した返済・契約・確定請求・元の照合資料は保持します。")else if(operation==EntryLifecycleOperation.TRASH)word("确认后退出正常统计，30天内恢复原ID和文件。原消费及本次关联退款一并处理，转账两端不可拆开。旧手工核对关联失效，恢复后须重新确认。独立实际还款和已确认账单保留，相关预测须重新核对。","通常の集計から除外し、30日以内は元のIDとファイルを復元。元の支出と今回の関連返金を一緒に扱い、振替の両端は分割しません。手動照合の関連は失効し、復元後も再確認が必要。独立した実返済と確定請求は保持し、関連予測を再確認します。")else word("恢复原ID与有效关联，不新增一笔。重新计算余额、预算和未完成安排；旧手工核对差异不会自动重新生效，相关金融计划仍按当前资料检查。","元のIDと有効な関連を復元し、重複作成しません。残高・予算・未完了予定を再計算。古い手動照合は自動で再有効化せず、金融プランは現在の情報で確認します。"),12)
@@ -50,9 +51,9 @@ import java.time.YearMonth
             }
             YButton(if(operation==EntryLifecycleOperation.TRASH)word("确认移至回收站","ごみ箱へ移動")else title,{
                 var saved=false
-                vm.execute(onSuccess={if(saved)onApplied()}) {
+                vm.execute(onSuccess={if(saved){vm.haptic(if(operation==EntryLifecycleOperation.RESTORE)Haptic.Restored else Haptic.Removed);onApplied()}}) {
                     saved=vm.repository.commitEntryLifecycle(value)
-                    if(!saved){review=vm.repository.previewEntryLifecycle(s.book.id,eventId,operation);refreshed=true}
+                    if(!saved){review=vm.repository.previewEntryLifecycle(s.book.id,eventId,operation);refreshed=true;vm.haptic(Haptic.Warning)}
                     else {vm.repository.collectUnusedMedia();vm.reminders?.rebuildSafely(false)}
                 }
             },Modifier.testTag("confirm-entry-lifecycle"),primary=true,enabled=!busy)

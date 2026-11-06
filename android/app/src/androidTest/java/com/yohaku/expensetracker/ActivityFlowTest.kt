@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
@@ -27,12 +28,13 @@ class ActivityFlowTest {
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
+    private val recorder=RecordingHapticOutput()
     private lateinit var vm:AppViewModel
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=recorder)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(text:String) {
@@ -90,6 +92,27 @@ class ActivityFlowTest {
             tap(text("进入记录模式","記録モードを開始"))
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.features?.activeActivityId==activity&&!vm.busy.value}
             shot("$theme-$language-activity",false)
+            fun confirmStale(label:String,shotName:String) {
+                ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()}
+                runBlocking{val latest=repo.dao.book(book)!!;repo.dao.putBook(latest.copy(budgetMinor=latest.budgetMinor!!+1))}
+                val before=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+                recorder.clear();tap(label)
+                ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("activity-review-refreshed").fetchSemanticsNodes().isNotEmpty()&&recorder.calls.isNotEmpty()}
+                assertNull(vm.error.value)
+                val unchanged=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+                assertEquals(before.activities,unchanged.activities);assertEquals(before.reserves,unchanged.reserves);assertEquals(before.treats,unchanged.treats)
+                assertEquals(listOf(Triple(theme,Haptic.Warning,1f)),recorder.calls.toList())
+                ui.onNodeWithTag("activity-review-refreshed").assertTextEquals(text("资料已变化，请按当前影响重新确认。","情報が変わりました。現在の影響を再確認してください。"))
+                shot("$theme-$language-$shotName-stale",true)
+                tap(label)
+                ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("activity-review-refreshed").fetchSemanticsNodes().isEmpty()&&recorder.calls.size==2}
+                assertEquals(listOf(Haptic.Warning,Haptic.Done),recorder.calls.map{it.second})
+            }
+            tap(text("编辑活动与预算","シーンと予算を編集"))
+            ui.onNodeWithTag("field-"+text("总预算 / 可留空","総予算・空欄可")).performScrollTo().performTextReplacement("45000")
+            tap(text("预览影响","影響を確認"))
+            confirmStale(text("确认保存","保存を確定"),"activity")
+            assertEquals(45000L,runBlocking{repo.dao.activity(book,activity)!!.budgetMinor})
             tap(text("＋ 预留资金","＋ 資金を確保"))
             val keyboard=InstrumentationRegistry.getArguments().getString("phaseBKeyboard")=="true"
             val reserveName=ui.onNodeWithTag("field-"+text("预留名称","確保の名前"))
@@ -108,13 +131,15 @@ class ActivityFlowTest {
                 shot("$theme-$language-reserve-keyboard",true,reset=false)
                 clearHeader(preview).performTouchInput{click()}
             }else tap(text("预览影响","影響を確認"))
-            tap(text("确认","確定"))
+            confirmStale(text("确认","確定"),"reserve")
+            assertEquals("住宿",runBlocking{repo.dao.reserves(book).single().name})
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.reserves?.size==1&&!vm.busy.value}
             tap(text("别人付款 · 记录互请","友達の支払・ごちそうを記録"))
             ui.onNodeWithTag("field-"+text("这次是什么","何の支払？")).performScrollTo().performTextReplacement("午餐")
             ui.onNodeWithTag("field-"+text("整单金额","全体額")).performScrollTo().performTextReplacement("3000")
             tap(text("预览份额","取り分を確認"));shot("$theme-$language-portions",true)
-            tap(text("确认互请记录","ごちそう記録を確定"))
+            confirmStale(text("确认互请记录","ごちそう記録を確定"),"treat")
+            assertEquals("午餐",runBlocking{repo.snapshot(repo.dao.book(book)!!).first().treats.single{it.eventId==null}.name})
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.treats?.size==2&&!vm.busy.value}
             tap(text("查看与这位朋友的明细","この友達との明細を見る"))
             ui.onNode(hasText(text("你多替对方承担","自分が多く負担")) and hasAnyAncestor(hasTestTag("sheet-scroll"))).performScrollTo().assertExists()

@@ -160,6 +160,13 @@
 
 先按“合理推断、日期与未知值”的统一约定提出方案并列明假设；可空政策保留null。仅在关键对象/金额等无法合理确定、或明确业务前提无法满足时，把任务标为待补充，或返回 message/questions、steps=[]。不要把允许推断的当前日期/一次付模式也列成必须追问项；确实未知的本金、费率、历史期号或对象不能编造。手机对不足的预测展示缺项并阻止整批确认；可以只保存明确的不完整规则，但必须在 message 说明它无法生成完整预测。截图里的计划若只是“拟申请”，不能作为“平台当前已采用”的事实。
 
+## 信用卡周期预测与余额池核对
+
+- 手机的 `cashForecast.periods[].item.kind` 可为 `CARD_RECURRENCE`：`sourceId` 为信用卡账户，`name` 包含卡名与周期付款名，`accountId` 为银行等实际扣款账户，`date` / `scheduledDate` 为银行扣款日（逾期展示时 date 推进至 asOf，scheduledDate 保留原扣款日），`estimated=true`。一次付、奖金付与分期复用真实 CARD_ENTRY 的规则选取、日期和金额计算；多期逐期列出，范围外不列出。已记账的实例由实际 CARD_ENTRY 账单接替；リボ/自动リボ无独立扣款，非自动 ACCOUNT_RULE 按一次付。
+- 云端确认在尚无真实账单时也纳入这些周期预测的扣款账户；扣款账户尚未确定的条目归在来源卡的 cashForecast 下，余额为未知，不计作现金。跨币种沿用冻结的参考汇率及 `REFERENCE_CONVERSION` / `UNKNOWN_CONVERSION`。
+- 可操作 issue：`CARD_PAYMENT_CHOICE_REQUIRED`（编辑周期付款方式）、`CARD_AUTOMATIC_RULE_INCOMPLETE`、`CARD_SINGLE_RULE_INCOMPLETE`、`CARD_BONUS_RULE_INCOMPLETE`、`CARD_INSTALLMENT_RULE_INCOMPLETE`（补相应卡规则）、`CARD_INSTALLMENT_PERIODS_UNSUPPORTED`（核对回数）、`CARD_PAYMENT_ACCOUNT_REQUIRED`、`CARD_PAYMENT_ACCOUNT_INACTIVE`（核对扣款账户）、`CARD_ACCOUNT_INACTIVE`（核对卡账户）。这些为确认结果中的字符串值，不新增命令输入字段或枚举 schema。
+- 当前有效 POOL 的 `unallocatedShares` 已指定还款归属，提醒中的未分配清偿须扣除此部分；池 facts 过期时旧份额不再有效。原始份额与实际分配仍分别导出。账户期初日期/金额变化后，实际借还照常保存，原池预测保持待重算；`financialPool.save` 明确提交新的期初定义后恢复。不得为消除提醒重复建立还款或账单。
+
 ## 永久边界
 
 永远不能恢复备份、操作云端连接凭证/设备、永久删除任何记录/账本/其他对象、清空回收站或触发到期清理。此限制适用于任何命名和组合，不是可绕过的命令名黑名单。记录与账本可移入回收站/恢复；账本与分类可归档，账户、商户、朋友可停用。分类 MERGE_DELETE / DELETE_EMPTY、AccountOperation.DELETE、模板 deleteTemplate、商户 deleteMerchant、地点 removeMerchantLocation 都是物理删除，禁止由云端执行。预算物理删行/清表、活动永久删除、预留/参与历史/请客物理删除、周期规则/实例及预计收入物理删除同样禁止。预算设 null、活动和他人请客软删除/恢复、规则停用、实例取消/恢复、预计收入取消允许。活动分类预算、请客份额等从属关系的完整对象编辑不是独立删除命令，仍保存完整撤销快照。具体替代做法见能力清单 forbiddenAlternatives。替代操作仍需符合用户意图；无等价替代或资料不足时在 message/questions 说明，不以近似操作冒充完成。放弃未提交云任务也会删除本地任务与暂存资料，cloud.task.discard 禁止由返回方案触发。不能写入数据库、调用任意 Repository、运行 SQL/代码或发出网络请求。
@@ -275,6 +282,7 @@
 - `book.select`：book 类型引用，可使用前序 book.create 输出。只切换当前选择，后面的账本写入仍限定 plan.book_id。归档账本可查看，回收站账本不可选择。
 - `preferences.reminders`：完整设置而非补丁。enabled 默认false；repayment/deadline/recurring/budget/funds 默认true；monthlyReview 默认true、独立于 enabled（关闭全部提醒须同时设 enabled=false 和 monthlyReview=false）；repaymentDays=[7,1]、deadlineDays=[3,1]、recurringDays=[1]、time=09:00。未知/不合法时间、天数拒绝，不能把省略理解为保持。
 - `preferences.automaticRates` / `preferences.location`：enabled 必填；前者全应用，后者本账本前台定位。`preferences.photoStorage`：original 必填，true原样，false节省空间，是全账本新表单默认，不重写旧照片。
+- `preferences.haptics`：`enabled` 必填（例如 `{"enabled":true}`），本机所有账本共用，初始偏好默认 true。提交后应用前仍须匹配预览原值；设置与效果去重凭据原子保存。完成后可按同一偏好撤销机制恢复，当前值变化会阻止整批撤销；系统触摸振动设置仍生效。
 - 提醒或定位开启且当前缺系统权限时，手机追加 interactive 授权引导。助手不能授权、不能填权限声明。预览会标明；这类包含权限交互的步骤**整批不可撤销**。已有权限时只改偏好，可在完成且原值未变时撤销恢复。撤销不会撤回系统权限。
 - `attachment.attachSource`：entry 类型引用、sourceName 精确任务附件名称。**只准本方案来源任务已经上传的用户源文件**，不含自动生成的协议/能力/上下文/记录附件，不含其他任务、任意路径、URL或任意URI。原始字节已在手机，本机校验长度/哈希后附上。后续完成后可撤销本方案新增且未变化的关联，不删除源文件、不触发物理文件清理。
 

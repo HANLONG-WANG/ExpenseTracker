@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
@@ -32,6 +33,7 @@ class StatementFileWorkflowTest {
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
+    private val recorder=RecordingHapticOutput()
     private lateinit var vm:AppViewModel
     private val folders=mutableListOf<String>()
     @Before fun open() {
@@ -39,7 +41,7 @@ class StatementFileWorkflowTest {
         val context=instrumentation.targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-16T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=recorder)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();folders.forEach{shell("rm -r /sdcard/Download/$it")}}
     private fun shell(command:String):ByteArray=ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
@@ -124,8 +126,10 @@ class StatementFileWorkflowTest {
             click("statement-preview-difference")
             assertTrue(runBlocking{db.fileWorkflowDao().decisions(book).first().isEmpty()})
             shot("$theme-$language-difference")
-            click("statement-confirm-difference")
+            recorder.clear();click("statement-confirm-difference")
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.fileWorkflowDao().decisions(book).first().size==1}}
+            ui.waitUntil(10000){recorder.calls.isNotEmpty()}
+            assertEquals(listOf(Triple(theme,Haptic.Done,1f)),recorder.calls.toList())
             ui.onNodeWithTag("statement-status-${diff.row_id}").assertTextEquals(text("已确认差异，非完全一致","差異確認済・完全一致ではない"))
             val missing=source.rows[3]
             click("statement-supplement-${missing.row_id}");click("statement-supplement-kind")
@@ -165,8 +169,10 @@ class StatementFileWorkflowTest {
                 ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.fileWorkflowDao().statements(book).first().size==1}}
                 ui.runOnIdle{vm.selectedStatementBatch.value=source.file_id}
             }
-            click("statement-delete");click("statement-delete-confirm")
+            click("statement-delete");recorder.clear();click("statement-delete-confirm")
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.fileWorkflowDao().statements(book).first().isEmpty()}}
+            ui.waitUntil(10000){recorder.calls.isNotEmpty()}
+            assertEquals(listOf(Triple(theme,Haptic.Removed,1f)),recorder.calls.toList())
             assertTrue(runBlocking{db.fileWorkflowDao().decisions(book).first().isEmpty()})
             assertEquals(4,state().events.size);assertEquals(6300L,state().balance(state().accounts.single()))
             println("Statement file workflow passed: $theme $language; saved statement → exact 1:1/manual difference → normal supplement → duplicate rejected; ledger preserved on deletion")

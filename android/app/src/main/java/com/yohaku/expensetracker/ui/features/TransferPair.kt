@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
@@ -57,6 +58,7 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable internal fun AccountTransferShortcut(onClick:()->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val shape=RoundedCornerShape(if(t.id=="objects")12.dp else 0.dp)
     val frame=when(t.id){
@@ -64,7 +66,7 @@ import com.yohaku.expensetracker.ui.theme.*
         "journal"->Modifier.background(Color(0xfffaf2da)).drawBehind{drawRect(t.warm,style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))}
         else->Modifier.background(Color(0xfff0e2ca),shape).border(1.dp,Color(0xffdcc5a3),shape)
     }
-    androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().then(frame).then(Modifier.clickable(onClick=onClick)).testTag("account-detail-transfer").padding(15.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically) {
+    androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().then(frame).then(Modifier.clickable(onClick={haptics.perform(Haptic.Compose);onClick()})).testTag("account-detail-transfer").padding(15.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically) {
         YIcon("transfer",Modifier.size(19.dp),t.accent)
         YText(word("从这个账户转账 / 换汇","この口座から振替・両替"),if(t.id=="journal")14 else 12,color=t.accent)
     }
@@ -87,8 +89,9 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable internal fun TransferEstimateLink(label:String,onClick:()->Unit,enabled:Boolean) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     Box(Modifier.fillMaxWidth(),contentAlignment=Alignment.Center) {
-        androidx.compose.material3.Text(label,Modifier.heightIn(min=40.dp).clickable(enabled=enabled,onClick=onClick).padding(top=2.dp,bottom=8.dp),color=t.accent.copy(alpha=if(enabled)1f else .45f),fontFamily=t.body,fontSize=11.sp,lineHeight=18.sp,textDecoration=androidx.compose.ui.text.style.TextDecoration.Underline)
+        androidx.compose.material3.Text(label,Modifier.heightIn(min=40.dp).clickable(enabled=enabled,onClick={haptics.perform(Haptic.Select);onClick()}).padding(top=2.dp,bottom=8.dp),color=t.accent.copy(alpha=if(enabled)1f else .45f),fontFamily=t.body,fontSize=11.sp,lineHeight=18.sp,textDecoration=androidx.compose.ui.text.style.TextDecoration.Underline)
     }
 }

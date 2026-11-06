@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.*
@@ -145,7 +146,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
         YButton(word("分配到多个目标","複数の対象へ充当")+if(multiple)" −"else" +",{multiple=!multiple},Modifier.testTag("finance-repay-multiple-targets"))
         if(multiple) {
             YText(word("单目标沿用上面的组成；启用独立分配后可分别填写各目标。未分配本金不会自动结清账单。","単一対象は上の内訳を使用。個別充当を有効にすると対象別に入力できます。未充当元金で請求を自動精算しません。"),11)
-            if(d.singleTarget==true)YButton(word("启用独立分配","個別充当を有効にする"),{update(d.copy(singleTarget=false))},Modifier.testTag("finance-repay-independent"))
+            if(d.singleTarget==true)YButton(word("启用独立分配","個別充当を有効にする"),{update(d.copy(singleTarget=false))},Modifier.testTag("finance-repay-independent"),haptic=Haptic.ToggleOn)
             else d.rows.forEachIndexed{i,a->Panel(Modifier.testTag("finance-repay-allocation-$i")) {
                 YSelect(word("目标账单","対象の請求"),a.billId,listOf(null to word("不指定账单","請求を指定しない"))+bills.map{it.id as String? to (finance.plans.first{p->p.id==it.planId}.name+" · ${it.number} · ${it.date}")},{row(i,a.copy(billId=it,contractId=null))})
                 YSelect(word("目标合同","対象の契約"),a.contractId,listOf(null to word("按账单关联 / 不指定","請求の関連先・指定なし"))+contracts.map{it.id as String? to it.name},{row(i,a.copy(contractId=it))})

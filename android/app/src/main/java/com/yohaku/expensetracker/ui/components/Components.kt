@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
@@ -107,8 +109,9 @@ import java.time.YearMonth
     }
 }
 /** [arrow] marks links that open another page, matching section-heading links. */
-@Composable fun YLink(label:String,onClick:()->Unit,modifier:Modifier=Modifier,arrow:Boolean=false) {
-    val link=modifier.defaultMinSize(minHeight=40.dp).clickable(onClick=onClick).padding(vertical=8.dp)
+@Composable fun YLink(label:String,onClick:()->Unit,modifier:Modifier=Modifier,arrow:Boolean=false,haptic:Haptic?=null) {
+    val haptics=LocalHaptics.current
+    val link=modifier.defaultMinSize(minHeight=40.dp).clickable(onClick={haptic?.let{haptics.perform(it)};onClick()}).padding(vertical=8.dp)
     if(!arrow)YText(label,12,link,color=LocalYohaku.current.accent)
     else Row(link,horizontalArrangement=Arrangement.spacedBy(4.dp)){
         YText(label,12,color=LocalYohaku.current.accent)

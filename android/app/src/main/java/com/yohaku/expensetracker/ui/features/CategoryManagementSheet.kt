@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
@@ -69,9 +70,9 @@ import com.yohaku.expensetracker.ui.theme.*
             YActionRow {
                 YButton(word("确认分类调整","カテゴリ変更を確定"),{
                     var saved=false
-                    vm.execute(onSuccess={if(saved)onClose()}) {
+                    vm.execute(onSuccess={if(saved){vm.haptic(when(value.operation){CategoryOperation.DELETE_EMPTY,CategoryOperation.MERGE_DELETE->Haptic.Removed;CategoryOperation.UNARCHIVE->Haptic.Restored;else->Haptic.Done});onClose()}}) {
                         saved=vm.repository.commitCategoryOperation(value)
-                        if(!saved){review=vm.repository.previewCategoryOperation(s.book.id,c.id,value.operation,value.targetId,value.budgetPolicy);refreshed=true}
+                        if(!saved){review=vm.repository.previewCategoryOperation(s.book.id,c.id,value.operation,value.targetId,value.budgetPolicy);refreshed=true;vm.haptic(Haptic.Warning)}
                         else vm.reminders?.rebuildSafely(false)
                     }
                 },Modifier.testTag("confirm-category-operation"),primary=true,enabled=!busy&&(value.operation!=CategoryOperation.DELETE_EMPTY||!value.deletionBlocked))

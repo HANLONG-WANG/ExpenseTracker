@@ -18,6 +18,7 @@ import com.yohaku.expensetracker.data.files.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 
 @Composable internal fun StatementImportScreen(s:BookSnapshot,vm:AppViewModel) {
     YTitle(word("先转换，再核对。","変換して、照合。"),"STATEMENT IMPORT",pageFlow=true)
@@ -34,6 +35,7 @@ import com.yohaku.expensetracker.ui.theme.*
 
 /** Shared by verified cloud results; saving stays with the caller. */
 @Composable internal fun StatementPreviewContent(s:BookSnapshot,vm:AppViewModel,p:StatementImportPreview,overlap:Boolean,onOverlap:(Boolean)->Unit,busy:Boolean,onConfirm:()->Unit,onCancel:()->Unit) {
+    LaunchedEffect(p){if(p.duplicateBatchId!=null||p.overlappingBatchIds.isNotEmpty())vm.haptic(Haptic.Warning)}
     val account=s.accounts.first{it.id==p.file.account_id}
     Panel(Modifier.testTag("statement-preview")) {
         YText(word("导入预览","取込プレビュー"),19)

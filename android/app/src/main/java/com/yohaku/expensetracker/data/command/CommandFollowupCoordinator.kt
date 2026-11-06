@@ -50,6 +50,7 @@ class CommandFollowupCoordinator internal constructor(private val commands:Comma
         check(dao.planEffects(row.planId).takeWhile{it.id!=row.id}.none{it.status=="RETRY"})
         dao.updateEffect(row.copy(status="PENDING",lastError=null))
         perform(id);resumeLocked()
+        dao.effect(id)?.status!="RETRY"
     }}
     private suspend fun perform(id:String) {
         val row=requireNotNull(dao.effect(id));if(row.status !in setOf("PENDING","RUNNING"))return

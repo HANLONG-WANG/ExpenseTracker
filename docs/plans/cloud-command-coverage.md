@@ -2,7 +2,9 @@
 
 审计日期：2026-11-03。基线：阶段7 `5216585`。状态：阶段8已验收（2026-11-03 本机编译与设备测试）。
 
-共 **241 条写入路径**：命令 **109**、永久边界 **40**、内部编排 **92**。注册表仍为 **87 个命令**；已登记 `cloud.task.discard`，并补充本机 `merchant.delete` 永久边界（forbidden共59项），未增加云端命令。未发现未下沉的UI DAO写入。
+共 **243 条写入路径**：命令 **111**、永久边界 **40**、内部编排 **92**。注册表为 **88 个命令**；触感反馈增量登记 `AppPreferences.setHapticsEnabled` 与 `AppViewModel.setHapticsEnabled` 两条路径，对应同一 `preferences.haptics` 命令。`cloud.task.discard` 与本机 `merchant.delete` 永久边界不变（forbidden 共59项）。未发现未下沉的UI DAO写入。
+
+2026-11-06 触感增量待统一编译与验收：命令侧、展示、撤销、文档及快照已接入；分组 B 文件范围外的 `AppPreferences.commandValue`、`commandValues`、`applyCommandPreference` 须补上 `haptics` 分支，保留原值校验与 DataStore 原子效果凭据，才具备可执行的偏好命令。
 
 ### 金融本机查看路径更新（2026-11-04）
 
@@ -177,6 +179,7 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 | 写入路径 | 分类 → 命令或边界 | 说明 |
 |---|---|---|
 | [AppPreferences.kt:23](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L23) `setPhotoSaveOriginal` | 命令 → preferences.photoStorage | post-commit；权限引导需要手机操作，不能由助手授权。 |
+| [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setHapticsEnabled` | 命令 → preferences.haptics | enabled 必填；本机全账本共用，默认 true；post-commit 原值比较、效果凭据和撤销同照片偏好，无权限引导。 |
 | [AppPreferences.kt:28](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L28) `setAutomaticReferenceRates` | 命令 → preferences.automaticRates | post-commit；权限引导需要手机操作，不能由助手授权。 |
 | [AppPreferences.kt:36](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L36) `saveReminderSettings` | 命令 → preferences.reminders | post-commit；权限引导需要手机操作，不能由助手授权。 |
 | [AppPreferences.kt:50](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L50) `setForegroundLocation` | 命令 → preferences.location | post-commit；权限引导需要手机操作，不能由助手授权。 |
@@ -206,6 +209,7 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 
 | 写入路径 | 分类 → 命令或边界 | 说明 |
 |---|---|---|
+| [AppViewModel.kt](../../android/app/src/main/java/com/yohaku/expensetracker/ui/features/AppViewModel.kt) `setHapticsEnabled` | 命令 → preferences.haptics | 本机 UI 写入口；同一全账本偏好，触感播放本身不计数据写路径。 |
 | [AppViewModel.kt:101](../../android/app/src/main/java/com/yohaku/expensetracker/ui/features/AppViewModel.kt#L101) `createBook` | 命令 → book.create + book.select | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
 | [AppViewModel.kt:113](../../android/app/src/main/java/com/yohaku/expensetracker/ui/features/AppViewModel.kt#L113) `selectBook` | 命令 → book.select | 选择偏好；提醒导航与月评预填是本机入口编排。 |
 | [AppViewModel.kt:106](../../android/app/src/main/java/com/yohaku/expensetracker/ui/features/AppViewModel.kt#L106) `openReminderBook` | 命令 → book.select | 选择偏好；提醒导航与月评预填是本机入口编排。 |
@@ -313,7 +317,7 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 - `ui/` 非import的DAO/db命中32处，逐处为读取：MonthlyScreens/CommandScreens月计划/月评，CommandFollowupViews读账本，AppViewModel账本/金融/额度Flow及账户选择核对，CsvImportViewModel/Screen导入配置和历史，FinancialDrafts读取草稿，FinancialPlanHistory/RevisionHistory/CreditLimitScreen历史，StatementsScreen/ReceiptWorkflowScreen/ReceiptProducts文件数据。FinancialOutlookReader.withTransaction只读金融图。**直接写DAO/SQL为0**；没有“待下沉”。
 - `AppViewModel.init`仅触发本机既有purgeExpired/collectUnusedMedia/pruneBookPreferences，分别归上表边界/内部路径，不能由命令触发；初始化不是额外的用户操作。`execute`/CsvImportViewModel.work/BackupViewModel.run是协程分派，写操作已按被分派函数列出，不重复计数。
 - ViewModel其余动作：refreshToday/retryRead/recentCategories、各preview*、refreshOccurrencePreview、读取文件/解码/normalized、events及导航/dismiss/焦点/媒体本次选项/临时configure只读或只改内存。CSV step/edit间接调用previewNow的持久缓存已计入。FinancialDraftSession的自动保存/提交/放弃分别落到storeFinancialDraft/commitFinancialDraft/discardFinancialDraft，UI无DAO直写。
-- `BackupPreferences`的automaticReferenceRates/photoSaveOriginal/reminderSettings/foregroundLocationBooks/activeBook分别对应开放偏好；referenceRates/reminderDelivery/commandEffectReceipts是缓存/送达/效果凭据；setupDraft是首次表单草稿。DTO本身不写；全体字段恢复只有AppPreferences.restoreBackup（永久禁止）。派生reminderPlan不在备份，重启按已提交资料重建。
+- `BackupPreferences`的automaticReferenceRates/photoSaveOriginal/hapticsEnabled/reminderSettings/foregroundLocationBooks/activeBook分别对应开放偏好；referenceRates/reminderDelivery/commandEffectReceipts是缓存/送达/效果凭据；setupDraft是首次表单草稿。DTO本身不写；全体字段恢复只有AppPreferences.restoreBackup（永久禁止）。派生reminderPlan不在备份，重启按已提交资料重建。
 - 系统权限、目录选择器和拍照是interactive的本机用户动作；文件提供器、缓存缩图、播放器/外部打开不写账本。数据库备份副本、临时上传/解包副本的完成后清理不等于云端删除用户源文件。
 
 ## 本阶段补齐与最终结论
@@ -325,7 +329,7 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 
 ## 助手往返首轮返工补充
 
-该阶段写入路径及240条分类口径不变（本机商户删除增量加入后为上表241条）。CloudRepository.prepare新增初次source_files名称清单，copySources保留五个自动生成名称避免混淆，仍为已有任务编排路径；工具export改调真实advance完成上传，未开放附件校验例外。CommandExports补任务日期/时区及账本初始化白名单字段，是既有只读导出，不新增账本写入。能力/协议允许按用户陈述和约定推断并列假设，未放松USER_FACT、永久边界或实际执行前提。反馈逐项处理见[阶段8记录](cloud-command-stage-8.md)。
+该阶段写入路径及240条分类口径不变（本机商户删除增量加入后为241条；触感偏好的存储与ViewModel入口加入后为上表243条）。CloudRepository.prepare新增初次source_files名称清单，copySources保留五个自动生成名称避免混淆，仍为已有任务编排路径；工具export改调真实advance完成上传，未开放附件校验例外。CommandExports补任务日期/时区及账本初始化白名单字段，是既有只读导出，不新增账本写入。能力/协议允许按用户陈述和约定推断并列假设，未放松USER_FACT、永久边界或实际执行前提。反馈逐项处理见[阶段8记录](cloud-command-stage-8.md)。
 
 金融差异展示与本机共用紧凑日期/原/新/差额表，账户或组成仅在不同时加行下小注；规则字段改空和删除分别显示。步骤快照基线与执行协议保持不变。
 

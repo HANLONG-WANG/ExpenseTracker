@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -168,8 +169,8 @@ import java.time.*
                 YText(value.timeline.asOf+" → "+value.timeline.through,12)
                 YText(word("其他账户资金需实际转入；预计收入仅作情景。同日没有顺序时先扣后入，预留不等于已花。","他口座からは実際の振替が必要。収入予定は別シナリオ。同日の順序が不明なら出金を先に計算し、資金確保は支出済みではありません。"),11)
                 val other=s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt&&it.id!=a.id}.sortedByDescending{it.currency==a.currency}.firstOrNull()
-                if(other!=null)YButton(word("记录转入 / 换汇","振替・両替を記録"),{onTransfer(other.id,a.id)},Modifier.testTag("risk-transfer-${a.id}"),primary=true)
-                YButton(word("补记已实际到账收入","実入金の記録を補完"),{onActualIncome(a.id)},Modifier.testTag("risk-actual-income-${a.id}"))
+                if(other!=null)YButton(word("记录转入 / 换汇","振替・両替を記録"),{onTransfer(other.id,a.id)},Modifier.testTag("risk-transfer-${a.id}"),primary=true,haptic=Haptic.Compose)
+                YButton(word("补记已实际到账收入","実入金の記録を補完"),{onActualIncome(a.id)},Modifier.testTag("risk-actual-income-${a.id}"),haptic=Haptic.Compose)
                 YButton(word("添加预计收入情景","収入予定のシナリオを追加"),{onIncome(a.id)},Modifier.testTag("risk-expected-income-${a.id}"))
                 value.timeline.steps.filter{it.item.accountId==a.id&&it.item.accountDeltaMinor!=0L}.let{steps->steps.forEach{ScheduledCashRow(it.item,s,{onItem(it.item)},it===steps.last())}}
                 YButton(word("查看完整资金时间线","資金予定の全体を見る"),onForecast)
@@ -200,7 +201,7 @@ import java.time.*
     val read by rememberFinancialOutlook(s,vm,today.plusDays(90),attempt)
     // Each action uses the active theme's own button treatment and can wrap at large font sizes.
     FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-        YButton(word("转账 / 换汇","振替・両替"),onTransfer,Modifier.testTag("accounts-transfer"))
+        YButton(word("转账 / 换汇","振替・両替"),onTransfer,Modifier.testTag("accounts-transfer"),haptic=Haptic.Compose)
         YButton(word("付款日历","支払カレンダー"),onCalendar,Modifier.testTag("accounts-calendar"))
         YButton(word("重要事项","大事な予定"),onImportant,Modifier.testTag("accounts-important"))
         YButton(word("未来资金与预算风险","将来の資金・予算リスク"),onForecast,Modifier.testTag("accounts-forecast"))

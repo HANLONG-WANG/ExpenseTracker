@@ -13,6 +13,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 
 @Composable internal fun MerchantsScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,onEntry:(String)->Unit) {
     var editing by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
@@ -50,7 +51,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YButton(word("确认删除商户","お店の削除を確定"),{vm.execute(onSuccess={
                 vm.entry.value?.takeIf{it.merchantId==merchant.id}?.let{vm.entry.value=it.withoutMerchantLink()}
                 deleting=false;selected=null
-            }){vm.repository.deleteMerchant(s.book.id,merchant.id)}},Modifier.testTag("merchant-delete-confirm"),primary=true,enabled=!busy)
+            }){vm.repository.deleteMerchant(s.book.id,merchant.id);vm.haptic(Haptic.Removed)}},Modifier.testTag("merchant-delete-confirm"),primary=true,enabled=!busy)
         }
         ThemeSection(word("保存地点","保存した場所"),"SAVED PLACES")
         s.merchantLocations.filter{it.merchantId==merchant.id}.forEach{l->Panel {
@@ -58,7 +59,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(l.latitude?.let{"$it, ${l.longitude} · ${l.radiusMeters}m"}?:word("仅地点名称，未填写坐标","場所名のみ・座標未入力"),11)
             YActionRow {
                 YButton(word("编辑地点","場所を編集"),{locationId=l.id;locationFor=merchant.id})
-                YLink(word("移除保存地点","保存した場所を削除"),{vm.execute{vm.repository.removeMerchantLocation(s.book.id,l.id)}})
+                YLink(word("移除保存地点","保存した場所を削除"),{vm.execute{vm.repository.removeMerchantLocation(s.book.id,l.id);vm.haptic(Haptic.Removed)}})
             }
         }}
         YButton(word("＋ 添加地点","＋ 場所を追加"),{locationId=null;locationFor=merchant.id},primary=true)
@@ -101,7 +102,7 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
                 }
             }
         }
-        YButton(word("保存商户资料","お店の情報を保存"),{vm.execute(onSuccess=onDismiss){
+        YButton(word("保存商户资料","お店の情報を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onDismiss()}){
             vm.repository.saveMerchantWithLocations(s.book.id,name,note,old?.id,active,choices.filter{it.keep}.map{
                 MerchantPlaceInput(it.name,it.latitude,it.longitude,it.radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"))
             })
@@ -124,7 +125,7 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
     YSheet(word("保存商户地点","お店の場所を保存"),onDismiss) {
         YField(word("地点名称","場所の名前"),name,{name=it})
         PlacePicker(vm,latitude,longitude,radius,{radius=it}){lat,lon->latitude=lat;longitude=lon}
-        YButton(word("保存地点","場所を保存"),{vm.execute(onSuccess=onDismiss){
+        YButton(word("保存地点","場所を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onDismiss()}){
             vm.repository.saveMerchantLocation(s.book.id,merchantId,name,requireNotNull(latitude),requireNotNull(longitude),radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"),old?.id)
         }},Modifier.testTag("merchant-location-save"),primary=true,enabled=!busy&&latitude!=null&&longitude!=null)
     }
@@ -162,7 +163,7 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
         val busy by vm.busy.collectAsStateWithLifecycle()
         YSheet(word("朋友资料","友達の情報"),{editing=null}) {
             YField(word("朋友名称","友達の名前"),name,{name=it});YToggle(word("启用名册选择","名簿の選択を有効"),active,{active=it})
-            YButton(word("保存朋友资料","友達の情報を保存"),{vm.execute(onSuccess={editing=null}){val saved=vm.repository.saveFriend(s.book.id,name,old?.id);vm.repository.setFriendActive(s.book.id,saved,active)}},primary=true,enabled=!busy)
+            YButton(word("保存朋友资料","友達の情報を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);editing=null}){val saved=vm.repository.saveFriend(s.book.id,name,old?.id);vm.repository.setFriendActive(s.book.id,saved,active)}},primary=true,enabled=!busy)
         }
     }
 }

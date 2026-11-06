@@ -282,6 +282,7 @@
 - `book.select`：book 类型引用，可使用前序 book.create 输出。只切换当前选择，后面的账本写入仍限定 plan.book_id。归档账本可查看，回收站账本不可选择。
 - `preferences.reminders`：完整设置而非补丁。enabled 默认false；repayment/deadline/recurring/budget/funds 默认true；monthlyReview 默认true、独立于 enabled（关闭全部提醒须同时设 enabled=false 和 monthlyReview=false）；repaymentDays=[7,1]、deadlineDays=[3,1]、recurringDays=[1]、time=09:00。未知/不合法时间、天数拒绝，不能把省略理解为保持。
 - `preferences.automaticRates` / `preferences.location`：enabled 必填；前者全应用，后者本账本前台定位。`preferences.photoStorage`：original 必填，true原样，false节省空间，是全账本新表单默认，不重写旧照片。
+- `preferences.haptics`：`enabled` 必填（例如 `{"enabled":true}`），本机所有账本共用，初始偏好默认 true。提交后应用前仍须匹配预览原值；设置与效果去重凭据原子保存。完成后可按同一偏好撤销机制恢复，当前值变化会阻止整批撤销；系统触摸振动设置仍生效。
 - 提醒或定位开启且当前缺系统权限时，手机追加 interactive 授权引导。助手不能授权、不能填权限声明。预览会标明；这类包含权限交互的步骤**整批不可撤销**。已有权限时只改偏好，可在完成且原值未变时撤销恢复。撤销不会撤回系统权限。
 - `attachment.attachSource`：entry 类型引用、sourceName 精确任务附件名称。**只准本方案来源任务已经上传的用户源文件**，不含自动生成的协议/能力/上下文/记录附件，不含其他任务、任意路径、URL或任意URI。原始字节已在手机，本机校验长度/哈希后附上。后续完成后可撤销本方案新增且未变化的关联，不删除源文件、不触发物理文件清理。
 

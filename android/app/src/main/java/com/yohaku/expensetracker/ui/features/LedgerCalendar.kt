@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -45,6 +47,7 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
 
 /** List / calendar switch at the top of the ledger. */
 @Composable internal fun LedgerViewTabs(calendar:Boolean,onChange:(Boolean)->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val tabs=listOf(false to (word("列表","リスト") to "LIST"),true to (word("日历","カレンダー") to "CALENDAR"))
     when(t.id){
@@ -53,14 +56,14 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
                 val on=value==calendar;val shape=RoundedCornerShape(3.dp,5.dp,2.dp,4.dp)
                 YText(label.first,13,Modifier.testTag("ledger-view-"+label.second.lowercase()).rotate(if(on)-2f else 0f)
                     .then(if(on)Modifier.background(Color(0x6be8be6e),shape) else Modifier.drawBehind{drawRoundRect(t.line,cornerRadius=CornerRadius(3.dp.toPx()),style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))})
-                    .clickable(role=Role.Tab){onChange(value)}.padding(horizontal=13.dp,vertical=4.dp),color=if(on)t.ink else t.muted,lineHeightMultiplier=20f/13,cssLineBox=true)
+                    .clickable(role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}.padding(horizontal=13.dp,vertical=4.dp),color=if(on)t.ink else t.muted,lineHeightMultiplier=20f/13,cssLineBox=true)
             }
         }
         "objects"->Row(Modifier.fillMaxWidth().testTag("ledger-view-tabs").background(t.soft,RoundedCornerShape(16.dp)).padding(4.dp)){
             tabs.forEach{(value,label)->
                 val on=value==calendar;val shape=RoundedCornerShape(12.dp)
                 Box(Modifier.weight(1f).testTag("ledger-view-"+label.second.lowercase()).then(if(on)Modifier.background(Color(0xff8f4c34),shape).padding(bottom=3.dp).background(t.accent,shape) else Modifier)
-                    .clickable(role=Role.Tab){onChange(value)}.padding(vertical=9.dp),contentAlignment=Alignment.Center){
+                    .clickable(role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}.padding(vertical=9.dp),contentAlignment=Alignment.Center){
                     YText(label.first,12,color=if(on)Color.White else t.muted,weight=if(on)FontWeight.Medium else FontWeight.Normal,lineHeightMultiplier=17f/12,cssLineBox=true)
                 }
             }
@@ -68,7 +71,7 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
         else->Row(Modifier.fillMaxWidth().testTag("ledger-view-tabs").drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())},horizontalArrangement=Arrangement.spacedBy(22.dp)){
             tabs.forEach{(value,label)->
                 val on=value==calendar
-                Row(Modifier.testTag("ledger-view-"+label.second.lowercase()).clickable(role=Role.Tab){onChange(value)}
+                Row(Modifier.testTag("ledger-view-"+label.second.lowercase()).clickable(role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}
                     .then(if(on)Modifier.drawBehind{drawLine(t.ink,Offset(0f,size.height-1.dp.toPx()),Offset(size.width,size.height-1.dp.toPx()),2.dp.toPx())} else Modifier).padding(bottom=9.dp),verticalAlignment=Alignment.Bottom){
                     YText(label.first,12,color=if(on)t.ink else t.muted,lineHeightMultiplier=17f/12,cssLineBox=true)
                     YText(label.second,7,Modifier.padding(start=5.dp,bottom=2.dp),color=t.muted,letterSpacing=1.6f,lineHeightMultiplier=10f/7,cssLineBox=true)
@@ -80,6 +83,7 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
 
 /** Month grid of net spending; the chosen day's records open underneath. */
 @Composable internal fun LedgerCalendar(s:BookSnapshot,events:List<EventEntity>,budgetCategory:String?,budgetEnabled:Boolean,today:LocalDate,onSelect:(EventEntity)->Unit,onStartOn:(String)->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val current=YearMonth.from(today)
     var monthText by rememberSaveable(s.book.id){mutableStateOf(current.toString())}
@@ -111,8 +115,8 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
         val lead=(month.atDay(1).dayOfWeek.value-weekdays.first().value+7)%7
         val cells=List(lead){null}+days+List((7-(lead+days.size)%7)%7){null}
         var drag by remember{mutableFloatStateOf(0f)}
-        Column(Modifier.fillMaxWidth().testTag("calendar-grid").pointerInput(monthText){
-            detectHorizontalDragGestures(onDragEnd={if(drag<-120f)changeMonth(month.plusMonths(1)) else if(drag>120f)changeMonth(month.minusMonths(1));drag=0f},onDragCancel={drag=0f}){_,delta->drag+=delta}
+        Column(Modifier.fillMaxWidth().testTag("calendar-grid").pointerInput(monthText,haptics,current){
+            detectHorizontalDragGestures(onDragEnd={val next=if(drag<-120f)month.plusMonths(1) else if(drag>120f)month.minusMonths(1) else null;if(next!=null){haptics.perform(if(next>current)Haptic.Limit else Haptic.PageTurn);changeMonth(next)};drag=0f},onDragCancel={drag=0f}){_,delta->drag+=delta}
         }.then(if(t.id=="journal")Modifier.drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.5.dp.toPx())} else Modifier),verticalArrangement=Arrangement.spacedBy(if(t.id=="objects")5.dp else 0.dp)){
             cells.chunked(7).forEach{week->
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(if(t.id=="objects")5.dp else 0.dp)){
@@ -140,9 +144,10 @@ private fun compactAmount(currency:Currency,minor:Long):String {
 @Composable private fun monthName(month:YearMonth)=if(LocalLanguage.current=="ja")"${month.monthValue}月号" else listOf("一","二","三","四","五","六","七","八","九","十","十一","十二")[month.monthValue-1]+"月号"
 
 @Composable private fun CalendarMonthHeader(month:YearMonth,nextEnabled:Boolean,onPrevious:()->Unit,onNext:()->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     @Composable fun arrow(label:String,tag:String,enabled:Boolean,size:Int,color:Color,onClick:()->Unit)=
-        YText(label,size,Modifier.testTag(tag).clickable(enabled=enabled,role=Role.Button,onClick=onClick).padding(horizontal=6.dp,vertical=4.dp),color=if(enabled)color else t.line,lineHeightMultiplier=1.3f,cssLineBox=true)
+        YText(label,size,Modifier.testTag(tag).clickable(enabled=enabled,role=Role.Button,onClick={haptics.perform(Haptic.Step);onClick()}).padding(horizontal=6.dp,vertical=4.dp),color=if(enabled)color else t.line,lineHeightMultiplier=1.3f,cssLineBox=true)
     when(t.id){
         "journal"->Row(Modifier.fillMaxWidth().padding(top=20.dp),verticalAlignment=Alignment.Bottom){
             YText("${month.monthValue}月",36,Modifier.testTag("calendar-month"),lineHeightMultiplier=1.15f,cssLineBox=true)
@@ -151,7 +156,7 @@ private fun compactAmount(currency:Currency,minor:Long):String {
             arrow("←","calendar-prev",true,17,t.warm,onPrevious);arrow("→","calendar-next",nextEnabled,17,t.warm,onNext)
         }
         "objects"->Row(Modifier.fillMaxWidth().padding(top=18.dp).background(t.line,RoundedCornerShape(20.dp)).padding(bottom=2.dp).background(t.surface,RoundedCornerShape(20.dp)).padding(8.dp),verticalAlignment=Alignment.CenterVertically){
-            @Composable fun round(label:String,tag:String,enabled:Boolean,onClick:()->Unit)=Box(Modifier.size(32.dp).testTag(tag).background(t.soft.copy(alpha=if(enabled)1f else .4f),RoundedCornerShape(12.dp)).clickable(enabled=enabled,role=Role.Button,onClick=onClick),contentAlignment=Alignment.Center){YText(label,14,color=if(enabled)t.ink else t.muted,lineHeightMultiplier=1.2f,cssLineBox=true)}
+            @Composable fun round(label:String,tag:String,enabled:Boolean,onClick:()->Unit)=Box(Modifier.size(32.dp).testTag(tag).background(t.soft.copy(alpha=if(enabled)1f else .4f),RoundedCornerShape(12.dp)).clickable(enabled=enabled,role=Role.Button,onClick={haptics.perform(Haptic.Step);onClick()}),contentAlignment=Alignment.Center){YText(label,14,color=if(enabled)t.ink else t.muted,lineHeightMultiplier=1.2f,cssLineBox=true)}
             round("‹","calendar-prev",true,onPrevious)
             YText("${month.year}年${month.monthValue}月",15,Modifier.weight(1f).testTag("calendar-month"),weight=FontWeight.Medium,textAlign=TextAlign.Center,lineHeightMultiplier=1.4f,cssLineBox=true)
             round("›","calendar-next",nextEnabled,onNext)
@@ -225,10 +230,11 @@ private fun compactAmount(currency:Currency,minor:Long):String {
 }
 
 @Composable private fun CalendarCell(currency:Currency,day:CalendarDay?,firstColumn:Boolean,future:Boolean,today:Boolean,selected:Boolean,onClick:()->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val amount=day?.takeIf{it.spent!=0L&&!future}?.let{compactAmount(currency,it.spent)}
     val dashed=with(LocalDensity.current){PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))}
-    val click=if(day==null)Modifier else Modifier.testTag("calendar-day-"+day.date).clickable(role=Role.Button,onClick=onClick)
+    val click=if(day==null)Modifier else Modifier.testTag("calendar-day-"+day.date).clickable(role=Role.Button,onClick={haptics.perform(Haptic.Select);onClick()})
     when(t.id){
         "journal"->{
             val rule=Color(0xffb9b09a)
@@ -320,6 +326,7 @@ private fun compactAmount(currency:Currency,minor:Long):String {
 }
 
 @Composable private fun CalendarDayPanel(s:BookSnapshot,day:LocalDate,events:List<EventEntity>,spent:Money,onSelect:(EventEntity)->Unit,onAdd:()->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val weekday=if(LocalLanguage.current=="ja")"月火水木金土日"[day.dayOfWeek.value-1].toString()+"曜" else "周"+"一二三四五六日"[day.dayOfWeek.value-1]
     val title="${day.monthValue}月${day.dayOfMonth}日"
@@ -337,14 +344,14 @@ private fun compactAmount(currency:Currency,minor:Long):String {
                     Text(buildAnnotatedString{append(word("花了 ","支出 "));withStyle(SpanStyle(background=Color(0x8ce8be6e))){append(spent.display())}},color=t.ink,fontFamily=t.body,fontSize=13.sp)
                 }
                 rows()
-                YText(word("→ 在这一天记一笔","→ この日に記録する"),13,Modifier.align(Alignment.End).testTag("calendar-add-day").clickable(role=Role.Button,onClick=onAdd).padding(top=10.dp),color=t.warm,lineHeightMultiplier=1.4f,cssLineBox=true)
+                YText(word("→ 在这一天记一笔","→ この日に記録する"),13,Modifier.align(Alignment.End).testTag("calendar-add-day").clickable(role=Role.Button,onClick={haptics.perform(Haptic.Compose);onAdd()}).padding(top=10.dp),color=t.warm,lineHeightMultiplier=1.4f,cssLineBox=true)
             }
             Box(Modifier.align(Alignment.TopCenter).offset(y=(-9).dp).size(84.dp,18.dp).rotate(2f).background(Color(0x8c96beb4)))
         }
         "objects"->Box(Modifier.fillMaxWidth().padding(top=34.dp).testTag("calendar-day-panel")){
             Column(Modifier.fillMaxWidth().background(t.line,RoundedCornerShape(22.dp)).padding(bottom=4.dp).background(Color(0xfff6ecdc),RoundedCornerShape(22.dp)).padding(start=12.dp,end=12.dp,top=24.dp,bottom=12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                 rows()
-                Box(Modifier.fillMaxWidth().testTag("calendar-add-day").background(t.soft,RoundedCornerShape(14.dp)).clickable(role=Role.Button,onClick=onAdd).padding(11.dp),contentAlignment=Alignment.Center){
+                Box(Modifier.fillMaxWidth().testTag("calendar-add-day").background(t.soft,RoundedCornerShape(14.dp)).clickable(role=Role.Button,onClick={haptics.perform(Haptic.Compose);onAdd()}).padding(11.dp),contentAlignment=Alignment.Center){
                     YText(word("＋ 记在这一天","＋ この日に記録"),12,color=t.accent,lineHeightMultiplier=1.4f,cssLineBox=true)
                 }
             }
@@ -354,7 +361,7 @@ private fun compactAmount(currency:Currency,minor:Long):String {
         else->Column(Modifier.fillMaxWidth().padding(top=8.dp).testTag("calendar-day-panel")){
             LedgerDayHeader(day.toString(),spent)
             rows()
-            Box(Modifier.fillMaxWidth().padding(top=18.dp).testTag("calendar-add-day").border(1.dp,t.ink).clickable(role=Role.Button,onClick=onAdd).padding(vertical=11.dp),contentAlignment=Alignment.Center){
+            Box(Modifier.fillMaxWidth().padding(top=18.dp).testTag("calendar-add-day").border(1.dp,t.ink).clickable(role=Role.Button,onClick={haptics.perform(Haptic.Compose);onAdd()}).padding(vertical=11.dp),contentAlignment=Alignment.Center){
                 YText(word("＋ 记在 ","＋ ")+title+word("","に記録"),11,letterSpacing=1f,lineHeightMultiplier=1.4f,cssLineBox=true)
             }
         }

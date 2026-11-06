@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import android.graphics.Bitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -54,8 +55,9 @@ class ActivityManagementFlowTest {
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
         val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         fun current()=(vm.state.value as? AppState.Ready)?.snapshot
+        val recorder=RecordingHapticOutput()
         try {
-            ui.setContent{NativeApp(vm)}
+            ui.setContent{NativeApp(vm,haptics=recorder)}
             for((theme,language) in testLooks(this@ActivityManagementFlowTest)) {
                 val b=repo.createBook("生活 / 暮らし",Currency.JPY,theme,language)
                 repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
@@ -76,16 +78,20 @@ class ActivityManagementFlowTest {
                 assertNull(repo.dao.activity(b,act)!!.deletedAt)
                 tap("activity-category-impact")
                 ui.onNodeWithTag("confirm-activity-deletion").performScrollTo();shot("$theme-$language-confirm")
-                tap("confirm-activity-deletion")
+                recorder.clear();tap("confirm-activity-deletion")
                 ui.waitUntil(10000){current()?.activities?.firstOrNull{it.id==act}?.deletedAt!=null&&!vm.busy.value}
+                ui.waitUntil(10000){recorder.calls.isNotEmpty()}
+                assertEquals(listOf(Triple(theme,Haptic.Removed,1f)),recorder.calls.toList())
                 tap("deleted-activity-$act");shot("$theme-$language-history")
                 assertEquals(2,current()!!.events.size);assertEquals(11000L,current()!!.balance(current()!!.accounts.single()))
                 assertEquals(6000L,current()!!.budgetProjection("2026-10").spentMinor);assertEquals(3000L,current()!!.friendBalances(act).single().iGive)
                 ui.onAllNodesWithTag("activity-delete-preview").assertCountEquals(0)
                 tap("deleted-activity-back")
                 ui.onNodeWithTag("restore-activity-$act").performScrollTo();shot("$theme-$language-restore")
-                tap("restore-activity-$act")
+                recorder.clear();tap("restore-activity-$act")
                 ui.waitUntil(10000){current()?.availableActivities?.any{it.id==act}==true&&!vm.busy.value}
+                ui.waitUntil(10000){recorder.calls.isNotEmpty()}
+                assertEquals(listOf(Triple(theme,Haptic.Restored,1f)),recorder.calls.toList())
                 assertEquals(0L,current()!!.activityHeld(act)) // Restoring visibility does not reactivate released reserves.
                 ui.onAllNodesWithTag("deleted-activity-$act").assertCountEquals(0)
                 assertNull(vm.error.value)

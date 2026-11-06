@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -22,7 +23,8 @@ import com.yohaku.expensetracker.ui.theme.*
 @Composable internal fun EntryMerchantInput(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit) {
     var open by rememberSaveable(d.mediaSession){mutableStateOf(false)}
     var query by rememberSaveable(d.mediaSession){mutableStateOf("")}
-    fun choose(m:MerchantEntity){onChange(d.copy(merchant=m.name,merchantId=m.id,merchantManuallyEdited=true,merchantLocated=false));open=false}
+    val haptics=LocalHaptics.current
+    fun choose(m:MerchantEntity){haptics.perform(Haptic.Select);onChange(d.copy(merchant=m.name,merchantId=m.id,merchantManuallyEdited=true,merchantLocated=false));open=false}
     val suggestions=if(d.merchantId==null&&d.merchant.isNotBlank())s.merchants.matchingMerchants(d.merchant).take(5)else emptyList()
     // Suggestions sit under the field; keep them above the keyboard as they appear and as it slides in.
     val requester=remember{BringIntoViewRequester()}

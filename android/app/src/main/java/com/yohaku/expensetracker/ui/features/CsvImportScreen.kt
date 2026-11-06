@@ -15,6 +15,8 @@ import com.yohaku.expensetracker.domain.csv.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
+import kotlinx.coroutines.flow.collect
 
 @Composable internal fun CsvImportScreen(s:BookSnapshot,vm:AppViewModel,providedModel:CsvImportViewModel?=null) {
     val context=LocalContext.current
@@ -22,6 +24,7 @@ import com.yohaku.expensetracker.ui.theme.*
         @Suppress("UNCHECKED_CAST") override fun <T:androidx.lifecycle.ViewModel> create(modelClass:Class<T>):T=CsvImportViewModel(vm.repository,s.book.id) as T
     })
     val state by model.state.collectAsState()
+    LaunchedEffect(model,vm){model.haptics.collect{vm.haptic(it)}}
     val history by remember(s.book.id){vm.repository.db.csvImportDao().batches(s.book.id)}.collectAsState(emptyList())
     val select=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){it?.let{uri->model.open(context,uri)}}
     var newAccount by remember{mutableStateOf(false)}
@@ -169,8 +172,8 @@ import com.yohaku.expensetracker.ui.theme.*
 @Composable private fun csvMessage(message:String)=if(LocalLanguage.current=="ja")message.substringAfter(" / ",message)else message.substringBefore(" / ")
 @Composable private fun CsvPager(page:Int,count:Int,size:Int,onPage:(Int)->Unit) {
     if(count>size)YActionRow {
-        YButton(word("上一页","前へ"),{onPage((page-1).coerceAtLeast(0))},enabled=page>0)
+        YButton(word("上一页","前へ"),{onPage((page-1).coerceAtLeast(0))},enabled=page>0,haptic=Haptic.Step)
         YText("${page+1} / ${(count+size-1)/size}",12)
-        YButton(word("下一页","次へ"),{onPage(page+1)},enabled=(page+1)*size<count)
+        YButton(word("下一页","次へ"),{onPage(page+1)},enabled=(page+1)*size<count,haptic=Haptic.Step)
     }
 }

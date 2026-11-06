@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features.command
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -71,7 +72,7 @@ import kotlinx.serialization.json.*
             YText(when(row.status){"PENDING"->word("待执行","実行待ち");"RUNNING"->word("进行中","実行中");"DONE"->word("完成","完了");"RETRY"->word("失败，可重试","失敗・再試行可能");else->word("等待你操作","操作をお待ちしています")},12,
                 Modifier.weight(1f).testTag("command-followup-state-${row.stepId}-${payload.kind}"),color=if(row.status=="RETRY")LocalYohaku.current.warm else LocalYohaku.current.accent)
             if(row.status=="RETRY") {
-                YButton(word("重试","再試行"),{if(payload.kind=="EXPORT")details=true else vm.execute{commands.followups.retry(row.id)}},Modifier.testTag("command-followup-retry-${row.stepId}"),enabled=!busy)
+                YButton(word("重试","再試行"),{if(payload.kind=="EXPORT")details=true else vm.execute{if(!commands.followups.retry(row.id))vm.haptic(Haptic.Error)}},Modifier.testTag("command-followup-retry-${row.stepId}"),enabled=!busy)
                 YLink(word("详情","詳細"),{details=true})
             }
             if(row.status=="WAITING")YButton(word("继续","続ける"),{details=true},Modifier.testTag("command-followup-continue-${row.stepId}-${payload.kind}"),enabled=!busy)
@@ -81,7 +82,7 @@ import kotlinx.serialization.json.*
         payload.input["name"]?.jsonPrimitive?.contentOrNull?.let{YText(it,12)}
         row.lastError?.let{YText(localizedCommand(it),11,color=LocalYohaku.current.warm)}
         if(row.status=="RETRY"&&payload.kind=="EXPORT")YText(word("重试会重写同一目标文件，请先检查现有文件。","再試行は同じ保存先ファイルを上書きします。先に現在のファイルを確認してください。"),11,color=LocalYohaku.current.warm)
-        if(row.status=="RETRY")YButton(word("重试此步骤","この処理を再試行"),{vm.execute{commands.followups.retry(row.id)}},Modifier.testTag("command-followup-retry-detail-${row.stepId}"),enabled=!busy)
+        if(row.status=="RETRY")YButton(word("重试此步骤","この処理を再試行"),{vm.execute{if(!commands.followups.retry(row.id))vm.haptic(Haptic.Error)}},Modifier.testTag("command-followup-retry-detail-${row.stepId}"),enabled=!busy)
         if(row.status=="WAITING")when(payload.kind) {
             "DRAFT"->{
                 YText(word("已保存为草稿；请在表单里补全并亲自保存。","下書きとして保存しました。フォームで補完してご自身で保存してください。"),12)
@@ -94,7 +95,7 @@ import kotlinx.serialization.json.*
                         commands.followups.completeInteraction(row.id)
                     }
                 },Modifier.testTag("command-followup-open-draft"),enabled=!busy)
-                YLink(word("已在本机处理，结束引导","端末で対応済み・案内を終了"),{vm.execute{commands.followups.completeInteraction(row.id)}})
+                YLink(word("已在本机处理，结束引导","端末で対応済み・案内を終了"),{vm.execute{commands.followups.completeInteraction(row.id);vm.haptic(Haptic.Done)}})
             }
             "EXPORT"->{
                 YText(word("选择保存位置后写入文件；已导出的文件不能整批撤销。","保存先を選んでファイルを書き出します。出力したファイルは一括取消できません。"),12)
@@ -108,7 +109,7 @@ import kotlinx.serialization.json.*
                     if(required.isEmpty()||required.any{ContextCompat.checkSelfPermission(context,it)==PackageManager.PERMISSION_GRANTED})vm.execute{commands.followups.completeInteraction(row.id)}
                     else permissions.launch(required)
                 },enabled=!busy)
-                YLink(word("保留当前权限并结束","現在の権限のまま終了"),{vm.execute{commands.followups.completeInteraction(row.id)}})
+                YLink(word("保留当前权限并结束","現在の権限のまま終了"),{vm.execute{commands.followups.completeInteraction(row.id);vm.haptic(Haptic.Done)}})
             }
         }
     }
@@ -116,7 +117,7 @@ import kotlinx.serialization.json.*
 
 internal val workflowTypes=setOf("preference","analysisPreference","statementAssociation","statementRow","receiptProducts","receiptSource","receipt","receiptImage","attachment","csvBatch","csvEntry","drafts","entryDraft","followup")
 internal val workflowFieldLabels=mapOf(
-    "activeBook" to ("当前账本" to "現在の帳簿"),"automaticRates" to ("自动汇率" to "自動レート取得"),"photoOriginal" to ("照片保存方式" to "写真の保存方法"),"location" to ("记账时定位" to "記録時の位置情報"),"reminders" to ("提醒" to "通知"),
+    "activeBook" to ("当前账本" to "現在の帳簿"),"automaticRates" to ("自动汇率" to "自動レート取得"),"photoOriginal" to ("照片保存方式" to "写真の保存方法"),"haptics" to ("触感反馈" to "触覚フィードバック"),"location" to ("记账时定位" to "記録時の位置情報"),"reminders" to ("提醒" to "通知"),
     "monthlyReview" to ("月度评语提醒" to "月の振り返り通知"),"enabled" to ("开启重要提醒" to "通知を有効にする"),"deadline" to ("变更截止提醒" to "変更期限の通知"),"recurring" to ("周期账单提醒" to "定期請求の通知"),"budget" to ("预算提醒" to "予算の通知"),"funds" to ("资金缺口提醒" to "資金不足の通知"),"repaymentDays" to ("还款提前天数" to "返済の何日前"),"deadlineDays" to ("截止提前天数" to "期限の何日前"),"recurringDays" to ("周期提前天数" to "定期支払の何日前"),"time" to ("提醒时间" to "通知時刻"),
     "modulesJson" to ("分析模块顺序" to "分析項目の順序"),"pinnedJson" to ("置顶分析模块" to "固定する分析項目"),"sourceSummary" to ("流水摘要" to "明細の摘要"),"sourceDate" to ("流水日期" to "明細の日付"),"summary" to ("流水摘要" to "明細の摘要"),"direction" to ("资金方向" to "資金の方向"),"postedDate" to ("实际入账日" to "実計上日"),"occurredDate" to ("发生日" to "利用日"),"postingJson" to ("关联入账依据" to "関連計上の根拠"),
     "record_revision" to ("原记账版本" to "元記録の版"),"receipt_revision" to ("小票图片版本" to "レシート画像の版"),"recordJson" to ("商品明细" to "商品明細"),"image_ids" to ("来源图片" to "元画像"),"items" to ("商品" to "商品"),"quantity" to ("数量" to "数量"),"unit" to ("单位" to "単位"),"unit_price" to ("单价" to "単価"),"line_amount" to ("商品金额" to "商品金額"),"receipt_total" to ("票面合计" to "レシート合計"),"adjustments" to ("税费与折扣" to "税・割引"),"included_in_items" to ("已含于商品行" to "商品行に含む"),"uncertain_fields" to ("不确定字段" to "不確かな項目"),

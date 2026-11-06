@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features.command
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -88,7 +89,7 @@ import java.time.format.DateTimeFormatter
     exportError?.let{YText(localizedCommand(it),12,color=LocalYohaku.current.warm)}
     YButton(word("上传并提交办理需求","アップロードして依頼"),{
         val ready=bundle?.takeIf{exportedScope==scope}?:return@YButton;val selected=files;val note=request;val name=title
-        vm.execute(onSuccess={vm.navigate("cloud")}){cloud.prepareCommandTask(s.book.id,selected,name,note,ready)}
+        vm.execute(onSuccess={vm.navigate("cloud")}){cloud.prepareCommandTask(s.book.id,selected,name,note,ready);vm.haptic(Haptic.Done)}
     },Modifier.fillMaxWidth().testTag("command-submit"),primary=true,enabled=!busy&&bundle!=null&&exportedScope==scope&&title.isNotBlank()&&request.isNotBlank())
 }
 
@@ -247,13 +248,13 @@ import java.time.format.DateTimeFormatter
                 val stepNumber=model.steps.indexOfFirst{it.stepId==requirement.stepId}+1
                 YToggle(word("步骤 $stepNumber · ","ステップ ${stepNumber}・")+commandRequirementText(requirement,model),requirement.key in checks,{checked->checks=if(checked)checks+requirement.key else checks-requirement.key},Modifier.testTag("command-check-$index"))
             }
-            YButton(if(row.undoOf!=null)word("确认撤销整份云端方案","クラウドプラン全体の取消を確定")else if(model.steps.isEmpty())word("确认收阅","受け取りを確認")else word("确认执行整份方案","プラン全体を確定"),{vm.execute{commands.confirm(row.planId,checks)}},Modifier.fillMaxWidth().testTag("command-confirm"),primary=true,
+            YButton(if(row.undoOf!=null)word("确认撤销整份云端方案","クラウドプラン全体の取消を確定")else if(model.steps.isEmpty())word("确认收阅","受け取りを確認")else word("确认执行整份方案","プラン全体を確定"),{vm.execute{try{val result=commands.confirm(row.planId,checks);if(result.status=="EXECUTED")vm.haptic(if(result.undoOf!=null)Haptic.Restored else Haptic.Done)}catch(e:CommandRepreviewRequired){checks=emptySet();vm.haptic(Haptic.Warning)}}},Modifier.fillMaxWidth().testTag("command-confirm"),primary=true,
                 enabled=!busy&&model.executable&&model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.all{it.key in checks})
         }
     }
     if(row.status in listOf("PENDING","FAILED")) {
         YButton(word("重新试运行","再び試算"),{checks=emptySet();vm.execute{commands.preview(row.planId)}},Modifier.testTag("command-repreview"),enabled=!busy)
-        YLink(word("拒绝此方案","このプランを拒否"),{if(!busy)vm.execute{commands.reject(row.planId)}},Modifier.testTag("command-reject"))
+        YLink(word("拒绝此方案","このプランを拒否"),{if(!busy)vm.execute{commands.reject(row.planId);vm.haptic(Haptic.Removed)}},Modifier.testTag("command-reject"))
     }
     details?.let{effects->CommandEffectsSheet(effects,s,model!!){details=null}}
 }

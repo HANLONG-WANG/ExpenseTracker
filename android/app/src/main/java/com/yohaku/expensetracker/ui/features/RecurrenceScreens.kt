@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,15 +45,15 @@ import java.time.YearMonth
         if(recorded!=null)YText(word("原预计：","元の見込み：")+(o.amountMinor?.let{Money(Currency.valueOf(o.currency),it).display()}?:word("金额未定","金額未定")),10,color=LocalYohaku.current.muted)
         if(o.id in pending&&o.scheduledDate<today.toString())YText(word("到期仍待确认","期限後・確認待ち"),11,color=LocalYohaku.current.warm)
         if(o.status=="CANCELLED") {
-            if(rule.includesScheduledDate(o.scheduledDate))YLink(word("恢复这次待办","この予定を復元"),{vm.execute{vm.repository.restoreOccurrence(s.book.id,o.id)}},Modifier.testTag("restore-occurrence-${o.id}"))
+            if(rule.includesScheduledDate(o.scheduledDate))YLink(word("恢复这次待办","この予定を復元"),{vm.execute{vm.repository.restoreOccurrence(s.book.id,o.id);vm.haptic(Haptic.Restored)}},Modifier.testTag("restore-occurrence-${o.id}"))
             else YText(word("先启用规则，并确认这次日期仍在安排范围内。","ルールを有効にし、予定日が範囲内か確認してください。"),10,color=LocalYohaku.current.muted)
         }
         if(o.id in pending) {
             YLink(word("关联已有支出","既存の支出に関連付け"),{linking=o.id},Modifier.testTag("link-occurrence-${o.id}"))
-            YLink(word("取消这次待办","この予定を取消"),{vm.execute{vm.repository.cancelOccurrence(s.book.id,o.id)}},Modifier.testTag("cancel-occurrence-${o.id}"))
+            YLink(word("取消这次待办","この予定を取消"),{vm.execute{vm.repository.cancelOccurrence(s.book.id,o.id);vm.haptic(Haptic.Removed)}},Modifier.testTag("cancel-occurrence-${o.id}"))
         }else o.eventId?.let{id->s.visibleEvents.find{it.id==id}?.let{event->
             YButton(word("查看已存记录","保存済みの記録を見る"),{onRecord(event)})
-            YLink(if(rule.includesScheduledDate(o.scheduledDate))word("解除关联，重新待确认","関連を解除して確認待ちへ")else word("解除关联，保留已记账事实","関連を解除し、記録済みの事実を保持"),{vm.execute{vm.repository.unlinkOccurrence(s.book.id,o.id)}})
+            YLink(if(rule.includesScheduledDate(o.scheduledDate))word("解除关联，重新待确认","関連を解除して確認待ちへ")else word("解除关联，保留已记账事实","関連を解除し、記録済みの事実を保持"),{vm.execute{vm.repository.unlinkOccurrence(s.book.id,o.id);vm.haptic(Haptic.Removed)}})
         }}
     }}
     ThemeSection(word("周期规则","定期ルール"),"SCHEDULE RULES")
@@ -128,7 +129,7 @@ import java.time.YearMonth
                 val capturedName=name;val capturedAccount=accountId;val capturedCategory=categoryId;val capturedAmount=amount;val capturedBase=base
                 val capturedFrequency=frequency;val capturedDate=date;val capturedEnd=if(endEnabled)end else null
                 val capturedFixed=fixed;val capturedEstimated=estimated;val capturedActive=active;val capturedActivity=activity
-                vm.execute(onSuccess=onClose) {
+                vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose()}) {
                     val selected=accounts.firstOrNull{it.id==capturedAccount}?:error("请选择付款账户 / 支払口座を選択してください")
                     val value=capturedAmount.takeIf{it.isNotBlank()}?.let{Money.parse(it,Currency.valueOf(selected.currency))}
                     val baseValue=capturedBase.takeIf{it.isNotBlank()}?.let{Money.parse(it,Currency.valueOf(s.book.currency))}

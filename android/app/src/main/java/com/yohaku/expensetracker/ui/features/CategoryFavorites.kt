@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -18,7 +19,7 @@ import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun CategoryFavorites(s:BookSnapshot,onFavorite:(CategoryEntity)->Unit){
-    val t=LocalYohaku.current
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
     var expanded by rememberSaveable(s.book.id){mutableStateOf(false)}
     val stateLabel=if(expanded)word("已展开","展開中") else word("已收起","折りたたみ")
     ThemeAuditPanel(word("常用分类快捷入口","よく使うカテゴリのショートカット")){
@@ -36,7 +37,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     for(root in roots)for(c in listOf(root)+s.categories.filter{it.parentId==root.id&&it.active}){
                         val size=if(t.id=="journal")15 else 12
                         YText((if(c.favorite)"★ " else "☆ ")+(if(kind=="INCOME")word("收入 / ","収入 / ") else "")+s.path(c.id),size,
-                            Modifier.fillMaxWidth().testTag("category-favorite-${c.id}").semantics{selected=c.favorite}.clickable(role=Role.Button){onFavorite(c)}.drawBehind{
+                            Modifier.fillMaxWidth().testTag("category-favorite-${c.id}").semantics{selected=c.favorite}.clickable(role=Role.Button){haptics.perform(if(c.favorite)Haptic.ToggleOff else Haptic.ToggleOn);onFavorite(c)}.drawBehind{
                                 drawLine(t.line,Offset(0f,this.size.height-.5.dp.toPx()),Offset(this.size.width,this.size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(t.id=="magazine")null else PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))
                             }.padding(top=if(t.id=="objects")15.dp else 14.dp,bottom=if(t.id=="objects")16.dp else 15.dp),color=t.accent,lineHeightMultiplier=1.8f,cssLineBox=true)
                     }

@@ -15,6 +15,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.ui.features.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -35,6 +36,8 @@ class CommandFlowTest {
     private lateinit var r:LedgerRepository
     private lateinit var cloud:CloudRepository
     private lateinit var vm:AppViewModel
+    private val haptics=RecordingHapticOutput()
+    private var hapticsPreviouslyEnabled=true
     private val sentAcks=java.util.concurrent.CopyOnWriteArrayList<String>()
     private val ackSchedules=java.util.concurrent.atomic.AtomicInteger(0)
     private val taskDirectories=mutableListOf<File>()
@@ -68,9 +71,11 @@ class CommandFlowTest {
         r=LedgerRepository(db,Clock.fixed(Instant.parse("2026-11-02T03:00:00Z"),ZoneId.of("Asia/Tokyo")))
         cloud=CloudRepository(context,r,Credentials(),apiFactory=::api,scheduleTransfer={},scheduleAcknowledgements={ackSchedules.incrementAndGet();Unit},commandReferenceSnapshot={emptyList()})
         vm=AppViewModel(r,AppPreferences(context),testReferenceRates(AppPreferences(context),r.clock),cloud=cloud)
-        ui.setContent{NativeApp(vm)}
+        hapticsPreviouslyEnabled=runBlocking{vm.preferences.hapticsEnabled.first()}
+        runBlocking{vm.preferences.setHapticsEnabled(true)}
+        ui.setContent{NativeApp(vm,haptics=haptics)}
     }
-    @After fun close(){vm.viewModelScope.cancel();db.close();taskDirectories.forEach{it.deleteRecursively()}}
+    @After fun close(){runBlocking{vm.preferences.setHapticsEnabled(hapticsPreviouslyEnabled)};vm.viewModelScope.cancel();db.close();taskDirectories.forEach{it.deleteRecursively()}}
     private fun tap(tag:String){ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()};ui.onNodeWithTag(tag).performScrollTo().performClick();ui.waitForIdle()}
     private fun shot(name:String) {
         if(!visualEnabled())return
@@ -141,6 +146,14 @@ class CommandFlowTest {
             ui.onNodeWithTag("monthly-review").performScrollTo();shot("$theme-$language-monthly-review")
             tap("monthly-preview-suggestions")
             ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag("command-step-budget").fetchSemanticsNodes().isNotEmpty()}
+            runBlocking{assertTrue(r.commitBudget(r.previewBudget(book,"2026-11",null,Money(Currency.JPY,11000))))}
+            haptics.clear();tap("command-confirm")
+            ui.waitUntil(15000){!vm.busy.value&&haptics.calls.isNotEmpty()}
+            assertEquals(listOf(Haptic.Warning),haptics.calls.map{it.second});assertNull(vm.error.value)
+            assertEquals("PENDING",runBlocking{cloud.commands.plan(row.planId).status})
+            haptics.clear();tap("command-repreview")
+            ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag("command-step-budget").fetchSemanticsNodes().isNotEmpty()}
+            assertTrue(haptics.calls.isEmpty())
             tap("command-confirm");ui.waitUntil(15000){!vm.busy.value&&runBlocking{cloud.commands.plan(row.planId).status=="EXECUTED"}}
             ui.runOnIdle{vm.navigate("monthly-history")}
             ui.waitUntil(15000){ui.onAllNodesWithTag("monthly-history-2026-10").fetchSemanticsNodes().isNotEmpty()}
@@ -202,8 +215,9 @@ class CommandFlowTest {
             ui.onNodeWithTag("command-confirm").performScrollTo().assertIsNotEnabled()
             model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.indices.forEach{tap("command-check-$it")}
             ui.onNodeWithTag("command-confirm").performScrollTo();shot("$theme-$language-checks")
-            tap("command-confirm")
-            ui.waitUntil(15000){!vm.busy.value}
+            haptics.clear();tap("command-confirm")
+            ui.waitUntil(15000){!vm.busy.value&&haptics.calls.isNotEmpty()}
+            assertEquals(listOf(Haptic.Done),haptics.calls.map{it.second})
             runBlocking {
                 assertEquals("EXECUTED",cloud.commands.plan(row.planId).status)
                 assertEquals(30000L,db.financialDao().graph(book).first()!!.bills.single().totalMinor)
@@ -223,8 +237,9 @@ class CommandFlowTest {
             ui.waitUntil(20000){!vm.busy.value&&ui.onAllNodesWithTag("command-undo-removals").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("command-undo-removals").performScrollTo()
             shot("$theme-$language-card-undo-preview")
-            tap("command-confirm")
-            ui.waitUntil(15000){!vm.busy.value}
+            haptics.clear();tap("command-confirm")
+            ui.waitUntil(15000){!vm.busy.value&&haptics.calls.isNotEmpty()}
+            assertEquals(listOf(Haptic.Restored),haptics.calls.map{it.second})
             runBlocking<Unit>{assertEquals("UNDONE",cloud.commands.plan(row.planId).status);assertTrue(db.financialDao().graph(book).first()!!.plans.isEmpty())}
             ui.runOnIdle{vm.navigate("command-history")}
             ui.waitUntil(10000){ui.onAllNodes(hasText(if(language=="ja")"取消済み"else"已撤销") and hasAnyAncestor(hasTestTag("history-${row.planId}"))).fetchSemanticsNodes().size==1}
@@ -539,6 +554,9 @@ class CommandFlowTest {
                 assertTrue("$theme/$language: $tag clipped below",bounds.bottom<=viewport.bottom)
             }
             shot("$theme-$language-followup-status")
+            haptics.clear();tap("command-followup-retry-attach")
+            ui.waitUntil(15000){!vm.busy.value&&haptics.calls.isNotEmpty()}
+            assertEquals(listOf(Haptic.Error),haptics.calls.map{it.second});assertNull(vm.error.value)
             ui.runOnIdle{vm.navigate("home")}
         }
     }

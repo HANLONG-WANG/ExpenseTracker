@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
@@ -19,10 +21,11 @@ import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun HistoricalOpeningToggle(startDate:String,value:Boolean,onChange:(Boolean)->Unit){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val paper=t.id=="journal";val objects=t.id=="objects"
     val label=word("历史补录：已包含在期初余额","履歴追加：期首残高に含まれる")
-    Row(Modifier.fillMaxWidth().testTag("toggle-$label").toggleable(value,role=if(paper)Role.Checkbox else Role.Switch,onValueChange=onChange).drawBehind{
+    Row(Modifier.fillMaxWidth().testTag("toggle-$label").toggleable(value,role=if(paper)Role.Checkbox else Role.Switch,onValueChange={haptics.perform(if(it)Haptic.ToggleOn else Haptic.ToggleOff);onChange(it)}).drawBehind{
         val effect=if(t.id=="magazine")null else PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))
         val color=if(objects)Color(0xffd9c4a0) else t.line
         if(!objects)drawLine(color,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx(),pathEffect=effect)

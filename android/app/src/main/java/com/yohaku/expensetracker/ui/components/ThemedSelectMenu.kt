@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -19,6 +21,7 @@ import com.yohaku.expensetracker.ui.theme.*
 
 /** Final select-options CSS; the journal scrolls with its enclosing form. */
 @Composable internal fun <T> ThemedSelectMenu(label:String,selected:T,options:List<Pair<T,String>>,onSelect:(T)->Unit,modifier:Modifier=Modifier,displayLabel:String=label){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=RoundedCornerShape(if(objects)19.dp else 0.dp)
     Box(modifier.fillMaxWidth().padding(top=if(journal)16.dp else if(objects)10.dp else 12.dp).then(if(journal)Modifier.rotate(-.5f) else Modifier)){
@@ -42,7 +45,7 @@ import com.yohaku.expensetracker.ui.theme.*
             options.forEachIndexed{i,(id,name)->
                 val chosen=id==selected
                 val itemShape=RoundedCornerShape(10.dp)
-                Box(Modifier.fillMaxWidth().testTag("select-option-$label-$i").selectable(chosen,role=Role.RadioButton,onClick={onSelect(id)})){
+                Box(Modifier.fillMaxWidth().testTag("select-option-$label-$i").selectable(chosen,role=Role.RadioButton,onClick={haptics.perform(Haptic.Select);onSelect(id)})){
                     if(objects)Box(Modifier.matchParentSize().offset(y=2.dp).background(Color(0x0fd6b991),itemShape))
                     Row(Modifier.fillMaxWidth().then(if(objects)Modifier.background(Color(0xfff2e7d4),itemShape) else Modifier).padding(horizontal=if(objects)10.dp else 0.dp,vertical=if(objects||journal)12.dp else 14.dp),horizontalArrangement=Arrangement.spacedBy(if(objects)0.dp else 10.dp),verticalAlignment=Alignment.CenterVertically){
                         if(!objects)YText(if(journal)if(chosen)"✓" else "□" else (i+1).toString().padStart(2,'0'),if(journal)18 else 12,if(journal)Modifier.width(with(LocalDensity.current){18.sp.toDp()}) else Modifier,color=if(journal)t.accent else t.muted,number=!journal,lineHeightMultiplier=if(journal)26f/18 else 14f/12,cssLineBox=true,fontStyle=if(journal)FontStyle.Normal else FontStyle.Italic)

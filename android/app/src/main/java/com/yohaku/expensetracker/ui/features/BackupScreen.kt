@@ -17,8 +17,12 @@ import com.yohaku.expensetracker.data.backup.*
 import com.yohaku.expensetracker.platform.RestoreActivity
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -26,17 +30,19 @@ import java.time.format.DateTimeFormatter
 internal data class BackupUiState(val busy:Boolean=false,val result:Pair<String,Long>?=null,val error:String?=null,val review:Pair<File,BackupManifest>?=null)
 internal class BackupViewModel(private val app:YohakuApplication):AndroidViewModel(app) {
     val state=MutableStateFlow(BackupUiState())
+    private val feedback=Channel<Haptic>(Channel.BUFFERED)
+    val haptics=feedback.receiveAsFlow()
     private val service=BackupService(app,app.repository,app.preferences)
     private fun run(action:suspend ()->Unit) {
         if(state.value.busy)return
         state.value=state.value.copy(busy=true,error=null,result=null)
         viewModelScope.launch {
             try{action()}catch(e:CancellationException){throw e}
-            catch(e:Exception){state.value=state.value.copy(error=e.message?:e.javaClass.simpleName)}
+            catch(e:Exception){state.value=state.value.copy(error=e.message?:e.javaClass.simpleName);feedback.trySend(Haptic.Error)}
             finally{state.value=state.value.copy(busy=false)}
         }
     }
-    fun export(uri:Uri)=run{state.value=state.value.copy(result=service.exportDocument(uri))}
+    fun export(uri:Uri)=run{state.value=state.value.copy(result=service.exportDocument(uri));feedback.trySend(Haptic.Done)}
     fun inspect(uri:Uri)=run{
         withContext(Dispatchers.IO){state.value.review?.first?.deleteRecursively()}
         state.value=state.value.copy(review=null)
@@ -67,6 +73,8 @@ internal class BackupViewModel(private val app:YohakuApplication):AndroidViewMod
         @Suppress("UNCHECKED_CAST") override fun <T:androidx.lifecycle.ViewModel> create(modelClass:Class<T>):T=BackupViewModel(app) as T
     })
     val state by model.state.collectAsState()
+    val resultHaptic by rememberUpdatedState(LocalResultHaptic.current)
+    LaunchedEffect(model){model.haptics.collect{resultHaptic(it)}}
     val create=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")){it?.let(model::export)}
     val open=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){it?.let(model::inspect)}
     val theme=LocalYohaku.current.id;val language=LocalLanguage.current

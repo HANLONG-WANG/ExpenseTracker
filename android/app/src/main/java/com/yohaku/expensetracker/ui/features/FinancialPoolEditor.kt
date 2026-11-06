@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -138,7 +139,7 @@ import java.time.LocalDate
                 encoded=vm.repository.json.encodeToString(List(n){i->val previous=end.plusMonths(i-1L)
                     val start=if(i==0)LocalDate.parse(firstStart)else if(rule?.frequency==ChargeFrequency.MONTHLY||rule?.includeStart==true&&rule.includeEnd==true)previous.plusDays(1)else if(rule?.includeStart==false&&rule.includeEnd==false)previous.minusDays(1)else previous
                     PoolPeriodDraft(payment.plusMonths(i.toLong()).toString(),start.toString(),end.plusMonths(i.toLong()).toString())})
-            }},Modifier.testTag("pool-generate"),enabled=!busy)
+            }},Modifier.testTag("pool-generate"),enabled=!busy,haptic=Haptic.Step)
             rows.forEachIndexed{i,row->Panel {
                 YText(word("第${i+1}期","第${i+1}回"),14)
                 YText(row.date+" · "+row.start+" → "+row.end,11)

@@ -14456,6 +14456,18 @@
             ],
             "type": "object"
         },
+        "preferences.haptics": {
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "enabled"
+            ],
+            "type": "object"
+        },
         "preferences.location": {
             "additionalProperties": false,
             "properties": {
@@ -19721,6 +19733,31 @@
                             },
                             "input": {
                                 "$ref": "#/$defs/preferences.photoStorage"
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "command",
+                            "command_version",
+                            "input"
+                        ],
+                        "type": "object"
+                    },
+                    {
+                        "additionalProperties": false,
+                        "properties": {
+                            "command": {
+                                "const": "preferences.haptics"
+                            },
+                            "command_version": {
+                                "const": 1
+                            },
+                            "id": {
+                                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                                "type": "string"
+                            },
+                            "input": {
+                                "$ref": "#/$defs/preferences.haptics"
                             }
                         },
                         "required": [

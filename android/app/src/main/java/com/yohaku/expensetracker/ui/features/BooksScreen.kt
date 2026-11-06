@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -40,9 +41,10 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable private fun BookCard(overview:BookOverview,selected:Boolean,onClick:()->Unit){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=if(objects)RoundedCornerShape(21.dp,21.dp,25.dp,21.dp) else RoundedCornerShape(0.dp)
-    Box(Modifier.fillMaxWidth().testTag("book-choice-${overview.book.id}").selectable(selected,role=Role.RadioButton,onClick=onClick)){
+    Box(Modifier.fillMaxWidth().testTag("book-choice-${overview.book.id}").selectable(selected,role=Role.RadioButton,onClick={haptics.perform(Haptic.Select);onClick()})){
         if(journal||objects)Box(Modifier.matchParentSize().offset(x=if(journal)2.dp else 0.dp,y=if(journal)3.dp else 4.dp).background(if(journal)Color(0x0b927850) else Color(0x18d4c3a8),shape))
         val edge=if(journal)Modifier.drawBehind{val s=1.dp.toPx();drawRect(Color(0xffc8beaa),topLeft=Offset(s/2,s/2),size=androidx.compose.ui.geometry.Size(size.width-s,size.height-s),style=Stroke(s,pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))} else if(objects)Modifier else Modifier.drawBehind{drawLine(t.ink,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx());drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())}
         Row(Modifier.fillMaxWidth().background(if(journal||objects)t.surface else Color.Transparent,shape).then(edge).padding(horizontal=if(objects)17.dp else if(journal)15.dp else 0.dp,vertical=if(objects)20.dp else if(journal)19.dp else 18.dp),horizontalArrangement=Arrangement.spacedBy(15.dp),verticalAlignment=Alignment.CenterVertically){

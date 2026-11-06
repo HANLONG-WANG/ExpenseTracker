@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -21,13 +22,14 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable internal fun HomeTemplates(s:BookSnapshot,onUse:(EntryTemplateEntity)->Unit,onManage:()->Unit) {
+    val haptics=LocalHaptics.current
     val available=s.templates.filter{s.templateIssue(it)==null}
     if(available.isEmpty())return
     ThemeSection(word("常用的一笔","いつもの一筆"),"QUICK NOTES",word("管理","管理"),onManage,linkTag="home-manage-templates")
     TemplateShelf {
         available.forEachIndexed{index,t->
             val meta=t.amountMinor?.let{Money(Currency.valueOf(t.currency),it).display()}?:s.categories.firstOrNull{it.id==t.categoryId}?.name.orEmpty()
-            TemplateShelfItem(index,t.name,meta,com.yohaku.expensetracker.domain.category.resolveCategoryIcon(t.categoryId,s.categories),{onUse(t)},Modifier.testTag("use-template-${t.id}"))
+            TemplateShelfItem(index,t.name,meta,com.yohaku.expensetracker.domain.category.resolveCategoryIcon(t.categoryId,s.categories),{haptics.perform(Haptic.Compose);onUse(t)},Modifier.testTag("use-template-${t.id}"))
         }
     }
 }
@@ -50,8 +52,8 @@ import com.yohaku.expensetracker.ui.theme.*
         s.templateIssue(t)?.let{YText(localizedRepositoryMessage(it),12,Modifier.testTag("template-issue-${t.id}"),color=LocalYohaku.current.warm)}
         YActionRow {
             YButton(word("编辑","編集"),{editing=t.id},Modifier.testTag("edit-template-${t.id}"),enabled=!busy,inline=true)
-            if(index>0)YLink(word("↑ 上移","↑ 上へ"),{vm.execute{vm.repository.moveTemplate(s.book.id,t.id,-1)}},Modifier.testTag("template-up-${t.id}"))
-            if(index<s.templates.lastIndex)YLink(word("↓ 下移","↓ 下へ"),{vm.execute{vm.repository.moveTemplate(s.book.id,t.id,1)}},Modifier.testTag("template-down-${t.id}"))
+            if(index>0)YLink(word("↑ 上移","↑ 上へ"),{vm.execute{vm.repository.moveTemplate(s.book.id,t.id,-1)}},Modifier.testTag("template-up-${t.id}"),haptic=Haptic.Step)
+            if(index<s.templates.lastIndex)YLink(word("↓ 下移","↓ 下へ"),{vm.execute{vm.repository.moveTemplate(s.book.id,t.id,1)}},Modifier.testTag("template-down-${t.id}"),haptic=Haptic.Step)
             YLink(word("删除","削除"),{deleting=t.id},Modifier.testTag("delete-template-${t.id}"))
         }
     }}
@@ -60,7 +62,7 @@ import com.yohaku.expensetracker.ui.theme.*
     editing?.let{id->TemplateEditor(s,s.templates.firstOrNull{it.id==id},vm){editing=null}}
     deleting?.let{id->YSheet(word("删除模板","テンプレートを削除"),{deleting=null}) {
         YText(word("只删除模板，已保存的记账不受影响。","テンプレートのみ削除し、保存済みの記録は保持します。"))
-        YButton(word("确认删除","削除を確定"),{vm.execute(onSuccess={deleting=null}){vm.repository.deleteTemplate(s.book.id,id)}},Modifier.testTag("template-delete-confirm"),primary=true,enabled=!busy)
+        YButton(word("确认删除","削除を確定"),{vm.execute(onSuccess={vm.haptic(Haptic.Removed);deleting=null}){vm.repository.deleteTemplate(s.book.id,id)}},Modifier.testTag("template-delete-confirm"),primary=true,enabled=!busy)
     }}
 }
 
@@ -72,7 +74,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YField(word("模板名称","テンプレート名"),name,{name=it},Modifier.testTag("template-name"))
         YToggle(word("同时保存金额","金額も保存"),includeAmount,{includeAmount=it},Modifier.testTag("template-include-amount"))
         YButton(word("保存模板","テンプレートを保存"),{
-            vm.execute(onSuccess=onClose){vm.repository.saveTemplate(s.book.id,s.templateInput(d,name,includeAmount))}
+            vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose()}){vm.repository.saveTemplate(s.book.id,s.templateInput(d,name,includeAmount))}
         },Modifier.testTag("template-save"),primary=true,enabled=!busy)
     }
 }
@@ -97,7 +99,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YField(word("备注","メモ"),d.note,{d=d.copy(note=it)},Modifier.testTag("template-note"),multiline=true)
         if(d.kind==EntryKind.EXPENSE&&(s.features?.activityMode==true||d.activityId!=null))YSelect(word("所属活动 / 可选","シーン・任意"),d.activityId,
             listOf(null to word("日常","日常"))+s.availableActivities.map{it.id as String? to it.name},{d=d.copy(activityId=it)},Modifier.testTag("template-activity"))
-        YButton(word("保存模板","テンプレートを保存"),{vm.execute(onSuccess=onClose){vm.repository.saveTemplate(s.book.id,s.templateInput(d,name,d.amount.isNotBlank()).copy(id=t?.id))}},Modifier.testTag("template-save"),primary=true,enabled=!busy)
+        YButton(word("保存模板","テンプレートを保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose()}){vm.repository.saveTemplate(s.book.id,s.templateInput(d,name,d.amount.isNotBlank()).copy(id=t?.id))}},Modifier.testTag("template-save"),primary=true,enabled=!busy)
     }
 }
 

@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -87,10 +89,10 @@ import java.time.ZoneId
             fun days(raw:String)=raw.replace('，',',').split(',').map{it.trim().toInt()}.distinct().sortedDescending()
             val value=ReminderPreferences(enabled,repayment,deadline,recurring,budget,funds,days(repaymentDays),days(deadlineDays),days(recurringDays),time.trim(),monthlyReview)
             value.validate();validation=null;focus.clearFocus();keyboard?.hide()
-            vm.execute(onSuccess={if((value.enabled||value.monthlyReview)&&!allowed&&Build.VERSION.SDK_INT>=33)permission.launch(Manifest.permission.POST_NOTIFICATIONS)}) {
+            vm.execute(onSuccess={vm.haptic(Haptic.Done);if((value.enabled||value.monthlyReview)&&!allowed&&Build.VERSION.SDK_INT>=33)permission.launch(Manifest.permission.POST_NOTIFICATIONS)}) {
                 vm.preferences.saveReminderSettings(s.book.id,value);vm.reminders?.rebuildSafely(false)
             }
-        }catch(e:Exception){validation=validationMessage}
+        }catch(e:Exception){validation=validationMessage;vm.haptic(Haptic.Error)}
     },Modifier.testTag("save-reminder-settings"),primary=true)
     if(!allowed)Panel(Modifier.testTag("reminder-permission-status")) {
         YText(word("通知尚未开启","通知は未許可"),16)
@@ -110,6 +112,7 @@ import java.time.ZoneId
 
 /** Frozen UI24 experience switches: each theme owns its row, caption and switch shape. */
 @Composable private fun NotificationPreferenceToggle(label:String,value:Boolean,onChange:(Boolean)->Unit,modifier:Modifier=Modifier,monthly:Boolean=false) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     val narrow=androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp<=360
@@ -118,7 +121,7 @@ import java.time.ZoneId
         if(!objects)drawLine(t.line,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx(),pathEffect=effect)
         drawLine(if(objects)Color(0xffd9c4a0)else t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=effect)
     }
-    Row(modifier.fillMaxWidth().then(edge).toggleable(value,role=if(journal)Role.Checkbox else Role.Switch,onValueChange=onChange).padding(vertical=13.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().then(edge).toggleable(value,role=if(journal)Role.Checkbox else Role.Switch,onValueChange={haptics.perform(if(it)Haptic.ToggleOn else Haptic.ToggleOff);onChange(it)}).padding(vertical=13.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             YText(label,if(narrow)12 else if(journal)16 else 13,weight=if(journal)FontWeight.Normal else FontWeight.Medium,lineHeightMultiplier=if(narrow)1.5f else if(journal)24f/16 else 19f/13,cssLineBox=true)
             Spacer(Modifier.height(7.dp))

@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -138,6 +139,6 @@ import kotlinx.serialization.encodeToString
     cancellation?.let{id->YSheet(word("取消预计收入","収入予定を取消"),{cancellation=null}) {
         YText(s.expectedIncomes.first{it.id==id}.name,16)
         YText(word("从收入情景移除此安排，实际资金和收入记录不变。","収入シナリオから外します。実資金・収入記録は変わりません。"),12)
-        YButton(word("确认取消","取消を確定"),{vm.execute(onSuccess={cancellation=null}){vm.repository.cancelExpectedIncome(s.book.id,id)}},Modifier.testTag("expected-cancel-confirm"),primary=true,enabled=!busy)
+        YButton(word("确认取消","取消を確定"),{vm.execute(onSuccess={cancellation=null}){vm.repository.cancelExpectedIncome(s.book.id,id);vm.haptic(Haptic.Removed)}},Modifier.testTag("expected-cancel-confirm"),primary=true,enabled=!busy)
     }}
 }

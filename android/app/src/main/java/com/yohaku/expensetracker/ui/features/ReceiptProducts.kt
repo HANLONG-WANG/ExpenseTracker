@@ -19,6 +19,7 @@ import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import kotlinx.serialization.encodeToString
 import androidx.compose.ui.unit.dp
 
@@ -149,7 +150,7 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
         YField(word("待确认说明（每行一项）","確認事項（1行1件）"),edited.issues.joinToString("\n"),{update(edited.copy(issues=it.lines().filter{line->line.isNotBlank()}))},multiline=true)
         YToggle(word("明细已补全","明細を補完済み"),edited.complete,{update(edited.copy(complete=it))})
         YActionRow {
-            YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess=onClose){if(baseRevision==0)vm.repository.saveDirectReceiptItems(s.book.id,document.receiptId,null,edited)else vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
+            YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose()}){if(baseRevision==0)vm.repository.saveDirectReceiptItems(s.book.id,document.receiptId,null,edited)else vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
             YButton(word("取消修改","変更を取消"),onClose,enabled=!busy)
         }
     }

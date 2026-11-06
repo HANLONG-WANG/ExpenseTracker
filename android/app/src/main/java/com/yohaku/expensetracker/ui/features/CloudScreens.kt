@@ -28,7 +28,9 @@ import com.yohaku.expensetracker.data.files.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 
 /** Cloud handoff desk. The server only moves files; every ledger write still goes through local preview. */
 @Composable internal fun CloudScreen(s:BookSnapshot,vm:AppViewModel) {
@@ -52,10 +54,10 @@ import kotlinx.coroutines.delay
     }
     val supplement=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->
         val id=supplementFor
-        if(id!=null&&uris.isNotEmpty())vm.execute(onSuccess={supplementFor=null;notice="已补充资料，正在重新提交 / 資料を追加しました。再提出しています"}){cloud.addSupplement(id,uris)}
+        if(id!=null&&uris.isNotEmpty())vm.execute(onSuccess={vm.haptic(Haptic.Done);supplementFor=null;notice="已补充资料，正在重新提交 / 資料を追加しました。再提出しています"}){cloud.addSupplement(id,uris)}
     }
     YTitle(word("资料出门，账目留家。","資料は外へ、帳簿は手元に。"),"CLOUD DESK",word("把小票图片或银行资料交给云端整理，结果回来后仍在本机预览确认。","レシート画像や銀行資料をクラウドで整理し、結果は端末で確認してから保存します。"),icon="file",pageFlow=true)
-    CloudConnectionCard(connection,busy,onImport={connect=true},onTest={vm.execute(onSuccess={notice="连接正常 / 接続できました"}){cloud.testConnection()}},
+    CloudConnectionCard(connection,busy,onImport={connect=true},onTest={vm.execute(onSuccess={vm.haptic(Haptic.Done);notice="连接正常 / 接続できました"}){cloud.testConnection()}},
         onOpen={connection?.let{context.startActivity(Intent(Intent.ACTION_VIEW,it.origin.toUri()))}},onUnbind={unbind=true})
     notice?.let{YText(localized(it),12,Modifier.testTag("cloud-notice"),color=LocalYohaku.current.accent)}
     CommandEntry(vm,connection?.bound==true&&!busy)
@@ -63,7 +65,7 @@ import kotlinx.coroutines.delay
     if(tasks.isEmpty())YEmpty(word("还没有交出去的资料。可以从小票工作台或流水导入页发起。","まだ渡した資料はありません。レシート整理や明細取込から始められます。"))
     tasks.forEachIndexed{index,view->
         CloudTaskCard(view,index,busy,
-            onRetry={cloud.enqueue(view.task.localId);notice="已重新排队上传 / 再アップロードを予約しました"},
+            onRetry={vm.execute(onSuccess={vm.haptic(Haptic.Done);notice="已重新排队上传 / 再アップロードを予約しました"}){cloud.enqueue(view.task.localId)}},
             onRefresh={vm.execute{cloud.refresh(view.task.localId)}},
             onClaim={var result:CloudClaim?=null;var commandId:String?=null
                 vm.execute(onSuccess={commandId?.let{vm.openCommandPlan(it)}?:run{claim=result}}){
@@ -71,7 +73,7 @@ import kotlinx.coroutines.delay
                     if(received.purpose in setOf("command","monthly-review"))commandId=cloud.receiveCommand(received).planId else result=received
                 }},
             onSupplement={supplementFor=view.task.localId;supplement.launch(arrayOf("*/*"))},
-            onDiscard={vm.execute{cloud.discard(view.task.localId)}})
+            onDiscard={vm.execute{cloud.discard(view.task.localId);vm.haptic(Haptic.Removed)}})
     }
     YButton(word("新建通用分析任务","汎用分析タスクを作成"),{general=true},Modifier.fillMaxWidth().testTag("cloud-new-general"),enabled=!busy&&connection?.bound==true)
     YText(word("云端不调用银行、不直接写账。上传中断会按原文件继续；结果下载后先核对大小和校验值，再进入原有预览。","クラウドは銀行接続も記帳もしません。中断したアップロードは同じファイルで再開し、結果はサイズとチェックサムを確認してから通常のプレビューへ進みます。"),10,color=LocalYohaku.current.muted,lineHeightMultiplier=2f)
@@ -79,7 +81,7 @@ import kotlinx.coroutines.delay
     if(unbind)YSheet(word("解除这台设备的连接","この端末の接続を解除"),{if(!busy)unbind=false}) {
         YText(word("只删除本机保存的连接凭证。已导入的账目、云端任务记录与回执队列保留；如配置可能泄露，请在网页撤销设备。","端末に保存した接続情報のみ削除します。取込済みの記録・タスク履歴・受領通知の予約は残ります。漏えいの恐れがあればWebで端末を取り消してください。"),12,color=LocalYohaku.current.muted)
         YActionRow {
-            YButton(word("解除连接","接続を解除"),{vm.execute(onSuccess={unbind=false}){cloud.unbind()}},Modifier.testTag("cloud-confirm-unbind"),primary=true,enabled=!busy)
+            YButton(word("解除连接","接続を解除"),{vm.execute(onSuccess={unbind=false}){cloud.unbind();vm.haptic(Haptic.Removed)}},Modifier.testTag("cloud-confirm-unbind"),primary=true,enabled=!busy)
             YLink(word("保留连接","接続を保持"),{unbind=false})
         }
     }
@@ -283,7 +285,7 @@ private fun CloudPhase.step()=when(this) {
             YText(word("请确认目标网站与设备。确认后加密保存并测试连接。","接続先と端末を確認してください。確定すると暗号化保存し、接続テストを行います。"),12,color=LocalYohaku.current.muted)
             RecordFacts(listOf(word("网站","サイト") to config.baseUrl.substringAfter("://"),word("设备 ID","端末ID") to config.id,word("接口版本","APIバージョン") to config.apiVersion.toString()),framed=true)
             YActionRow {
-                YButton(word("确认保存并测试","保存して接続テスト"),{vm.execute(onSuccess={raw="";onBound()}){cloud.bind(config)}},Modifier.testTag("cloud-config-confirm"),primary=true,enabled=!busy)
+                YButton(word("确认保存并测试","保存して接続テスト"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);raw="";onBound()}){cloud.bind(config)}},Modifier.testTag("cloud-config-confirm"),primary=true,enabled=!busy)
                 YLink(word("返回修改","戻って修正"),{parsed=null})
             }
         }
@@ -303,7 +305,7 @@ private fun CloudPhase.step()=when(this) {
         YField(word("给分析台的说明","分析デスクへの説明"),note,{note=it},Modifier.testTag("cloud-general-note"),multiline=true)
         CloudPickedFiles(files,{files=files-it})
         YButton(word("添加文件","ファイルを追加"),{picker.launch(arrayOf("*/*"))},Modifier.fillMaxWidth().testTag("cloud-general-files"),enabled=!busy)
-        YButton(word("上传并提交","アップロードして提出"),{vm.execute(onSuccess={onQueued()}){cloud.prepareGeneralTask(s.book.id,files,title,note)}},Modifier.fillMaxWidth().testTag("cloud-general-submit"),primary=true,enabled=!busy&&title.isNotBlank()&&files.isNotEmpty())
+        YButton(word("上传并提交","アップロードして提出"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onQueued()}){cloud.prepareGeneralTask(s.book.id,files,title,note)}},Modifier.fillMaxWidth().testTag("cloud-general-submit"),primary=true,enabled=!busy&&title.isNotBlank()&&files.isNotEmpty())
     }
 }
 
@@ -337,11 +339,11 @@ private fun CloudPhase.step()=when(this) {
             require(claim.bookId==s.book.id){"结果属于其他账本，请切换后再领取 / 結果は別の帳簿のものです。切り替えてから受け取ってください"}
             if(claim.type=="statement")statement=vm.repository.previewStatement(claim.bookId,claim.text)
             else receipt=vm.repository.previewReceiptItems(claim.bookId,claim.text)
-        }catch(e:Exception){previewError=e.message?:"预览失败 / プレビューできません"}
+        }catch(e:CancellationException){throw e}catch(e:Exception){previewError=e.message?:"预览失败 / プレビューできません";vm.haptic(Haptic.Error)}
     }
     val directory=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null){
         val name="yohaku-cloud-${claim.taskId.take(8)}-v${claim.resultVersion}.txt"
-        vm.execute(onSuccess={onDone("结果已保存 / 結果を保存しました")}) {
+        vm.execute(onSuccess={vm.haptic(Haptic.Done);onDone("结果已保存 / 結果を保存しました")}) {
             writeNewTreeDocument(context,uri,name,"text/plain"){out->claim.file.inputStream().use{it.copyTo(out)}}
             cloud.recordGeneralSaved(claim,name)
         }
@@ -349,7 +351,7 @@ private fun CloudPhase.step()=when(this) {
     val r=receipt
     if(r!=null) {
         ReceiptBackfillSheet(s,r,busy,onClose={if(!busy)onClose()},onReselect={if(!busy)onClose()},onSave={stale,replacement->
-            vm.execute(onSuccess={onDone("商品明细已保存，回执已排队 / 商品明細を保存し、受領通知を予約しました")}) {
+            vm.execute(onSuccess={vm.haptic(Haptic.Done);onDone("商品明细已保存，回执已排队 / 商品明細を保存し、受領通知を予約しました")}) {
                 try{cloud.saveClaimedReceiptItems(claim,r,stale,replacement)}catch(e:Exception){cloud.reportFailed(claim);throw e}
             }
         })
@@ -362,11 +364,11 @@ private fun CloudPhase.step()=when(this) {
         previewError?.let {
             YText(localized(it),12,color=LocalYohaku.current.warm)
             YText(word("结果保留在云端，可以修正本地资料后再次领取；确认无法导入时可向分析台报告。","結果はクラウドに残ります。端末の資料を直して再度受け取るか、取り込めない場合は分析デスクへ報告できます。"),11,color=LocalYohaku.current.muted)
-            YButton(word("报告无法导入","取込不可を報告"),{vm.execute(onSuccess={onDone("已报告导入失败 / 取込失敗を報告しました")}){cloud.reportFailed(claim)}},Modifier.testTag("cloud-report-failed"),enabled=!busy)
+            YButton(word("报告无法导入","取込不可を報告"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onDone("已报告导入失败 / 取込失敗を報告しました")}){cloud.reportFailed(claim)}},Modifier.testTag("cloud-report-failed"),enabled=!busy)
         }
         statement?.let{p->StatementPreviewContent(s,vm,p,overlap,{overlap=it},busy,onConfirm={
             var id:String?=null
-            vm.execute(onSuccess={vm.selectedStatementBatch.value=id;onClose();vm.navigate("statements")}) {
+            vm.execute(onSuccess={vm.haptic(Haptic.Done);vm.selectedStatementBatch.value=id;onClose();vm.navigate("statements")}) {
                 id=try{cloud.saveClaimedStatement(claim,p,overlap)}catch(e:Exception){cloud.reportFailed(claim);throw e}
             }
         },onCancel=onClose)}
@@ -426,7 +428,7 @@ private fun CloudPhase.step()=when(this) {
         YField(word("任务名称","タスク名"),title,{title=it.take(150)},Modifier.testTag("receipt-cloud-title"))
         YField(word("补充说明（可选）","補足（任意）"),note,{note=it},Modifier.testTag("receipt-cloud-note"),multiline=true)
         YActionRow {
-            YButton(word("打包并上传","まとめて送信"),{vm.execute(onSuccess={open=false;note="";onQueued()}){cloud.prepareReceiptTask(s.book.id,selected.toSet(),title,note)}},Modifier.testTag("receipt-cloud-confirm"),primary=true,enabled=!busy&&title.isNotBlank())
+            YButton(word("打包并上传","まとめて送信"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);open=false;note="";onQueued()}){cloud.prepareReceiptTask(s.book.id,selected.toSet(),title,note)}},Modifier.testTag("receipt-cloud-confirm"),primary=true,enabled=!busy&&title.isNotBlank())
             YLink(word("返回小票工作台","レシート整理へ戻る"),{open=false})
         }
     }
@@ -454,6 +456,6 @@ private fun CloudPhase.step()=when(this) {
         CloudPickedFiles(files,{files=files-it})
         YButton(word("添加银行资料","銀行資料を追加"),{picker.launch(arrayOf("*/*"))},Modifier.fillMaxWidth().testTag("statement-cloud-files"),enabled=!busy)
         YText(word("每份文件须小于 100 MB。一个任务只对应一个账户；不明确的入账日会作为疑点返回，不会被猜测。","各ファイルは100 MB未満。1タスク1口座です。不明な計上日は推測せず疑問点として返されます。"),10,color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f)
-        YButton(word("上传并提交","アップロードして提出"),{vm.execute(onSuccess={open=false;files=emptyList();note="";vm.navigate("cloud")}){cloud.prepareStatementTask(s.book.id,account,files,title,note)}},Modifier.fillMaxWidth().testTag("statement-cloud-confirm"),primary=true,enabled=!busy&&title.isNotBlank()&&files.isNotEmpty()&&account.isNotEmpty())
+        YButton(word("上传并提交","アップロードして提出"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);open=false;files=emptyList();note="";vm.navigate("cloud")}){cloud.prepareStatementTask(s.book.id,account,files,title,note)}},Modifier.fillMaxWidth().testTag("statement-cloud-confirm"),primary=true,enabled=!busy&&title.isNotBlank()&&files.isNotEmpty()&&account.isNotEmpty())
     }
 }

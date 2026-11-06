@@ -115,6 +115,7 @@ class CommandWorkflowExecutionTest {
         prefs.setForegroundLocation(book,true)
         prefs.saveReminderSettings(book,com.yohaku.expensetracker.domain.reminders.ReminderPreferences(enabled=true))
         val before=prefs.commandValues(book);val journal=CommandUndoJournal(r,book).snapshot()
+        assertEquals(JsonPrimitive(true),before.getValue("haptics"))
         val row=receive(book,listOf(
             step("draftCategory","entryDraft.reclassify","""{"sourceCategory":"$category","category":"$destination"}"""),
             step("analysis","preferences.analysis","""{"modules":["TREND","CATEGORIES"],"pinned":["TREND"]}"""),
@@ -122,17 +123,20 @@ class CommandWorkflowExecutionTest {
             step("rates","preferences.automaticRates","""{"enabled":false}"""),
             step("location","preferences.location","""{"enabled":false}"""),
             step("photos","preferences.photoStorage","""{"original":true}"""),
+            step("haptics","preferences.haptics","""{"enabled":false}"""),
             step("switch","book.select","""{"book":"$other"}""")))
         val preview=commands.preview(row.planId);assertEquals(book,prefs.activeBook.first());assertEquals(before,prefs.commandValues(book));assertEquals(journal,CommandUndoJournal(r,book).snapshot())
+        val hapticChange=preview.steps.single{it.stepId=="haptics"}.objects.single()
+        assertEquals(JsonPrimitive(true),hapticChange.before.jsonObject["haptics"]);assertEquals(JsonPrimitive(false),hapticChange.after.jsonObject["haptics"])
         commands.confirm(row.planId,commandChecks(preview))
-        assertEquals(other,prefs.activeBook.first());assertFalse(prefs.automaticReferenceRates.first());assertTrue(prefs.photoSaveOriginal.first())
+        assertEquals(other,prefs.activeBook.first());assertFalse(prefs.automaticReferenceRates.first());assertTrue(prefs.photoSaveOriginal.first());assertFalse(prefs.hapticsEnabled.first())
         assertEquals("08:30",prefs.reminderSettings.first()[book]!!.time);assertFalse(book in prefs.foregroundLocationBooks.first())
         db.commandDao().planEffects(row.planId).filter{it.status=="WAITING"}.forEach{commands.followups.completeInteraction(it.id)}
-        prefs.setPhotoSaveOriginal(false)
+        prefs.setPhotoSaveOriginal(false);prefs.setHapticsEnabled(true)
         val inverse=commands.prepareUndo(row.planId);val blocked=commands.preview(inverse.planId)
-        assertFalse(blocked.executable);assertTrue(blocked.conflicts.any{it.type=="preference"&&it.key=="photoOriginal"})
+        assertFalse(blocked.executable);assertTrue(blocked.conflicts.any{it.type=="preference"&&it.key=="photoOriginal"});assertTrue(blocked.conflicts.any{it.type=="preference"&&it.key=="haptics"})
         assertTrue(runCatching{commands.confirm(inverse.planId,commandChecks(blocked))}.isFailure)
-        prefs.setPhotoSaveOriginal(true);undo(row)
+        prefs.setPhotoSaveOriginal(true);prefs.setHapticsEnabled(false);undo(row)
         assertEquals(before,prefs.commandValues(book));assertEquals(journal,CommandUndoJournal(r,book).snapshot())
         // An already queued v37 preference has no monthlyReview field. Upgrade uses its default.
         val legacyBefore=JsonObject(before.getValue("reminders").jsonObject.filterKeys{it!="monthlyReview"})
@@ -158,14 +162,14 @@ class CommandWorkflowExecutionTest {
         val (book,_,_)=setup()
         var writes=0
         commands=CommandRepository(r,preferences=prefs,afterEffectWrite={writes++;throw CancellationException("simulated process stop")})
-        val row=receive(book,listOf(step("photo","preferences.photoStorage","""{"original":true}""")))
+        val row=receive(book,listOf(step("haptics","preferences.haptics","""{"enabled":false}""")))
         val preview=commands.preview(row.planId)
         assertTrue(runCatching{commands.confirm(row.planId,commandChecks(preview))}.exceptionOrNull() is CancellationException)
         assertEquals("EXECUTED",commands.plan(row.planId).status);assertEquals("RUNNING",db.commandDao().planEffects(row.planId).single().status)
-        assertTrue(prefs.photoSaveOriginal.first());prefs.setPhotoSaveOriginal(false)
+        assertFalse(prefs.hapticsEnabled.first());prefs.setHapticsEnabled(true)
         commands=CommandRepository(r,preferences=prefs)
         commands.followups.resume();commands.followups.resume()
-        assertFalse(prefs.photoSaveOriginal.first());assertEquals(1,writes);assertEquals("DONE",db.commandDao().planEffects(row.planId).single().status)
+        assertTrue(prefs.hapticsEnabled.first());assertEquals(1,writes);assertEquals("DONE",db.commandDao().planEffects(row.planId).single().status)
         assertEquals(2,db.commandDao().planEffects(row.planId).single().attempts)
     }
     @Test fun interactiveDraftIsCreatedOnceAndNeverSubmitted()=runBlocking<Unit> {

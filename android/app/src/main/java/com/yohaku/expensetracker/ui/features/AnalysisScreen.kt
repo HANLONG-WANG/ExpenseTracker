@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -132,12 +133,13 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     }
 }
 @Composable private fun AnalysisTrend(report:AnalysisReport,currency:Currency,onDetail:(String)->Unit) {
+    val haptics=LocalHaptics.current
     var mode by rememberSaveable{mutableStateOf("month")}
     YSelect(word("趋势粒度","推移の単位"),mode,listOf("month" to word("逐月","月ごと"),"day" to word("逐日","日ごと")),{mode=it})
     val values=report.groups{if(mode=="month")it.date.take(7)else it.date}.sortedBy{it.key}
     if(values.isEmpty())YEmpty(word("有记录后，时间里的变化会显示在这里。","記録すると時間の変化が表示されます。"))
     var selected by rememberSaveable(mode){mutableStateOf<String?>(null)}
-    if(values.isNotEmpty())AnalysisTrendChart(values.map{TrendPoint(it.key,it.amount,Money(currency,it.amount).display())},selected?.takeIf{key->values.any{it.key==key}}?:values.last().key,{key->selected=key;onDetail((if(mode=="month")"month:"else "day:")+key)})
+    if(values.isNotEmpty())AnalysisTrendChart(values.map{TrendPoint(it.key,it.amount,Money(currency,it.amount).display())},selected?.takeIf{key->values.any{it.key==key}}?:values.last().key,{key->haptics.perform(Haptic.Select);selected=key;onDetail((if(mode=="month")"month:"else "day:")+key)})
 }
 @Composable private fun AnalysisComparisonView(s:BookSnapshot,filter:AnalysisFilter,today:LocalDate,currency:Currency,onDetail:((String,String)->Unit)?=null) {
     val comparison=remember(s,filter,today){s.compareAnalysis(filter,today)}
@@ -178,13 +180,13 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
             ActivityCard(index,a.name,a.startDate,a.endDate,money(spent),a.budgetMinor?.let{money(it-spent)},a.budgetMinor?.let{money(it)},spent,a.budgetMinor,
                 (if(a.excludeMonthly)word("独立预算 · 不计入月预算","独立予算・月予算外")else word("计入发生月预算","利用月予算に計上"))+(if(a.ended)word(" · 已结束","・終了済み")else ""),onActivity?.let{action->{action(a.id)}},"analysis-activity-open-${a.id}")
             val periodLabel=word("筛选期间净消费：","絞込期間の純支出：")+money(group?.amount?:0L)+" · "+(group?.count?:0)+word("笔","件")
-            if(onPeriod!=null)YLink(periodLabel,{onPeriod(a.id)},Modifier.testTag("analysis-activity-period-${a.id}"))else YText(periodLabel,12,Modifier.testTag("analysis-activity-period-${a.id}"))
+            if(onPeriod!=null)YLink(periodLabel,{onPeriod(a.id)},Modifier.testTag("analysis-activity-period-${a.id}"),haptic=Haptic.Select)else YText(periodLabel,12,Modifier.testTag("analysis-activity-period-${a.id}"))
         }
     }
     groups[""]?.let{daily->
         ThemeSection(word("日常 · 未归入活动","日常・シーン外"),"EVERYDAY")
         val dailyLabel=word("筛选期间净消费：","絞込期間の純支出：")+money(daily.amount)+" · "+daily.count+word("笔","件")
-        if(onPeriod!=null)YLink(dailyLabel,{onPeriod("")},Modifier.testTag("analysis-activity-period-daily"))else YText(dailyLabel,12,Modifier.testTag("analysis-activity-period-daily"))
+        if(onPeriod!=null)YLink(dailyLabel,{onPeriod("")},Modifier.testTag("analysis-activity-period-daily"),haptic=Haptic.Select)else YText(dailyLabel,12,Modifier.testTag("analysis-activity-period-daily"))
     }
 }
 @Composable private fun AnalysisDetail(s:BookSnapshot,report:AnalysisReport,key:String,onRecord:(EventEntity)->Unit,onDismiss:()->Unit) {
@@ -238,6 +240,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     }
 }
 @Composable private fun AnalysisPreferenceEditor(s:BookSnapshot,vm:AppViewModel,initial:AnalysisModule?,filter:AnalysisFilter,today:LocalDate,onDismiss:()->Unit) {
+    val haptics=LocalHaptics.current
     val moduleSaver=listSaver<List<AnalysisModule>,String>(save={it.map{module->module.name}},restore={it.map(AnalysisModule::valueOf)})
     var modules by rememberSaveable(s.book.id,initial,stateSaver=moduleSaver){mutableStateOf((listOfNotNull(initial)+vm.repository.analysisModules(s)).distinct())}
     val pinSaver=listSaver<Set<AnalysisModule>,String>(save={it.map{module->module.name}},restore={it.map(AnalysisModule::valueOf).toSet()})
@@ -253,7 +256,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         }
         (modules+AnalysisModule.entries.filter{it !in modules}).forEachIndexed{index,module->key(module) {
             val position=modules.indexOf(module)
-            fun move(delta:Int){val values=modules.toMutableList();values[position]=values[position+delta];values[position+delta]=module;modules=values}
+            fun move(delta:Int){haptics.perform(Haptic.Step);val values=modules.toMutableList();values[position]=values[position+delta];values[position+delta]=module;modules=values}
             AnalysisPreferenceCard(module.name,analysisModuleName(module),analysisModuleNote(module),position,module in modules,module in pinned,position==modules.lastIndex,index,
                 {enabled->modules=if(enabled)modules+module else modules-module;if(!enabled)pinned=pinned-module},{move(-1)},{move(1)},{enabled->pinned=if(enabled)pinned+module else pinned-module},focused=module==displayOrder.firstOrNull())
         }}
@@ -277,7 +280,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
             }
         }
         YText(word("保存后对本账本生效，切换主题保留选择。","この帳簿に保存します。テーマを変えても選択を保持します。"),11,color=LocalYohaku.current.muted)
-        YButton(word("保存分析偏好","分析設定を保存"),{vm.execute(onSuccess=onDismiss){vm.repository.saveAnalysisPreferences(s.book.id,modules,pinned)}},Modifier.testTag("analysis-preferences-save"),primary=true,enabled=!busy)
+        YButton(word("保存分析偏好","分析設定を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onDismiss()}){vm.repository.saveAnalysisPreferences(s.book.id,modules,pinned)}},Modifier.testTag("analysis-preferences-save"),primary=true,enabled=!busy)
     }
 }
 @Composable private fun AnalysisFilterEditor(s:BookSnapshot,old:AnalysisFilter,vm:AppViewModel,onDismiss:()->Unit,onApply:(AnalysisFilter)->Unit) {
@@ -292,7 +295,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         YSelect(word("商户","お店"),merchant,listOf(null to word("全部","すべて"))+keys.map{it as String? to s.merchantLabel(it).ifBlank{word("未填写商户","お店未入力")}},{merchant=it})
         YSelect(word("活动","シーン"),activity,listOf(null to word("全部","すべて"),"" to word("日常","日常"))+s.availableActivities.map{it.id as String? to it.name},{activity=it})
         val value=AnalysisFilter(start,end,category,merchant,activity)
-        YButton(word("应用筛选","絞込を適用"),{vm.execute(onSuccess={onApply(value)}){s.analysis(value)}},Modifier.testTag("analysis-filter-apply"),primary=true,enabled=!busy)
-        YLink(word("清除分类、商户和活动筛选","カテゴリ・お店・シーンの絞込を解除"),{category=null;merchant=null;activity=null})
+        YButton(word("应用筛选","絞込を適用"),{vm.execute(onSuccess={onApply(value)}){s.analysis(value)}},Modifier.testTag("analysis-filter-apply"),primary=true,enabled=!busy,haptic=Haptic.Select)
+        YLink(word("清除分类、商户和活动筛选","カテゴリ・お店・シーンの絞込を解除"),{category=null;merchant=null;activity=null},haptic=Haptic.Select)
     }
 }

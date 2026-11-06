@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.*
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
@@ -31,11 +32,12 @@ class BudgetRecurrenceFlowTest {
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
     private lateinit var restoration:StateRestorationTester
+    private val haptics=RecordingHapticOutput()
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));restoration=StateRestorationTester(ui);restoration.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));restoration=StateRestorationTester(ui);runBlocking{vm.preferences.setHapticsEnabled(true)};restoration.setContent{NativeApp(vm,haptics=haptics)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(text:String) {
@@ -83,11 +85,14 @@ class BudgetRecurrenceFlowTest {
             shot("$theme-$language-recurring-one-tap",true)
             // A changed source must refresh the preview before the user can commit it.
             runBlocking{repo.dao.putAccount(repo.dao.account(book,occurrence.accountId)!!.copy(name="銀行 更新"))}
+            ui.runOnIdle{haptics.clear()}
             sheetTarget(ui.onNodeWithTag("occurrence-confirm-save")).performClick()
             ui.waitUntil(10000){vm.occurrenceConfirmation.value?.let{it.refreshed&&it.review!=null}==true&&!vm.busy.value}
             assertEquals(0,runBlocking{repo.snapshot(repo.dao.book(book)!!).first().events.size})
+            ui.runOnIdle{assertEquals(listOf(Haptic.Warning),haptics.calls.map{it.second});haptics.clear()}
             sheetTarget(ui.onNodeWithTag("occurrence-confirm-save")).performClick()
             ui.waitUntil(10000){vm.occurrenceConfirmation.value==null&&!vm.busy.value}
+            ui.runOnIdle{assertEquals(listOf(Haptic.Saved),haptics.calls.map{it.second})}
             assertEquals("recurring",vm.route.value)
             val paid=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals("2026-10-01",paid.events.single().date);assertEquals("お店",paid.events.single().merchant);assertEquals("定期",paid.events.single().note)

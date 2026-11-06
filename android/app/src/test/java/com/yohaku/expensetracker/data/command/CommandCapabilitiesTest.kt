@@ -14,10 +14,10 @@ class CommandCapabilitiesTest {
         val schema=registry.planSchema()
         val definitions=schema.getValue("\$defs").jsonObject
         val branches=schema.getValue("properties").jsonObject.getValue("steps").jsonObject.getValue("items").jsonObject.getValue("oneOf").jsonArray
-        assertEquals(87,registry.capabilities.size)
+        assertEquals(88,registry.capabilities.size)
         assertEquals(registry.capabilities.map{it.name}.toSet()+"stepReference",definitions.keys)
         assertEquals(registry.capabilities.map{it.name}.toSet(),branches.map{it.jsonObject.getValue("properties").jsonObject.getValue("command").jsonObject.getValue("const").jsonPrimitive.content}.toSet())
-        assertEquals(87,branches.size)
+        assertEquals(88,branches.size)
         val outputTypes=registry.capabilities.flatMap{it.outputs.entries}.groupBy({it.key},{it.value})
         for(adapter in registry.adapters) {
             val capability=adapter.capability

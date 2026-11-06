@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -24,11 +25,19 @@ import com.yohaku.expensetracker.ui.theme.*
 @Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={},onBackup:()->Unit={},onCsv:()->Unit={},onMerchants:()->Unit={},onTemplates:()->Unit={},vm:AppViewModel) {
     val t=LocalYohaku.current
     var showPhotoStorage by remember { mutableStateOf(false) }
+    val hapticsEnabled by vm.hapticsEnabled.collectAsStateWithLifecycle()
+    val haptics=LocalHaptics.current
+    var confirmHapticsOn by remember{mutableStateOf(false)}
+    LaunchedEffect(hapticsEnabled,confirmHapticsOn){if(hapticsEnabled==true&&confirmHapticsOn){haptics.perform(Haptic.ToggleOn);confirmHapticsOn=false}}
+    val silentHaptics=remember{Haptics(HapticOutput{_,_,_->},"magazine",false)}
     val photoOriginal by vm.photoSaveOriginal.collectAsStateWithLifecycle()
     YTitle(word("让它，像你的生活。","自分らしい、暮らしに。"),"SETTINGS",pageFlow=true)
-    SettingsGroup(word("外观与语言","外観と言語")) {
+    SettingsGroup(word("外观、语言与触感","外観・言語・触覚")) {
         SettingsRow(word("外观主题","テーマ"),onAppearance,"settings-appearance",value=themeName(s.book.theme))
-        SettingsRow(word("切换为日语","中国語へ切替"),onLanguage,"settings-language",arrow=false,last=true)
+        SettingsRow(word("切换为日语","中国語へ切替"),{haptics.perform(Haptic.Select);onLanguage()},"settings-language",arrow=false)
+        CompositionLocalProvider(LocalHaptics provides silentHaptics){
+            YToggle(word("触感反馈","触覚フィードバック"),hapticsEnabled==true,{enabled->confirmHapticsOn=enabled;vm.setHapticsEnabled(enabled)},Modifier.testTag("settings-haptics"),labelSize=when(t.id){"journal"->15;"objects"->14;else->12},labelLineHeight=when(t.id){"journal"->20f/15;"objects"->19f/14;else->16f/12})
+        }
     }
     SettingsGroup(word("账本与分类","帳簿とカテゴリ")) {
         SettingsRow(word("独立账本管理","独立した帳簿"),onBooks)
@@ -57,12 +66,13 @@ import com.yohaku.expensetracker.ui.theme.*
     YText("余量 / ヨハク / YOHAKU",12,color=t.muted)
     if(showPhotoStorage)YSheet(word("照片保存方式","写真の保存方法"),{showPhotoStorage=false}) {
         YText(word("所有账本共用；作为新表单的默认值，导入时仍可切换。","全帳簿共通の新しいフォームの初期設定です。取り込み時にも切り替えられます。"),12,color=t.muted)
-        listOf(false,true).forEach{original->YButton(word(if(original)"原样保存"else"节省空间",if(original)"そのまま保存"else"省容量"),{vm.execute{vm.preferences.setPhotoSaveOriginal(original)}},Modifier.fillMaxWidth().testTag("photo-storage-$original"),primary=photoOriginal==original,enabled=photoOriginal!=null)}
+        listOf(false,true).forEach{original->YButton(word(if(original)"原样保存"else"节省空间",if(original)"そのまま保存"else"省容量"),{vm.execute{vm.preferences.setPhotoSaveOriginal(original)}},Modifier.fillMaxWidth().testTag("photo-storage-$original"),primary=photoOriginal==original,enabled=photoOriginal!=null,haptic=Haptic.Select)}
         YText(word("节省空间：小票短边最多2000像素，图片附件长边最多2560像素，保存为 JPEG；透明区域变白，动态内容和拍摄信息不保留。","省容量：レシートは短辺2000px、画像添付は長辺2560px以内のJPEGに保存。透明部分は白くなり、動きや撮影情報は保持しません。"),11,color=t.muted)
     }
 }
 
 @Composable internal fun AppearanceScreen(s:BookSnapshot,onTheme:(String)->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     YTitle(word("换一张，喜欢的纸面。","好きな紙面に、着替える。"),"APPEARANCE",pageFlow=true)
     Panel(Modifier.testTag("settings-theme-panel"),contentSpacing=0.dp) {
@@ -71,7 +81,7 @@ import com.yohaku.expensetracker.ui.theme.*
             val name=themeName(id)
             val description=when(id){"magazine"->word("松绿与留白 · 编辑式排版","深緑と余白・誌面のように");"journal"->word("纸页与墨蓝 · 手写批注感","紙と青いインク・手帳の温もり");else->word("陶土橙与黄油色 · 日常小物","テラコッタとバター色・暮らしの小物")}
             val selected=id==s.book.theme
-            Column(Modifier.fillMaxWidth().testTag("theme-choice-"+id).selectable(selected=selected,role=Role.RadioButton,onClick={onTheme(id)})){
+            Column(Modifier.fillMaxWidth().testTag("theme-choice-"+id).selectable(selected=selected,role=Role.RadioButton,onClick={haptics.perform(Haptic.Select,theme=id);onTheme(id)})){
                 Row(Modifier.fillMaxWidth().padding(vertical=when(t.id){"magazine"->18.dp;"journal"->17.dp;else->15.dp}),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(13.dp)){
                     ThemePreview(id)
                     Column(Modifier.weight(1f)){

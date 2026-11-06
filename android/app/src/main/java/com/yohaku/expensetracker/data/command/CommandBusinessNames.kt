@@ -6,7 +6,7 @@ private val workflowLabels=mapOf(
     "entryDraft.reclassify" to ("迁移草稿分类" to "下書きのカテゴリを移行"),"statement.exportOriginal" to ("导出流水原件" to "元明細を書き出す"),"command.exportResult" to ("另存本方案结果" to "このプランの結果を保存"),
     "statement.accept" to ("接受流水差异关联" to "明細の差異を確認して関連付け"),"statement.unlink" to ("解除流水差异关联" to "明細の差異関連を解除"),"statement.supplement" to ("从流水补记" to "明細から記録を補完"),"statement.confirmActual" to ("按流水确认实际金额" to "明細の実額で確定"),
     "receipt.items.save" to ("回填或编辑商品明细" to "商品明細を補完・編集"),"csvBatch.undo" to ("将导入批次移入回收站" to "取込バッチをごみ箱へ移動"),"book.select" to ("切换当前账本" to "現在の帳簿を切替"),
-    "preferences.analysis" to ("分析模块与置顶" to "分析項目と固定表示"),"preferences.reminders" to ("提醒设置" to "通知設定"),"preferences.automaticRates" to ("自动汇率" to "自動レート取得"),"preferences.location" to ("定位开关" to "位置情報の切替"),"preferences.photoStorage" to ("照片保存方式" to "写真の保存方法"),
+    "preferences.analysis" to ("分析模块与置顶" to "分析項目と固定表示"),"preferences.reminders" to ("提醒设置" to "通知設定"),"preferences.automaticRates" to ("自动汇率" to "自動レート取得"),"preferences.location" to ("定位开关" to "位置情報の切替"),"preferences.photoStorage" to ("照片保存方式" to "写真の保存方法"),"preferences.haptics" to ("触感反馈" to "触覚フィードバック"),
     "attachment.attachSource" to ("附上本任务源文件" to "このタスクの元ファイルを添付"),"entry.prepareDraft" to ("准备待补完的记账草稿" to "補完が必要な記録下書きを用意"),"backup.export" to ("选择位置导出备份" to "保存先を選んでバックアップ出力"),"local.restorePreference" to ("恢复原偏好" to "元の設定に戻す"))
 private val financeCommandLabels=mapOf(
     "financialRepaymentAllocation.resolve" to ("选择还款分配" to "返済充当を選択"),

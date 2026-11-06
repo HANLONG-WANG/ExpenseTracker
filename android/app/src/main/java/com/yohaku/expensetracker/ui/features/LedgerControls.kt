@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +17,7 @@ import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun LedgerEntryActions(onStart:(EntryKind)->Unit){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     FlowRow(Modifier.fillMaxWidth().testTag("ledger-entry-actions"),horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
         for(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME,EntryKind.TRANSFER)){
@@ -24,7 +26,7 @@ import com.yohaku.expensetracker.ui.theme.*
             val horizontal=when(t.id){"journal"->8.dp;"objects"->12.dp;else->9.dp}
             val frame=if(t.id=="objects")Modifier.background(Color(0xfff2e8d8),RoundedCornerShape(12.dp)) else Modifier.drawBehind{drawLine(t.line,Offset(0f,this.size.height-.5.dp.toPx()),Offset(this.size.width,this.size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(t.id=="journal")PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}
             YText(when(kind){EntryKind.EXPENSE->word("记支出","支出");EntryKind.INCOME->word("记收入","収入");else->word("转账 / 换汇","振替・両替")},size,
-                Modifier.testTag("ledger-entry-${kind.name}").then(frame).clickable(role=Role.Button){onStart(kind)}.padding(start=horizontal,end=horizontal,top=padding.dp,bottom=(padding+if(t.id=="objects")0 else 1).dp),
+                Modifier.testTag("ledger-entry-${kind.name}").then(frame).clickable(role=Role.Button){haptics.perform(Haptic.Compose);onStart(kind)}.padding(start=horizontal,end=horizontal,top=padding.dp,bottom=(padding+if(t.id=="objects")0 else 1).dp),
                 color=t.muted,lineHeightMultiplier=when(t.id){"journal"->16f/size;"objects"->15f/size;else->13f/size},cssLineBox=true)
         }
     }
@@ -44,6 +46,7 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable internal fun LedgerClearFilters(onClear:()->Unit){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val size=if(t.id=="journal")15 else 12
-    YText(word("清除筛选","絞り込みを解除"),size,Modifier.fillMaxWidth().testTag("ledger-clear-filters").clickable(role=Role.Button,onClick=onClear).drawBehind{drawLine(t.line,Offset(0f,this.size.height-.5.dp.toPx()),Offset(this.size.width,this.size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(t.id=="magazine")null else PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}.padding(top=if(t.id=="objects")15.dp else 14.dp,bottom=if(t.id=="objects")16.dp else 15.dp),color=t.accent,lineHeightMultiplier=1.8f,cssLineBox=true)
+    YText(word("清除筛选","絞り込みを解除"),size,Modifier.fillMaxWidth().testTag("ledger-clear-filters").clickable(role=Role.Button,onClick={haptics.perform(Haptic.Select);onClear()}).drawBehind{drawLine(t.line,Offset(0f,this.size.height-.5.dp.toPx()),Offset(this.size.width,this.size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(t.id=="magazine")null else PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}.padding(top=if(t.id=="objects")15.dp else 14.dp,bottom=if(t.id=="objects")16.dp else 15.dp),color=t.accent,lineHeightMultiplier=1.8f,cssLineBox=true)
 }

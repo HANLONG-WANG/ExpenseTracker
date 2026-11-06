@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
@@ -158,7 +159,7 @@ import java.time.LocalDate
                         val billId=deadlineBill?:return@YButton
                         val d=ChangeDeadline(billId,mode,deadlineAt.substringBefore("T"),deadlineAt.substringAfter("T"),draft["zone"])
                         encoded=vm.repository.json.encodeToString(draft.copy(deadlines=draft.deadlines.filterNot{it.billId==billId&&it.changeType==mode}+d))
-                    },Modifier.testTag("finance-deadline-apply"),enabled=!busy&&deadlineBill!=null)
+                    },Modifier.testTag("finance-deadline-apply"),enabled=!busy&&deadlineBill!=null,haptic=Haptic.Select)
                 }
             }
             RuleText(draft,"unsupported",word("特殊算法说明 / 需手动计划时填写","特殊な計算条件・手動プランが必要な場合"),{k,v->change(k,v);trial=null})

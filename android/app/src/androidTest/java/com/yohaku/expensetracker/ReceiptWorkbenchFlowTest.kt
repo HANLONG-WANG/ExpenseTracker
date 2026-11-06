@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -29,6 +30,7 @@ class ReceiptWorkbenchFlowTest {
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
+    private val recorder=RecordingHapticOutput()
     private lateinit var vm:AppViewModel
     private lateinit var root:File
     @Before fun open(){
@@ -36,7 +38,7 @@ class ReceiptWorkbenchFlowTest {
         root=File(context.filesDir,"receipt-workbench-test").apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC),root)
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=recorder)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
     private fun picture(label:String):ByteArray {
@@ -51,13 +53,13 @@ class ReceiptWorkbenchFlowTest {
     private fun clearHeader(node:SemanticsNodeInteraction):SemanticsNodeInteraction {
         ui.waitUntil(10000){!vm.busy.value};node.performScrollTo();ui.waitForIdle()
         val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
+        val header=ui.onAllNodesWithTag("sheet-header").onLast().getUnclippedBoundsInRoot().bottom.value
         val top=node.getUnclippedBoundsInRoot().top.value
-        if(top<header+8)ui.onNodeWithTag("sheet-scroll").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,-(header+8-top)*density)}
+        if(top<header+8)ui.onAllNodesWithTag("sheet-scroll").onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,-(header+8-top)*density)}
         ui.waitForIdle()
         val bottom=node.getUnclippedBoundsInRoot().bottom.value
-        val viewport=ui.onNodeWithTag("sheet-scroll").getUnclippedBoundsInRoot().bottom.value
-        if(bottom>viewport)ui.onNodeWithTag("sheet-scroll").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,(bottom-viewport+8)*density)}
+        val viewport=ui.onAllNodesWithTag("sheet-scroll").onLast().getUnclippedBoundsInRoot().bottom.value
+        if(bottom>viewport)ui.onAllNodesWithTag("sheet-scroll").onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,(bottom-viewport+8)*density)}
         ui.waitForIdle();return node
     }
     @Test fun coverTabsOriginalImagesAndRecordLinksUseOnlyTheCurrentRevisionInEveryThemeAndLanguage(){
@@ -124,6 +126,13 @@ class ReceiptWorkbenchFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithTag("receipt-edit-items").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("receipt-edit-items").performScrollTo().assertIsDisplayed()
             shot("$theme-$language-first-product-entry",2)
+            clearHeader(ui.onNodeWithTag("receipt-edit-items")).performClick()
+            clearHeader(ui.onNodeWithTag("receipt-add-item")).performClick()
+            clearHeader(ui.onNodeWithTag("field-商品名")).performTextReplacement("お茶")
+            recorder.clear();clearHeader(ui.onNodeWithTag("receipt-save-item-edits")).performClick()
+            ui.waitUntil(10000){!vm.busy.value&&recorder.calls.isNotEmpty()&&ui.onAllNodesWithTag("receipt-save-item-edits").fetchSemanticsNodes().isEmpty()}
+            assertEquals(listOf(Triple(theme,Haptic.Done,1f)),recorder.calls.toList())
+            assertEquals(1,runBlocking{db.fileWorkflowDao().itemsForReceipt(book,receipt)!!.revision})
             ui.onNodeWithTag("sheet-close").performClick()
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(listOf(second),after.entryReceiptImages(event).map{it.id})

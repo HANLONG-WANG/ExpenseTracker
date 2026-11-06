@@ -20,7 +20,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 ## 功能范围
 
-设置页依次为「外观与语言」「账本与分类」「提醒与汇率」「小票、流水与云端」「数据」「其他」。外观主题行显示当前主题名，进入 `appearance` 二级页选择主题（缩略预览与选中标记保留）；语言切换位于同组。「小票、流水与云端」依次进入 `receipts`、`statements`、`cloud`；「数据」含「照片保存方式」、「备份与恢复」（`backup`）与「从 CSV 导入」（`csv-import`）；「其他」只含回收站。「账本与分类」还提供「商户与地点」（`merchants`）入口，分析页原入口保留。
+设置页依次为「外观、语言与触感」「账本与分类」「提醒与汇率」「小票、流水与云端」「数据」「其他」。外观主题行显示当前主题名，进入 `appearance` 二级页选择主题（缩略预览与选中标记保留）；语言切换与“触感反馈”开关位于同组。触感默认开启、所有账本共用并跟随系统触摸振动设置；三主题具有独立波形，详见[触感设计](../docs/haptics.md)。「小票、流水与云端」依次进入 `receipts`、`statements`、`cloud`；「数据」含「照片保存方式」、「备份与恢复」（`backup`）与「从 CSV 导入」（`csv-import`）；「其他」只含回收站。「账本与分类」还提供「商户与地点」（`merchants`）入口，分析页原入口保留。
 
 账本切换只保留顶部当前账本按钮、设置→独立账本管理及其下级管理页。收支、转账、退款表单不再显示账本/主题工具行；顶部账本按钮在记账中打开切换弹层，其余正常页面进入账本页，金融草稿保护继续沿用。主题只在设置→外观主题切换；离开有手动输入的记账时可保留或放弃草稿；未选分类的非转账草稿，或相对打开基线仅改分类/自动定位商户的草稿，直接放弃并离开。恢复的草稿没有基线，已选分类或转账时仍提示。顶部不再提供语言按钮。首次设置的顶部设置按钮打开同时含主题和语言的设置弹层，切换保留未保存设置输入。
 
@@ -286,6 +286,8 @@ JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由`local.pr
 ```
 
 ### 三层测试
+
+触感（[设计](../docs/haptics.md)）测试：JVM `ui.haptics.HapticPatternsTest`（三主题 × 全词表、退化映射、门面开关与主题覆盖）；仪器 `HapticsFlowTest`（三主题开关、设置禁用／重新启用、`execute` 异常），可复用 `RecordingHapticOutput` 记录 `(theme,haptic,scale)`，传入 `NativeApp(vm,haptics=recorder)`。各模块代表性结果断言分布在 `EntryExperienceFlowTest`（负余额 Warning、保存 Saved、负余额确认过时后重走保存）、`EntryFlowTest`（主题选择用新主题播放）、`EntryLifecycleFlowTest`、`BudgetRecurrenceFlowTest`、`ReminderSettingsFlowTest`、`FinancialDraftFlowTest`、`FinancialBatchRevolvingFlowTest`、`CommandFlowTest`（确认/撤销/过时/重试失败不弹窗）、`CommandWorkflowExecutionTest`（`preferences.haptics` 前后值、撤销冲突、崩溃恢复）、`ActivityFlowTest`（活动/预留/互请过时原地刷新，截图 `phase-b-p11/*-{activity,reserve,treat}-stale.png`）、`ActivityManagementFlowTest`、`LocationEntryFlowTest`、`ReceiptWorkbenchFlowTest`、`StatementFileWorkflowTest`、`CsvImportRoundTripTest`、`BackupRoundTripTest`（偏好往返、旧备份默认开启）。设置页截图 `files/verification/haptics/*-settings.png`，以 S24 Ultra 尺寸查看。2026-11-06 默认全量仪器测试 436 项中仅 3 项失败：`SetupFlowTest` 一项与两项大账本性能（OOM）单独重跑均通过；上述视觉截图已查看。真机波形仍待 S24 Ultra 试用。
 
 云端办理阶段 0 新增 `CommandSandboxTest`：验证外层事务中的业务写入可见性、嵌套回滚、失效通知和媒体锁顺序，并记录 3,700 笔账本上 50 步改分类试运行的耗时；整类默认运行，不需要 `perf=true`。结果见[阶段 0 记录](../docs/plans/cloud-command-stage-0.md)。
 

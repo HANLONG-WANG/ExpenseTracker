@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
@@ -19,6 +21,7 @@ import com.yohaku.expensetracker.ui.theme.*
 
 /** Final analysis-custom-item; order buttons have native 44dp touch targets. */
 @Composable internal fun AnalysisPreferenceCard(id:String,title:String,note:String,position:Int,chosen:Boolean,pinned:Boolean,last:Boolean,index:Int,onChoose:(Boolean)->Unit,onUp:()->Unit,onDown:()->Unit,onPin:(Boolean)->Unit,focused:Boolean=position==0) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val shape=RoundedCornerShape(if(objects)15.dp else 0.dp)
@@ -30,7 +33,7 @@ import com.yohaku.expensetracker.ui.theme.*
     Box(Modifier.fillMaxWidth().testTag("analysis-custom-card-$id").then(frame)) {
         Column(Modifier.padding(horizontal=if(narrow)9.dp else if(journal)12.dp else if(objects)11.dp else 0.dp,vertical=if(narrow)20.dp else if(journal)24.dp else 23.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                Row(Modifier.weight(1f).testTag("analysis-module-$id").toggleable(chosen,role=Role.Checkbox,onValueChange=onChoose).heightIn(min=44.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 9.dp)) {
+                Row(Modifier.weight(1f).testTag("analysis-module-$id").toggleable(chosen,role=Role.Checkbox,onValueChange={haptics.perform(if(it)Haptic.ToggleOn else Haptic.ToggleOff);onChoose(it)}).heightIn(min=44.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 9.dp)) {
                     val checkShape=if(journal)RoundedCornerShape(2.dp,1.dp,3.dp,1.dp)else RoundedCornerShape(if(objects)5.dp else 0.dp)
                     Box(Modifier.size(if(journal||objects)17.dp else 14.dp).then(if(journal)Modifier.rotate(-4f)else Modifier).background(if(chosen&&!journal)if(objects)Color(0xffba825b)else t.ink else if(journal)Color(0xfffff8e5)else if(objects)Color(0xfffff7e4)else t.surface,checkShape).border(1.dp,if(objects)Color(0xffc8ae86)else if(journal)t.accent else t.ink,checkShape),contentAlignment=Alignment.Center) {
                         if(chosen)if(journal)YText("✓",26,Modifier.offset(y=(-4).dp).wrapContentHeight(unbounded=true),color=t.warm,lineHeightMultiplier=1.2f)else Box(Modifier.size(if(objects)9.dp else 6.dp).background(if(objects)Color(0xfffff7e4)else t.surface,checkShape))

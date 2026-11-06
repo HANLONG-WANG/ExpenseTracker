@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -68,6 +70,7 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable internal fun FinancialTaskTabs(current: String, onSelect: (String) -> Unit) {
+    val haptics=LocalHaptics.current
     val t = LocalYohaku.current
     val journal = t.id == "journal"
     val objects = t.id == "objects"
@@ -86,7 +89,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     if (selected) drawLine(t.ink, Offset(0f, size.height), Offset(size.width, size.height), 3.dp.toPx())
                 }
             }
-            Column(Modifier.weight(1f).testTag("finance-tab-$id").selectable(selected, role = Role.Tab, onClick = { onSelect(id) })
+            Column(Modifier.weight(1f).testTag("finance-tab-$id").selectable(selected, role = Role.Tab, onClick = { if(!selected)haptics.perform(Haptic.TabSwitch);onSelect(id) })
                 .then(surface).padding(horizontal = 3.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (!journal && !objects) YText("0${index + 1}", 9, color = t.muted, number = true)
                 YText(financialTaskLabel(id), 12, color = if (selected) t.ink else t.muted, weight = if (selected) FontWeight.SemiBold else FontWeight.Normal)

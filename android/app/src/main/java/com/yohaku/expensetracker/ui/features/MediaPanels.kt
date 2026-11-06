@@ -38,6 +38,7 @@ import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -107,7 +108,7 @@ internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,target:
         val dir=File(context.cacheDir,"camera");dir.deleteRecursively();dir.mkdirs()
         val file=File(dir,"IMG_"+java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))+".jpg")
         pending=when(target){is ReceiptTarget.Draft->listOf(book,"draft",target.session,file.path);is ReceiptTarget.Record->listOf(book,"record",target.eventId,file.path)}.joinToString("\n")
-        try{launcher.launch(uri(file))}catch(_:ActivityNotFoundException){pending=null;vm.error.value="没有可用的相机应用 / 使えるカメラアプリがありません"}
+        try{launcher.launch(uri(file))}catch(_:ActivityNotFoundException){pending=null;vm.error.value="没有可用的相机应用 / 使えるカメラアプリがありません";vm.haptic(Haptic.Error)}
     }
 }
 @Composable private fun MediaFileRow(repository:LedgerRepository,file:FileBlobEntity,onPreview:()->Unit,onRemove:(()->Unit)?=null) {

@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun ImageViewer(name:String,index:Int,count:Int,zoomed:Boolean,onPrevious:()->Unit,onNext:()->Unit,onZoom:()->Unit,image:@Composable ()->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically) {
         YText(name,10,Modifier.weight(1f))
@@ -28,9 +31,9 @@ import com.yohaku.expensetracker.ui.theme.*
     }
     Box(Modifier.fillMaxWidth().then(frame).clipToBounds()) { image() }
     Row(Modifier.fillMaxWidth().padding(vertical=20.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-        ViewerControl("←",word("上一张图片","前の画像"),"media-image-previous",index>0,onPrevious)
+        ViewerControl("←",word("上一张图片","前の画像"),"media-image-previous",index>0,{haptics.perform(Haptic.Step);onPrevious()})
         Box(Modifier.weight(1f),contentAlignment=Alignment.Center){ViewerControl(if(zoomed)word("重置缩放","拡大をリセット")else word("放大","拡大"),word("放大 / 还原","拡大 / 戻す"),"media-image-zoom",true,onZoom)}
-        ViewerControl("→",word("下一张图片","次の画像"),"media-image-next",index<count-1,onNext)
+        ViewerControl("→",word("下一张图片","次の画像"),"media-image-next",index<count-1,{haptics.perform(Haptic.Step);onNext()})
     }
     YText(word("图片按原比例展示，可放大查看细节。","画像の比率を保持。拡大して細部を確認。"),11,color=t.muted)
 }

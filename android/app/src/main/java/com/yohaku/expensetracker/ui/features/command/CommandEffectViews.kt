@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features.command
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -181,9 +182,9 @@ import kotlinx.serialization.json.*
             }
         }}
         if(pages>1)YActionRow {
-            YButton(word("上一页","前へ"),{page--},enabled=page>0)
+            YButton(word("上一页","前へ"),{page--},enabled=page>0,haptic=Haptic.Step)
             YText("${page+1} / $pages",12,number=true)
-            YButton(word("下一页","次へ"),{page++},enabled=page+1<pages)
+            YButton(word("下一页","次へ"),{page++},enabled=page+1<pages,haptic=Haptic.Step)
         }
     }
 }
@@ -257,7 +258,7 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     if(key.endsWith("At")&&raw.jsonPrimitive.longOrNull!=null)return word("记录时间：","記録日時：")+FinancialDisplayFacts.time(java.time.Instant.ofEpochMilli(raw.jsonPrimitive.long),java.time.ZoneId.systemDefault(),s.book.language)
     if(key in setOf("appliedAt","observedAt","recordedAt")&&raw.jsonPrimitive.isString)return (if(key=="recordedAt")word("记录时间：","記録日時：")else "")+FinancialDisplayFacts.time(java.time.Instant.parse(text),if(key=="observedAt")java.time.OffsetDateTime.parse(text).offset else zone?:java.time.OffsetDateTime.parse(text).offset,s.book.language)
     if((key.endsWith("Minor")||key=="minor")&&raw.jsonPrimitive.longOrNull!=null)return Money(Currency.valueOf(if(key in setOf("baseMinor","expectedBaseMinor"))s.book.currency else value.second?:currency),raw.jsonPrimitive.long).display()
-    if(key in setOf("automaticRates","location","enabled"))return if(text=="true"||text=="1")word("开","オン")else word("关","オフ")
+    if(key in setOf("automaticRates","location","haptics","enabled"))return if(text=="true"||text=="1")word("开","オン")else word("关","オフ")
     if(key=="photoOriginal")return if(text=="true")word("原样保存","そのまま保存")else word("节省空间","省容量")
     if(key=="activeBook")return resolveName(text,s,model)
     if(key in setOf("modulesJson","pinnedJson"))return when(text){"CATEGORIES"->word("分类","カテゴリ");"MERCHANTS"->word("商户","お店");"TREND"->word("趋势","推移");"ACTIVITIES"->word("活动","シーン");"COMPARISON"->word("对比","比較");else->word("无","なし")}

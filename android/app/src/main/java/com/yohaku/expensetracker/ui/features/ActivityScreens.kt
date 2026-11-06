@@ -14,6 +14,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import java.time.LocalDate
 
 @Composable internal fun ActivityScreen(s:BookSnapshot,vm:AppViewModel,onExpense:(String,String?)->Unit,onRecord:(EventEntity)->Unit) {
@@ -39,7 +40,7 @@ import java.time.LocalDate
     s.features?.activeActivityId?.let{id->s.activities.find{it.id==id}?.let{active->Panel {
         YText(word("正在记录：","記録中：")+active.name,18)
         YText(word("新支出默认归入这个活动，直到退出。","終了するまで、新しい支出はこのシーンに入ります。"),11,color=LocalYohaku.current.muted)
-        YButton(word("退出记录模式","記録モードを終了"),{vm.execute{vm.repository.setActivityMode(s.book.id,true)}})
+        YButton(word("退出记录模式","記録モードを終了"),{vm.execute{vm.repository.setActivityMode(s.book.id,true)}},haptic=Haptic.ToggleOff)
     }}}
     if(activity==null) {
         if(s.availableActivities.isEmpty())YEmpty(word("一次旅行，一段生活。开启活动后开始记录。","旅や暮らしのひと区切り。シーンを有効にして記録しましょう。"))
@@ -53,7 +54,7 @@ import java.time.LocalDate
             ThemeSection(word("已删除活动的历史","削除済みシーンの履歴"),"KEPT WITH THE ORIGINAL SCENE")
             s.activities.filter{it.deletedAt!=null}.forEach{a->YActionRow {
                 YLink(a.name,{selected=a.id},Modifier.testTag("deleted-activity-${a.id}"))
-                YButton(word("恢复","復元"),{vm.execute{vm.repository.restoreActivity(s.book.id,a.id)}},Modifier.testTag("restore-activity-${a.id}"),enabled=!busy,inline=true)
+                YButton(word("恢复","復元"),{vm.execute{vm.repository.restoreActivity(s.book.id,a.id);vm.haptic(Haptic.Restored)}},Modifier.testTag("restore-activity-${a.id}"),enabled=!busy,inline=true)
             }}
         }
     }else if(activity.deletedAt!=null) {
@@ -83,7 +84,7 @@ import java.time.LocalDate
             if(s.features?.activityMode==true) {
                 YActionRow {
                     YButton(word("编辑活动与预算","シーンと予算を編集"),{editing=activity.id})
-                    if(!activity.ended)YButton(word("进入记录模式","記録モードを開始"),{vm.execute{vm.repository.setActivityMode(s.book.id,true,activity.id)}})
+                    if(!activity.ended)YButton(word("进入记录模式","記録モードを開始"),{vm.execute{vm.repository.setActivityMode(s.book.id,true,activity.id)}},haptic=Haptic.ToggleOn)
                 }
             }
             YLink(word("查看删除影响","削除の影響を見る"),{deleting=activity.id},Modifier.testTag("activity-delete-preview"))
@@ -115,9 +116,9 @@ import java.time.LocalDate
         Panel {
             if(s.features?.activityMode==true) {
                 val memberIds=s.participants.filter{it.activityId==activity.id}.map{it.friendId}
-                s.friends.filter{it.active&&it.id !in memberIds}.forEach{f->YLink(word("加入：","追加：")+f.name,{vm.execute{vm.repository.addParticipant(s.book.id,activity.id,f.id)}})}
+                s.friends.filter{it.active&&it.id !in memberIds}.forEach{f->YLink(word("加入：","追加：")+f.name,{vm.execute{vm.repository.addParticipant(s.book.id,activity.id,f.id);vm.haptic(Haptic.Done)}})}
                 YField(word("新朋友名称","新しい友達の名前"),friendName,{friendName=it})
-                YButton(word("添加朋友","友達を追加"),{vm.execute(onSuccess={friendName=""}){val id=vm.repository.saveFriend(s.book.id,friendName);vm.repository.addParticipant(s.book.id,activity.id,id)}},enabled=friendName.isNotBlank()&&!busy)
+                YButton(word("添加朋友","友達を追加"),{vm.execute(onSuccess={friendName=""}){val id=vm.repository.saveFriend(s.book.id,friendName);vm.repository.addParticipant(s.book.id,activity.id,id);vm.haptic(Haptic.Done)}},enabled=friendName.isNotBlank()&&!busy)
 
             }
         }
@@ -133,7 +134,7 @@ import java.time.LocalDate
             YText(word("仅互请份额；不记本人消费或账户扣款。","ごちそうの取り分のみ。自分の支出・口座引落は記録しません。"),10,color=LocalYohaku.current.muted)
             YActionRow {
                 YButton(word("修正份额","取り分を修正"),{treatFriend=null;treatId=t.id;treatFor=activity.id})
-                YLink(word("删除这次互请","このごちそうを削除"),{vm.execute{vm.repository.removeOtherTreat(s.book.id,t.id)}})
+                YLink(word("删除这次互请","このごちそうを削除"),{vm.execute{vm.repository.removeOtherTreat(s.book.id,t.id);vm.haptic(Haptic.Removed)}})
             }
         }}
     }
@@ -175,6 +176,8 @@ import java.time.LocalDate
     var excluded by rememberSaveable{mutableStateOf(old?.excludeMonthly?:false)}
     var ended by rememberSaveable{mutableStateOf(old?.ended?:false)}
     var review by remember{mutableStateOf<ActivityReview?>(null)}
+    var refreshed by remember{mutableStateOf(false)}
+    suspend fun preview()=vm.repository.previewActivity(s.book.id,ActivityInput(name,start,end,amount.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency)},categoryValues.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,currency)},excluded,ended,old?.id))
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(word("活动与预算","シーンと予算"),onDismiss) {
         if(review==null) {
@@ -184,13 +187,14 @@ import java.time.LocalDate
             s.categories.filter{(s.categoryEnabled(it.id)||it.id in categoryValues)&&it.kind==EntryKind.EXPENSE.name}.forEach{c->YField(c.name+word("预算 / 可留空","予算・空欄可"),categoryValues[c.id].orEmpty(),{categoryValues=categoryValues+(c.id to it)},numeric=true)}
             YToggle(word("从月预算排除","月予算から除外"),excluded,{excluded=it})
             YToggle(word("结束活动并释放预留","終了して確保を解放"),ended,{if(old?.ended!=true)ended=it})
-            YButton(word("预览影响","影響を確認"),{vm.execute{review=vm.repository.previewActivity(s.book.id,ActivityInput(name,start,end,amount.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency)},categoryValues.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,currency)},excluded,ended,old?.id))}},primary=true,enabled=!busy)
+            YButton(word("预览影响","影響を確認"),{vm.execute{review=preview();refreshed=false}},primary=true,enabled=!busy)
         }else {
+            if(refreshed)ActivityReviewRefreshed()
             YText(name,21);YText(start+" — "+end,12)
             review!!.months.forEach{(before,after)->YText(before.month+word(" 月预算消费："," 月予算の支出：")+Money(currency,before.spentMinor).display()+" → "+Money(currency,after.spentMinor).display(),12)}
             if(ended)YText(word("结束保留全部历史，并释放剩余预留。","終了後も履歴を保存し、残りの確保を解放します。"),12)
             YActionRow {
-                YButton(word("确认保存","保存を確定"),{val r=review!!;vm.execute(onSuccess=onDismiss){check(vm.repository.commitActivity(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
+                YButton(word("确认保存","保存を確定"),{val r=review!!;var saved=false;vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Done);onDismiss()}else vm.haptic(Haptic.Warning)}){saved=vm.repository.commitActivity(r);if(!saved){review=preview();refreshed=true}}},primary=true,enabled=!busy)
                 YLink(word("返回修改","編集に戻る"),{review=null})
             }
         }
@@ -209,6 +213,8 @@ import java.time.LocalDate
     var accountAmount by rememberSaveable{mutableStateOf(old?.accountMinor?.let{Money(Currency.valueOf(old.accountCurrency!!),it).decimal.toPlainString()}.orEmpty())}
     var occurrenceId by rememberSaveable{mutableStateOf(old?.occurrenceId)}
     var review by remember{mutableStateOf<ReserveReview?>(null)}
+    var refreshed by remember{mutableStateOf(false)}
+    suspend fun preview()=if(releasing)vm.repository.previewRelease(s.book.id,old!!.id,Money.parse(amount,currency))else vm.repository.previewReserve(s.book.id,ReserveInput(activityId,name,date,Money.parse(amount,currency),accountId,accountId?.let{id->Money.parse(accountAmount,Currency.valueOf(s.accounts.first{it.id==id}.currency))},occurrenceId,old?.id))
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(if(releasing)word("释放预留","確保を解放")else word("主动预留资金","資金を確保"),onDismiss) {
         if(review==null) {
@@ -219,15 +225,16 @@ import java.time.LocalDate
                 YSelect(word("关联固定账单 / 可选","定期予定との関連・任意"),occurrenceId,listOf(null to word("无","なし"))+s.occurrences.filter{it.activityId==activityId&&(it.status=="PENDING"||it.id==old?.occurrenceId)}.map{it.id as String? to it.name+" · "+it.scheduledDate},{occurrenceId=it})
             }
             YField(word("本位币金额","基準通貨の金額")+" · "+currency.name,amount,{amount=it},numeric=true)
-            YButton(word("预览影响","影響を確認"),{vm.execute{review=if(releasing)vm.repository.previewRelease(s.book.id,old!!.id,Money.parse(amount,currency))else vm.repository.previewReserve(s.book.id,ReserveInput(activityId,name,date,Money.parse(amount,currency),accountId,accountId?.let{id->Money.parse(accountAmount,Currency.valueOf(s.accounts.first{it.id==id}.currency))},occurrenceId,old?.id))}},primary=true,enabled=!busy)
+            YButton(word("预览影响","影響を確認"),{vm.execute{review=preview();refreshed=false}},primary=true,enabled=!busy)
         }else {
+            if(refreshed)ActivityReviewRefreshed()
             val r=review!!
             YText(r.before.month,17)
             YText(word("月预算预留：","月予算の確保：")+(r.before.reserveMinor?.let{Money(currency,it).display()}?:"—")+" → "+(r.after.reserveMinor?.let{Money(currency,it).display()}?:"—"),15)
             YText(word("资金总预留：","資金の確保総額：")+Money(currency,r.before.fundReserveMinor).display()+" → "+Money(currency,r.after.fundReserveMinor).display(),15)
             YText(word("账户余额保持不变。","口座残高は変わりません。"),12)
             YActionRow {
-                YButton(word("确认","確定"),{vm.execute(onSuccess=onDismiss){check(vm.repository.commitReserve(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
+                YButton(word("确认","確定"),{var saved=false;vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Done);onDismiss()}else vm.haptic(Haptic.Warning)}){saved=vm.repository.commitReserve(r);if(!saved){review=preview();refreshed=true}}},primary=true,enabled=!busy)
                 YLink(word("返回修改","編集に戻る"),{review=null})
             }
         }
@@ -266,6 +273,11 @@ import java.time.LocalDate
     var mode by rememberSaveable{mutableStateOf(old?.mode?:TreatSplitMode.EQUAL.name)}
     var weights by remember{mutableStateOf(old?.let{vm.repository.json.decodeFromString<Map<String,String>>(it.weightsJson)}?:emptyMap())}
     var review by remember{mutableStateOf<TreatReview?>(null)}
+    var refreshed by remember{mutableStateOf(false)}
+    suspend fun preview():TreatReview {
+        val total=Money.parse(amount,Currency.valueOf(currency))
+        return vm.repository.previewOtherTreat(s.book.id,OtherTreatInput(activityId,payer,total,if(currency==s.book.currency)total else Money.parse(base,Currency.valueOf(s.book.currency)),date,name,selected,TreatSplitMode.valueOf(mode),weights,old?.id))
+    }
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(word("别人付款 · 活动内互请","友達の支払・シーンのごちそう"),onDismiss) {
         if(review==null) {
@@ -276,18 +288,22 @@ import java.time.LocalDate
             if(currency!=s.book.currency)YField(word("本位币折算","基準通貨への換算")+" · "+s.book.currency,base,{base=it},numeric=true)
             TreatSplitFields(s,activityId,selected,TreatSplitMode.valueOf(mode),weights,{selected=it},{mode=it.name},{weights=it})
             YButton(word("预览份额","取り分を確認"),{vm.execute {
-                val total=Money.parse(amount,Currency.valueOf(currency))
-                review=vm.repository.previewOtherTreat(s.book.id,OtherTreatInput(activityId,payer,total,if(currency==s.book.currency)total else Money.parse(base,Currency.valueOf(s.book.currency)),date,name,selected,TreatSplitMode.valueOf(mode),weights,old?.id))
+                review=preview();refreshed=false
             }},primary=true,enabled=!busy)
         }else {
+            if(refreshed)ActivityReviewRefreshed()
             val r=review!!
             YText(word("不产生本人消费或账户扣款。","自分の支出・口座引落は発生しません。"),13)
             r.change.allocations.forEach{a->YText((if(a.participant=="ME")word("本人","自分")else s.friends.first{it.id==a.friendId}.name)+" · "+Money(Currency.valueOf(r.change.treat.currency),a.amountMinor).display()+" / "+Money(Currency.valueOf(s.book.currency),a.baseMinor).display(),14)}
             r.after.forEach{b->YText(b.friend.name+word("差额：","の差額：")+Money(Currency.valueOf(s.book.currency),r.before.find{it.friend.id==b.friend.id}?.difference?:0).display()+" → "+Money(Currency.valueOf(s.book.currency),b.difference).display(),15)}
             YActionRow {
-                YButton(word("确认互请记录","ごちそう記録を確定"),{vm.execute(onSuccess=onDismiss){check(vm.repository.commitOtherTreat(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
+                YButton(word("确认互请记录","ごちそう記録を確定"),{var saved=false;vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Done);onDismiss()}else vm.haptic(Haptic.Warning)}){saved=vm.repository.commitOtherTreat(r);if(!saved){review=preview();refreshed=true}}},primary=true,enabled=!busy)
                 YLink(word("返回修改","編集に戻る"),{review=null})
             }
         }
     }
+}
+
+@Composable private fun ActivityReviewRefreshed() {
+    YText(word("资料已变化，请按当前影响重新确认。","情報が変わりました。現在の影響を再確認してください。"),12,Modifier.testTag("activity-review-refreshed"))
 }

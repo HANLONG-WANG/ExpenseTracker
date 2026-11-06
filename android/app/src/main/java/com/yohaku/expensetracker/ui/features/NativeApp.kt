@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import com.yohaku.expensetracker.ui.features.command.*
 
 import androidx.activity.compose.BackHandler
@@ -32,7 +34,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.serialization.encodeToString
 
-@Composable fun NativeApp(vm:AppViewModel,backupResult:String?=null,onDismissBackupResult:()->Unit={}) {
+internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
+
+@Composable fun NativeApp(vm:AppViewModel,backupResult:String?=null,onDismissBackupResult:()->Unit={},haptics:HapticOutput=rememberSystemHapticOutput()) {
+    val hapticsEnabled by vm.hapticsEnabled.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
     val reminderBook by vm.reminderBook.collectAsStateWithLifecycle()
     val route by vm.route.collectAsStateWithLifecycle()
@@ -94,6 +99,13 @@ import kotlinx.serialization.encodeToString
     val book=snapshot?.book
     YohakuTheme(book?.theme?:openingBook?.theme?:libraryAppearance?.theme?:firstSetup?.theme?:"magazine",book?.language?:openingBook?.language?:libraryAppearance?.language?:firstSetup?.language?:"zh") {
         val t=LocalYohaku.current
+        CompositionLocalProvider(LocalHaptics provides remember(haptics,t.id,hapticsEnabled){Haptics(haptics,t.id,hapticsEnabled==true)},LocalResultHaptic provides vm::haptic) {
+        val currentHaptics by rememberUpdatedState(LocalHaptics.current)
+        LaunchedEffect(vm){vm.haptics.collect{currentHaptics.perform(it)}}
+        var backupAnnounced by rememberSaveable(backupResult){mutableStateOf(false)}
+        LaunchedEffect(backupResult,hapticsEnabled,state!=AppState.Loading){
+            if(backupResult!=null&&!backupAnnounced&&hapticsEnabled!=null&&state!=AppState.Loading){backupAnnounced=true;vm.haptic(if(backupResult.startsWith("恢复完成，"))Haptic.Done else Haptic.Error)}
+        }
         val accessibility=LocalAccessibilityManager.current
         LaunchedEffect(notice?.id){notice?.let{
             delay(accessibility?.calculateRecommendedTimeoutMillis(3000L,containsIcons=true,containsText=true,containsControls=false) ?: 3000L)
@@ -234,7 +246,7 @@ import kotlinx.serialization.encodeToString
                         "reminders"->ImportantItemsScreen(snapshot,vm,{openTimelineItem(it)},{account,month->openFinancial(account,month)},{openRisk(it)},{openAttention(it)},{vm.navigate("forecast")})
                         "forecast"->FinancialForecastScreen(snapshot,vm,{openRecord(it)},{openFinancial(it)},{openRisk(it)},{openAttention(it)},{openTimelineItem(it)})
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}},
-                            {c->vm.execute{if(vm.repository.commitCategoryOperation(vm.repository.previewCategoryOperation(book.id,c.id,CategoryOperation.UNARCHIVE)))vm.reminders?.rebuildSafely(false)}})
+                            {c->vm.execute{if(vm.repository.commitCategoryOperation(vm.repository.previewCategoryOperation(book.id,c.id,CategoryOperation.UNARCHIVE))){vm.haptic(Haptic.Restored);vm.reminders?.rebuildSafely(false)}else{vm.haptic(Haptic.Warning);editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"}}})
                         "csv-import"->CsvImportScreen(snapshot,vm)
                         "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
@@ -310,7 +322,7 @@ import kotlinx.serialization.encodeToString
                         YActionRow {
                             YButton(word("确认实际到账","入金の確認"),{incomeArriving=true;sheet="outlook-income"},Modifier.testTag("outlook-income-arrive"),primary=true)
                             YButton(word("修改预计安排","収入予定を修正"),{incomeArriving=false;sheet="outlook-income"},Modifier.testTag("outlook-income-edit"))
-                            YButton(word("取消预计收入","収入予定を取消"),{vm.execute(onSuccess={sheet=null}){vm.repository.cancelExpectedIncome(book.id,income.id)}},Modifier.testTag("outlook-income-cancel"))
+                            YButton(word("取消预计收入","収入予定を取消"),{vm.execute(onSuccess={sheet=null}){vm.repository.cancelExpectedIncome(book.id,income.id);vm.haptic(Haptic.Removed)}},Modifier.testTag("outlook-income-cancel"))
                         }
                     }else snapshot.expectedIncomeArrival(income)?.let{event->YButton(word("查看实际收入","実収入を見る"),{sheet=null;openRecord(event)})}?:YText(word("此预计收入已取消。","この収入予定は取消済みです。"))
                 }}
@@ -332,29 +344,29 @@ import kotlinx.serialization.encodeToString
                     YButton(word("放弃草稿，继续当前操作","下書きを破棄して操作を続ける"),{vm.execute({
                         if(pendingRecordAction=="confirm")vm.confirmActual(snapshot,event)else vm.editEntry(snapshot,event)
                         sheet=null
-                    }){vm.repository.clearDraft(book.id)}})
+                    }){vm.repository.clearDraft(book.id);vm.haptic(Haptic.Removed)}})
                 }}
                 "statement-existing-draft"->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null;requestedStatement=null;requestedStatementActual=null}) {
                     YText(word("先继续已有草稿，或明确放弃后打开流水对应表单。核对文件不会自动记账。","既存の下書きを続けるか、破棄を確認して明細のフォームを開いてください。照合ファイルは自動記録しません。"),13)
                     YButton(word("继续已有草稿","既存の下書きを続ける"),{requestedStatement=null;requestedStatementActual=null;sheet=null;vm.resumeEntry(snapshot)})
-                    YButton(word("放弃草稿，打开流水表单","下書きを破棄して明細フォームを開く"),{vm.execute(onSuccess={sheet=null;startStatementRequest()}){vm.repository.clearDraft(book.id)}},primary=true)
+                    YButton(word("放弃草稿，打开流水表单","下書きを破棄して明細フォームを開く"),{vm.execute(onSuccess={sheet=null;startStatementRequest()}){vm.repository.clearDraft(book.id);vm.haptic(Haptic.Removed)}},primary=true)
                 }
                 "refund-existing-draft"->selectedEvent?.let{original->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null}) {
                     YButton(word("继续这笔草稿","下書きを続ける"),{vm.resumeEntry(snapshot);sheet=null},primary=true)
-                    YButton(word("放弃草稿，记录退款","下書きを破棄して返金を記録"),{vm.execute({vm.startRefund(snapshot,original);sheet=null}){vm.repository.clearDraft(book.id)}})
+                    YButton(word("放弃草稿，记录退款","下書きを破棄して返金を記録"),{vm.execute({vm.startRefund(snapshot,original);sheet=null}){vm.repository.clearDraft(book.id);vm.haptic(Haptic.Removed)}})
                 }}
 
                 "account"->AccountEditor(snapshot,vm,{sheet=null},editAccount,debtOnly=if(openEntry&&draft?.kind in listOf(EntryKind.INCOME,EntryKind.TRANSFER))false else null)
                 "category"->CategoryEditor(snapshot,categoryKind,categoryParent,editCategory,vm,{sheet=null},
                     onUse=if(openEntry&&route=="category-picker"&&editCategory==null){id->vm.entry.value?.let{vm.changeEntry(book.id,it.copy(categoryId=id));vm.navigate("entry")};sheet=null} else null)
                 "books"->YSheet(word("切换账本","帳簿を切替"),{sheet=null}) {
-                    ready.books.filter{!it.archived&&it.deletedAt==null}.forEach{b->YButton(b.name+(if(b.id==book.id)" ✓" else ""),{if(b.id==book.id)sheet=null else if(openEntry){requestLeave(switchBook=b.id)}else if(financialDraft?.hasInput==true){switchTarget=b.id;sheet="switch-financial"}else{vm.selectBook(b.id);sheet=null}},Modifier.fillMaxWidth())}
+                    ready.books.filter{!it.archived&&it.deletedAt==null}.forEach{b->YButton(b.name+(if(b.id==book.id)" ✓" else ""),{if(b.id==book.id)sheet=null else if(openEntry){requestLeave(switchBook=b.id)}else if(financialDraft?.hasInput==true){switchTarget=b.id;sheet="switch-financial"}else{vm.selectBook(b.id);sheet=null}},Modifier.fillMaxWidth(),haptic=Haptic.Select)}
                     YButton(word("＋ 创建独立账本","＋ 独立した帳簿を作成"),{if(openEntry){requestLeave("new-book")}else sheet="new-book"},primary=true)
                 }
                 "save-template"->draft?.let{SaveTemplateSheet(snapshot,it,vm){sheet=null}}
                 "existing-draft"->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null}) {
                     YButton(word("继续这笔草稿","下書きを続ける"),{vm.resumeEntry(snapshot);sheet=null},primary=true)
-                    YButton(word("放弃草稿，记新的一笔","下書きを破棄して新しく記録"),{vm.execute({if(requestedOccurrence!=null)vm.startOccurrence(snapshot,snapshot.occurrences.first{it.id==requestedOccurrence},requestedOccurrenceAmount,requestedOccurrenceBase)else startRequestedEntry(snapshot.copy(draft=null));sheet=null}){vm.repository.clearDraft(book.id)}})
+                    YButton(word("放弃草稿，记新的一笔","下書きを破棄して新しく記録"),{vm.execute({if(requestedOccurrence!=null)vm.startOccurrence(snapshot,snapshot.occurrences.first{it.id==requestedOccurrence},requestedOccurrenceAmount,requestedOccurrenceBase)else startRequestedEntry(snapshot.copy(draft=null));sheet=null}){vm.repository.clearDraft(book.id);vm.haptic(Haptic.Removed)}})
                 }
                 "new-book"->BookEditor(null,book,vm,{sheet=null})
                 "rename-book"->(ready.books.find{it.id==editBookId} ?: book).let{editing->BookEditor(editing,book,vm,{sheet=null},hasRecords=ready.overviews.firstOrNull{it.book.id==editing.id}?.let{it.recordCount>0||it.planningCount>0} ?: snapshot.events.isNotEmpty(),monthlyBudgetMinor=ready.overviews.firstOrNull{it.book.id==editing.id}?.monthlyBudgetMinor)}
@@ -362,7 +374,7 @@ import kotlinx.serialization.encodeToString
                     YText(word("可以保留草稿，下次继续。原记录不会被未保存内容修改。","下書きを残して後で続行できます。元の記録は変更されません。"))
                     YButton(word("保留草稿并返回","下書きを残して戻る"),{vm.leaveEntry(book.id,true,if(leaveTarget=="new-book")"home" else leaveTarget){sheet=if(leaveTarget=="new-book")"new-book" else null}},primary=true)
                     YActionRow {
-                        YButton(word("放弃修改","変更を破棄"),{vm.leaveEntry(book.id,false,if(leaveTarget=="new-book")"home" else leaveTarget){sheet=if(leaveTarget=="new-book")"new-book" else null}})
+                        YButton(word("放弃修改","変更を破棄"),{vm.leaveEntry(book.id,false,if(leaveTarget=="new-book")"home" else leaveTarget){vm.haptic(Haptic.Removed);sheet=if(leaveTarget=="new-book")"new-book" else null}})
                         YButton(word("继续编辑","編集を続ける"),{sheet=null})
                     }
                 }
@@ -378,7 +390,7 @@ import kotlinx.serialization.encodeToString
                     val target=switchTarget!!
                     YButton(word("保留草稿并切换","下書きを残して切替"),{val d=draft!!;vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.saveDraft(book.id,d);vm.preferences.select(target)}},primary=true)
                     YActionRow {
-                        YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.clearDraft(book.id);vm.preferences.select(target)}})
+                        YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.clearDraft(book.id);vm.haptic(Haptic.Removed);vm.preferences.select(target)}})
                         YButton(word("继续编辑","編集を続ける"),{sheet=null})
                     }
                 }
@@ -398,6 +410,7 @@ import kotlinx.serialization.encodeToString
             }
         }
         }
+    }
     }
 }
 
@@ -635,7 +648,7 @@ import kotlinx.serialization.encodeToString
                     saving=true
                     val submittedName=name;val submittedParent=parent;val submittedFavorite=original?.favorite?:false;val submittedIcon=chosen
                     var savedId:String?=null
-                    vm.execute(onSuccess={if(onUse!=null)onUse(savedId!!) else onClose()},onComplete={saving=false}){savedId=vm.repository.saveCategory(s.book.id,submittedName,kind,submittedParent,original?.id,submittedFavorite,CategoryIconChoice.Set(submittedIcon))}
+                    vm.execute(onSuccess={vm.haptic(Haptic.Done);if(onUse!=null)onUse(savedId!!) else onClose()},onComplete={saving=false}){savedId=vm.repository.saveCategory(s.book.id,submittedName,kind,submittedParent,original?.id,submittedFavorite,CategoryIconChoice.Set(submittedIcon))}
                 },Modifier.testTag("category-editor-save"),primary=true,enabled=!saving)
             }
         }
@@ -672,7 +685,7 @@ import kotlinx.serialization.encodeToString
             saving=true
             val submittedName=name;val submittedType=type;val submittedCurrency=currency;val submittedOpening=opening;val submittedDate=date
             var id:String?=null
-            vm.execute(onSuccess={onClose();vm.entry.value?.takeIf{it.accountId==null}?.let{vm.changeEntry(s.book.id,it.copy(accountId=id))}},onComplete={saving=false}){
+            vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose();vm.entry.value?.takeIf{it.accountId==null}?.let{vm.changeEntry(s.book.id,it.copy(accountId=id))}},onComplete={saving=false}){
                 id=vm.repository.saveAccount(s.book.id,submittedName,submittedType,submittedCurrency,Money.parse(submittedOpening,submittedCurrency),submittedDate,original?.id)
             }
         },Modifier.padding(top=31.dp).testTag("account-save-button"),primary=true,enabled=!saving)
@@ -698,9 +711,9 @@ import kotlinx.serialization.encodeToString
                     if(saving)return@YButton
                     saving=true
                     var saved=false
-                    vm.execute(onSuccess={if(saved)onClose()},onComplete={saving=false}) {
+                    vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Done);onClose()}},onComplete={saving=false}) {
                         saved=vm.repository.commitBudget(value)
-                        if(!saved){review=vm.repository.previewBookBudget(value.bookUpdate!!,month,value.setting.amountMinor?.let{Money(Currency.valueOf(value.bookUpdate!!.currency),it)});refreshed=true}
+                        if(!saved){review=vm.repository.previewBookBudget(value.bookUpdate!!,month,value.setting.amountMinor?.let{Money(Currency.valueOf(value.bookUpdate!!.currency),it)});refreshed=true;vm.haptic(Haptic.Warning)}
                     }
                 },primary=true,enabled=!saving)
                 YLink(word("返回继续编辑","戻って編集"),{review=null})
@@ -722,7 +735,7 @@ import kotlinx.serialization.encodeToString
             saving=true
             val submittedName=name;val submittedCurrency=currency;val submittedBudget=budget
             var saved=false
-            vm.execute(onSuccess={if(saved)onClose()},onComplete={saving=false}) {
+            vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Done);onClose()}},onComplete={saving=false}) {
                 if(original==null){vm.preferences.select(vm.repository.createBook(submittedName,submittedCurrency,current.theme,current.language));saved=true}
                 else {
                     val updated=original.copy(name=submittedName,currency=submittedCurrency.name)
@@ -739,6 +752,7 @@ import kotlinx.serialization.encodeToString
 
 
 @Composable private fun Setup(vm:AppViewModel,s:BookSnapshot?,first:SetupDraft) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val language=LocalLanguage.current
     val focus=LocalFocusManager.current
@@ -788,7 +802,7 @@ import kotlinx.serialization.encodeToString
                         if(creating)return@YButton
                         creating=true
                         val submittedName=name;val submittedCurrency=currency;val submittedDate=date;val submittedBudget=budget;val submittedTheme=t.id;val submittedLanguage=language
-                        vm.execute(onComplete={creating=false}) {
+                        vm.execute(onSuccess={vm.haptic(Haptic.Done)},onComplete={creating=false}) {
                         LocalDate.parse(submittedDate)
                         val budgetMinor=submittedBudget.takeIf{it.isNotBlank()}?.let{Money.parse(it,submittedCurrency).minor}
                         if(s==null){
@@ -827,9 +841,9 @@ import kotlinx.serialization.encodeToString
         }
     }
     if(settingsSheet)YSheet(word("设置","設定"),{settingsSheet=false}){
-        Column(Modifier.fillMaxWidth()){themeChoices().forEach{(id,label)->SetupSettingOption(label+(if(id==t.id)" ✓" else ""),{persistFirst(id,language);settingsSheet=false})}}
+        Column(Modifier.fillMaxWidth()){themeChoices().forEach{(id,label)->SetupSettingOption(label+(if(id==t.id)" ✓" else ""),{haptics.perform(Haptic.Select,theme=id);persistFirst(id,language);settingsSheet=false})}}
         SetupSettingOption(word("备份与恢复","バックアップと復元"),{settingsSheet=false;vm.navigate("backup")})
-        SetupSettingOption(word("切换为日语","中国語へ切替"),{persistFirst(t.id,if(language=="zh")"ja" else "zh")},Modifier.testTag("settings-language"))
+        SetupSettingOption(word("切换为日语","中国語へ切替"),{haptics.perform(Haptic.Select);persistFirst(t.id,if(language=="zh")"ja" else "zh")},Modifier.testTag("settings-language"))
     }
     if(accountSheet&&s!=null)AccountEditor(s,vm,{accountSheet=false},s.accounts.find{it.id==originalAccountId},debtOnly=if(step==4)null else step==3)
 }

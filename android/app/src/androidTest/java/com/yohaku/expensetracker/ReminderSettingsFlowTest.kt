@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.*
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
@@ -25,6 +26,7 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class ReminderSettingsFlowTest {
     @get:Rule val ui=createComposeRule()
+    private val haptics=RecordingHapticOutput()
     @Test fun sixAppearancesSavePreferencesAndRetainInputAcrossThemeChange()=runBlocking {
         val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as YohakuApplication
         val db=Room.inMemoryDatabaseBuilder(app,YohakuDatabase::class.java).build()
@@ -37,7 +39,7 @@ class ReminderSettingsFlowTest {
             val book=repo.createBook("通知 / お知らせ",Currency.JPY)
             repo.dao.putBook(repo.dao.book(book)!!.copy(initialized=true))
             prefs.select(book)
-            ui.setContent{NativeApp(vm)}
+            ui.setContent{NativeApp(vm,haptics=haptics)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("notification-settings")}
             ui.onNodeWithTag("reminder-monthly-review").performScrollTo().assertIsOn().performClick()
@@ -48,8 +50,10 @@ class ReminderSettingsFlowTest {
                 val savedTime="10:${minute++}"
                 ui.onNodeWithTag("field-reminder-time").performScrollTo().performTextReplacement(savedTime)
                 if (visualEnabled()) InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
+                ui.runOnIdle{haptics.clear()}
                 ui.onNodeWithTag("save-reminder-settings").performScrollTo().performClick()
                 ui.waitUntil(10000){!vm.busy.value&&runBlocking{prefs.reminderSettings.first()[book]?.time==savedTime}}
+                ui.runOnIdle{assertEquals(listOf(Haptic.Done),haptics.calls.map{it.second})}
                 assertEquals(savedTime,prefs.reminderSettings.first()[book]!!.time)
                 assertFalse(prefs.reminderSettings.first()[book]!!.enabled)
                 assertFalse(prefs.reminderSettings.first()[book]!!.monthlyReview)
@@ -70,6 +74,11 @@ class ReminderSettingsFlowTest {
                 if (visualEnabled()) InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
                 if (visualEnabled()) File(dir,"$theme-$language-form.png").outputStream().use{ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)}
             }
+            ui.onNodeWithTag("field-reminder-time").performScrollTo().performTextReplacement("invalid")
+            ui.runOnIdle{haptics.clear()}
+            ui.onNodeWithTag("save-reminder-settings").performScrollTo().performClick()
+            ui.runOnIdle{assertEquals(listOf(Haptic.Error),haptics.calls.map{it.second})}
+            assertEquals("10:${minute-1}",prefs.reminderSettings.first()[book]!!.time)
             // Draft settings survive theme changes and only explicit save commits them.
             ui.onNodeWithTag("field-reminder-time").performScrollTo().performTextReplacement("11:45")
             repo.updateAppearance(book,"magazine","zh")

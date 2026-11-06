@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
@@ -64,6 +65,7 @@ class LocationEntryFlowTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(app.cacheDir,"location-ui-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(app,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
+        val recorder=RecordingHapticOutput()
         val repo=LedgerRepository(db);val source=ControlledLocation();val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock),locationSource=source)
         try {
             val b=repo.createBook("位置 / 場所",Currency.JPY)
@@ -73,7 +75,7 @@ class LocationEntryFlowTest {
             val merchant=repo.saveMerchant(b,"喫茶 原名")
             repo.saveMerchantLocation(b,merchant,"店頭",35.0,139.0)
             prefs.select(b);prefs.setForegroundLocation(b,true)
-            ui.setContent{NativeApp(vm)}
+            ui.setContent{NativeApp(vm,haptics=recorder)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==b}
             fun draft()=EntryDraft(categoryId=c,accountId=a,amount="500",merchant="")
             for((theme,language) in testLooks(this@LocationEntryFlowTest)) {
@@ -99,10 +101,16 @@ class LocationEntryFlowTest {
                 ui.runOnIdle{vm.changeEntry(b,vm.entry.value!!.copy(date=today))}
                 nextRequest(source).complete(LocationFix(35.0,139.0,10.0));ui.waitUntil(10000){vm.entry.value?.merchantId==merchant}
                 ui.runOnIdle{vm.changeEntry(b,vm.entry.value!!.copy(merchantManuallyEdited=true,date=yesterday))};assertEquals(merchant,vm.entry.value!!.merchantId)
+                recorder.clear()
                 ui.runOnIdle{vm.changeEntry(b,draft())}
                 nextRequest(source).completeExceptionally(LocationException(LocationFailure.PERMISSION))
                 ui.waitUntil(10000){ui.onAllNodes(hasTestTag("foreground-location-status") and hasText(if(language=="ja")"未許可"else"未授权",substring=true)).fetchSemanticsNodes().isNotEmpty()}
                 visible("entry-location");shot("$theme-$language-denied")
+                ui.waitForIdle();assertTrue(recorder.calls.isEmpty())
+                visible("entry-locate").performClick()
+                nextRequest(source).completeExceptionally(LocationException(LocationFailure.TIMEOUT))
+                ui.waitUntil(10000){recorder.calls.isNotEmpty()}
+                assertEquals(listOf(Triple(theme,Haptic.Error,1f)),recorder.calls.toList())
                 ui.runOnIdle{vm.changeEntry(b,draft())}
                 nextRequest(source).complete(LocationFix(0.0,0.0,10.0))
                 ui.waitUntil(10000){ui.onAllNodesWithTag("location-no-candidates").fetchSemanticsNodes().isNotEmpty()}

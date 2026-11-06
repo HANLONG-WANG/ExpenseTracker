@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
@@ -79,7 +80,7 @@ import java.time.LocalDate
             KnownBillFields(s,p,{update(i,it)},if(activeDate==i)0 else null,{activeDate=if(it==null)null else i},"finance-known-$i")
             if(periods.size>1)YButton(word("移除此期","この回を削除"),{activeDate=null;encoded=vm.repository.json.encodeToString(periods.filterIndexed{n,_->n!=i})},enabled=!busy)
         }}
-        YButton(word("＋ 添加下一期","＋ 次の回を追加"),{activeDate=null;encoded=vm.repository.json.encodeToString(periods+KnownBillDraft(LocalDate.parse(periods.last().date).plusMonths(1).toString(),paymentAccountId=periods.last().paymentAccountId))},Modifier.testTag("finance-plan-add-period"),enabled=!busy)
+        YButton(word("＋ 添加下一期","＋ 次の回を追加"),{activeDate=null;encoded=vm.repository.json.encodeToString(periods+KnownBillDraft(LocalDate.parse(periods.last().date).plusMonths(1).toString(),paymentAccountId=periods.last().paymentAccountId))},Modifier.testTag("finance-plan-add-period"),enabled=!busy,haptic=Haptic.Step)
 
     }
 }

@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +19,7 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun CategoryShortcuts(title:String,choices:List<Pair<String,String>>,onChoose:(String)->Unit) {
-    val t=LocalYohaku.current
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
     Column(Modifier.fillMaxWidth().padding(bottom=7.dp).testTag("category-shortcuts"),verticalArrangement=Arrangement.spacedBy(12.dp)){
         YText(title,10,color=t.muted,lineHeightMultiplier=if(t.id=="journal")2f else 1.9f,cssLineBox=true)
         FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){choices.forEach{(id,label)->
@@ -27,15 +28,15 @@ import com.yohaku.expensetracker.ui.theme.*
                 "journal"->Modifier.rotate(-1f).background(Color(0xfff6e8bb)).drawBehind{drawLine(t.warm,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}
                 else->Modifier.background(Color(0xffe6ebd7),RoundedCornerShape(7.dp))
             }
-            YText(label,11,Modifier.testTag("category-shortcut-$id").then(frame).clickable(role=Role.Button){onChoose(id)}.padding(start=if(t.id=="magazine")12.dp else 11.dp,end=if(t.id=="magazine")12.dp else 11.dp,top=if(t.id=="magazine")10.dp else 9.dp,bottom=if(t.id=="objects")9.dp else 10.dp),lineHeightMultiplier=1.7f,cssLineBox=true)
+            YText(label,11,Modifier.testTag("category-shortcut-$id").then(frame).clickable(role=Role.Button){haptics.perform(Haptic.Select);onChoose(id)}.padding(start=if(t.id=="magazine")12.dp else 11.dp,end=if(t.id=="magazine")12.dp else 11.dp,top=if(t.id=="magazine")10.dp else 9.dp,bottom=if(t.id=="objects")9.dp else 10.dp),lineHeightMultiplier=1.7f,cssLineBox=true)
         }}
     }
 }
 
 @Composable internal fun CategoryChoice(name:String,onClick:()->Unit,modifier:Modifier=Modifier,icon:String=DEFAULT_CATEGORY_ICON) {
-    val t=LocalYohaku.current
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
     val frame=if(t.id=="objects")Modifier.background(Color(0xfffff9ea),RoundedCornerShape(11.dp)).padding(horizontal=11.dp,vertical=14.dp) else Modifier.padding(start=if(t.id=="magazine")0.dp else 12.dp,end=12.dp,top=16.dp,bottom=16.dp)
-    Column(modifier.clickable(role=Role.Button,onClick=onClick)){
+    Column(modifier.clickable(role=Role.Button,onClick={haptics.perform(Haptic.Select);onClick()})){
         Row(Modifier.fillMaxWidth().then(frame),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
             CategoryIconBadge(icon,if(t.id=="magazine")CategoryBadge.ROW else CategoryBadge.SMALL)
             YText(name,when(t.id){"journal"->18;"objects"->13;else->14},Modifier.weight(1f),weight=FontWeight.Medium,lineHeightMultiplier=when(t.id){"journal"->26f/18;"objects"->19f/13;else->20f/14},cssLineBox=true)
@@ -46,7 +47,7 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable internal fun CategoryGroup(name:String,index:Int,children:List<Pair<String,String>>,open:Boolean,onToggle:()->Unit,onParent:()->Unit,onChild:(String)->Unit,onAdd:()->Unit,id:String?=null,icon:String=DEFAULT_CATEGORY_ICON,iconOf:(String)->String={DEFAULT_CATEGORY_ICON}) {
-    val t=LocalYohaku.current
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val frame=when(t.id){
         "journal"->Modifier.background(Color(0xfffff8e4)).drawBehind{drawRect(t.line,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))}.padding(1.dp)
@@ -56,7 +57,7 @@ import com.yohaku.expensetracker.ui.theme.*
     Column(Modifier.fillMaxWidth().testTag("category-group-$id").then(frame)){
         // Leaf and parent roots share one header row so numbers, icons and names stay in the same columns.
         run {
-            Row(Modifier.fillMaxWidth().testTag(if(children.isEmpty())"category-leaf-$id" else "category-group-trigger-$id").clickable(role=Role.Button,onClick=onToggle).padding(horizontal=if(t.id=="magazine")0.dp else if(narrow)10.dp else 14.dp,vertical=if(narrow)16.dp else 18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 10.dp)){
+            Row(Modifier.fillMaxWidth().testTag(if(children.isEmpty())"category-leaf-$id" else "category-group-trigger-$id").clickable(role=Role.Button,onClick={if(children.isEmpty())haptics.perform(Haptic.Select);onToggle()}).padding(horizontal=if(t.id=="magazine")0.dp else if(narrow)10.dp else 14.dp,vertical=if(narrow)16.dp else 18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 10.dp)){
                 val numberFrame=if(t.id=="objects")Modifier.background(Color(0xffd7b994),RoundedCornerShape(5.dp)).padding(horizontal=6.dp,vertical=4.dp) else Modifier
                 YText((index+1).toString().padStart(2,'0'),if(t.id=="journal")14 else if(t.id=="objects")9 else 11,numberFrame,number=true,color=if(t.id=="journal")t.warm else t.muted,lineHeightMultiplier=if(t.id=="journal")20f/14 else if(t.id=="objects")13f/9 else 12f/11,cssLineBox=true)
                 CategoryIconBadge(icon)
@@ -76,7 +77,7 @@ import com.yohaku.expensetracker.ui.theme.*
                         "journal"->Modifier.rotate(-.5f).drawBehind{drawLine(t.warm,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}
                         else->Modifier.background(Color(0xfffff7e8),RoundedCornerShape(9.dp)).drawBehind{drawRoundRect(Color(0xffcdb48b),Offset(.5.dp.toPx(),.5.dp.toPx()),androidx.compose.ui.geometry.Size(size.width-1.dp.toPx(),size.height-1.dp.toPx()),androidx.compose.ui.geometry.CornerRadius(9.dp.toPx()),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))}
                     }
-                    Column(Modifier.fillMaxWidth().testTag("category-parent-choice-$id").then(parentFrame).clickable(role=Role.Button,onClick=onParent).padding(start=if(t.id=="objects")13.dp else 12.dp,end=if(t.id=="objects")13.dp else 12.dp,top=if(t.id=="objects")14.dp else 13.dp,bottom=if(t.id=="magazine")13.dp else 14.dp)){
+                    Column(Modifier.fillMaxWidth().testTag("category-parent-choice-$id").then(parentFrame).clickable(role=Role.Button,onClick={haptics.perform(Haptic.Select);onParent()}).padding(start=if(t.id=="objects")13.dp else 12.dp,end=if(t.id=="objects")13.dp else 12.dp,top=if(t.id=="objects")14.dp else 13.dp,bottom=if(t.id=="magazine")13.dp else 14.dp)){
                         YText(name+" / "+word("未细分","未分類の内訳"),if(t.id=="journal")16 else 12,color=if(t.id=="journal")t.warm else t.ink,lineHeightMultiplier=1.7f,cssLineBox=true)
                         YText(word("直接记入一级分类","親カテゴリに直接記録")+" ↗",if(t.id=="journal")11 else 9,Modifier.padding(top=5.dp),color=t.muted,lineHeightMultiplier=1.7f,cssLineBox=true)
                     }

@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.*
 
 private fun Modifier.dashed(color:Color)=drawBehind{drawRect(color,style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))))}
 @Composable internal fun MaterialFileTile(id:String,name:String,metadata:String,audio:Boolean,onOpen:()->Unit,onRemove:(()->Unit)?,thumbnail:(@Composable ()->Unit)?=null) {
@@ -86,8 +87,8 @@ private fun Modifier.dashed(color:Color)=drawBehind{drawRect(color,style=Stroke(
     }
 }
 @Composable private fun ReceiptOrder(label:String,description:String,tag:String,onClick:(()->Unit)?) {
-    val t=LocalYohaku.current
-    Box(Modifier.size(31.dp).testTag(tag).alpha(if(onClick==null).25f else 1f).border(1.dp,t.line,RoundedCornerShape(if(t.id=="objects")7.dp else 0.dp)).semantics{contentDescription=description}.clickable(enabled=onClick!=null,role=Role.Button){onClick?.invoke()},contentAlignment=Alignment.Center){YText(label,12,color=t.accent)}
+    val t=LocalYohaku.current;val haptics=LocalHaptics.current
+    Box(Modifier.size(31.dp).testTag(tag).alpha(if(onClick==null).25f else 1f).border(1.dp,t.line,RoundedCornerShape(if(t.id=="objects")7.dp else 0.dp)).semantics{contentDescription=description}.clickable(enabled=onClick!=null,role=Role.Button){onClick?.let{haptics.perform(Haptic.Step);it()}},contentAlignment=Alignment.Center){YText(label,12,color=t.accent)}
 }
 @Composable private fun MaterialRemove(modifier:Modifier,tag:String,label:String,onClick:()->Unit) {
     val t=LocalYohaku.current

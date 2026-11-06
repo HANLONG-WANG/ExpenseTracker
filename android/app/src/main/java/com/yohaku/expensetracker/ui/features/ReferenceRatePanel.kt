@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -23,9 +24,10 @@ import java.time.LocalDate
     var loading by remember(from,to,date){mutableStateOf(false)}
     var error by remember(from,to,date){mutableStateOf<String?>(null)}
     val scope=rememberCoroutineScope()
+    val resultHaptic=LocalResultHaptic.current
     suspend fun load(force:Boolean) {
         loading=true;error=null
-        try{result=service.lookup(from,to,LocalDate.parse(date),force)}catch(e:IOException){error=e.message}
+        try{result=service.lookup(from,to,LocalDate.parse(date),force);if(force&&result?.failure!=null&&result?.failure!="AUTO_DISABLED")resultHaptic(Haptic.Error)}catch(e:IOException){error=e.message;if(force)resultHaptic(Haptic.Error)}
         finally{loading=false}
     }
     LaunchedEffect(from,to,date,automatic){load(false)}
@@ -43,8 +45,8 @@ import java.time.LocalDate
         error?.let{YText(it,11,color=LocalYohaku.current.warm)}
         YButton(word("刷新参考汇率","参考レートを更新"),{scope.launch{load(true)}},Modifier.testTag("rate-refresh-${from.name}-${to.name}"),enabled=!loading)
         if(onUse!=null)YButton(useLabel?:word("按此参考值重新估算","この参考値で再見積もり"),{
-            try{onUse(quote!!);error=null}catch(e:IllegalArgumentException){error=e.message}catch(e:IllegalStateException){error=e.message}catch(e:ArithmeticException){error=e.message}
-        },Modifier.testTag("rate-use-${from.name}-${to.name}"),enabled=!loading&&quote!=null&&enabled)
+            try{onUse(quote!!);error=null}catch(e:IllegalArgumentException){error=e.message;resultHaptic(Haptic.Error)}catch(e:IllegalStateException){error=e.message;resultHaptic(Haptic.Error)}catch(e:ArithmeticException){error=e.message;resultHaptic(Haptic.Error)}
+        },Modifier.testTag("rate-use-${from.name}-${to.name}"),enabled=!loading&&quote!=null&&enabled,haptic=Haptic.Select)
         YText(word("日参考值不是成交价或平台结算规则。刷新不改已填金额、余额或历史；只有主动采用才重估已有输入。","日次参考値は約定価格・返済先の決済条件とは異なります。更新では入力額・残高・履歴を変更せず、明示的に適用した場合だけ既存入力を再見積もりします。"),10,color=LocalYohaku.current.muted)
     }
 }

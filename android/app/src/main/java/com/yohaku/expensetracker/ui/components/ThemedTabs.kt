@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.*
@@ -17,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun YTabs(items:List<Pair<String,String>>,current:String,onSelect:(String)->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val objects=t.id=="objects";val journal=t.id=="journal"
     val frame=if(objects)Modifier.background(Color(0xffecdfc7),RoundedCornerShape(17.dp)).padding(5.dp)
@@ -35,7 +38,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 !objects&&selected->Modifier.drawBehind{drawLine(t.accent,Offset(15.dp.toPx(),size.height),Offset(size.width-15.dp.toPx(),size.height),2.dp.toPx())}
                 else->Modifier
             }
-            Box(Modifier.weight(1f).testTag("analysis-tab-$id").selectable(selected,onClick={onSelect(id)},role=Role.Tab).then(surface).padding(horizontal=if(journal)7.dp else if(objects)6.dp else 0.dp,vertical=if(journal)10.dp else if(objects)10.dp else 12.dp),contentAlignment=Alignment.Center){YText(label,if(journal)13 else if(objects)12 else 11,color=if(selected)t.accent else t.muted,weight=if(objects&&selected)FontWeight.Medium else FontWeight.Normal)}
+            Box(Modifier.weight(1f).testTag("analysis-tab-$id").selectable(selected,onClick={if(!selected)haptics.perform(Haptic.TabSwitch);onSelect(id)},role=Role.Tab).then(surface).padding(horizontal=if(journal)7.dp else if(objects)6.dp else 0.dp,vertical=if(journal)10.dp else if(objects)10.dp else 12.dp),contentAlignment=Alignment.Center){YText(label,if(journal)13 else if(objects)12 else 11,color=if(selected)t.accent else t.muted,weight=if(objects&&selected)FontWeight.Medium else FontWeight.Normal)}
         }
     }
 }

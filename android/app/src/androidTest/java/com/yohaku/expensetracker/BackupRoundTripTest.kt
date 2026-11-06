@@ -47,7 +47,7 @@ class BackupRoundTripTest {
             repo.dao.putAttachments(listOf(AttachmentLinkEntity(book,"link",event.id,blob.id)))
             repo.dao.putReceipt(ReceiptEntity(book,"receipt",event.id,1))
             repo.dao.putReceiptImages(listOf(ReceiptImageEntity(book,"receipt",1,0,blob.id)))
-            prefs.select(book);prefs.setPhotoSaveOriginal(true);prefs.setAutomaticReferenceRates(false);prefs.setForegroundLocation(book,true)
+            prefs.select(book);prefs.setPhotoSaveOriginal(true);prefs.setHapticsEnabled(false);prefs.setAutomaticReferenceRates(false);prefs.setForegroundLocation(book,true)
             prefs.saveReminderSettings(book,ReminderPreferences(enabled=true,time="10:15"))
             val monthlyPlan=MonthlyPlanEntity(book,"月の計画を原文のまま保存")
             val monthlyReview=MonthlyReviewEntity(book,"2026-10","monthly-task","{\"plan\":\"snapshot\"}",1)
@@ -63,7 +63,7 @@ class BackupRoundTripTest {
             repo.dao.putEvent(event.copy(note="Changed"))
             db.monthlyDao().savePlan(monthlyPlan.copy(text="Changed"));db.monthlyDao().update(monthlyReview.copy(planId="Changed"))
             original.writeText("Changed image")
-            prefs.setPhotoSaveOriginal(false);prefs.setAutomaticReferenceRates(true);prefs.saveReminderSettings(book,ReminderPreferences(time="12:30"))
+            prefs.setPhotoSaveOriginal(false);prefs.setHapticsEnabled(true);prefs.setAutomaticReferenceRates(true);prefs.saveReminderSettings(book,ReminderPreferences(time="12:30"))
             val stage=File(root,"import")
             val manifest=archive.inputStream().use{BackupArchive.extract(it,stage,BACKUP_SCHEMA_VERSION)}
             assertEquals(setOf(book,other),manifest.books.map{it.id}.toSet())

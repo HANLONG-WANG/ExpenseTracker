@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
@@ -69,6 +70,7 @@ import java.time.YearMonth
     }
 }
 @Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={},onTemplate:(EntryTemplateEntity)->Unit={},financialContent:@Composable ()->Unit={}) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val month=YearMonth.from(today)
     val currency=Currency.valueOf(s.book.currency)
@@ -105,7 +107,7 @@ import java.time.YearMonth
         }
         ThemeSection(word("最近的几笔","最近の記録"),"DAILY NOTES",word("全部流水","すべて"),{navigate("ledger")},pageGap=15)
         val recentExpenses=s.visibleEvents.filter{it.kind=="EXPENSE"}.take(5)
-        TransactionList(s,recentExpenses,onEvent,emptyContent={YEmpty(word("分类由你创建，记第一笔就开始。","カテゴリは自分で作成。最初の一筆から。"),onAdd,word("记一笔","記録"))})
+        TransactionList(s,recentExpenses,onEvent,emptyContent={YEmpty(word("分类由你创建，记第一笔就开始。","カテゴリは自分で作成。最初の一筆から。"),{haptics.perform(Haptic.Compose);onAdd()},word("记一笔","記録"))})
         ThemeSection(word("钱够不够，还要看账户。","支払いは、口座残高も。"),"REAL FUNDS",pageGap=15)
         Box(Modifier.padding(top=3.dp)){HomeCashNote(Currency.entries.mapNotNull{c->val accounts=s.accounts.filter{it.currency==c.name&&!AccountType.valueOf(it.type).debt};if(accounts.isEmpty())null else Money(c,accounts.sumOf{s.cashBalanceAt(it,today.toString())}).display()},{navigate("accounts")})}
         financialContent()

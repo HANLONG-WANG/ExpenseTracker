@@ -9,6 +9,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 
 @Composable internal fun ActivityDeletionSheet(a:ActivityEntity,vm:AppViewModel,onClose:()->Unit,onDeleted:()->Unit) {
     var review by remember(a.id){mutableStateOf<ActivityDeletionReview?>(null)}
@@ -40,7 +41,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(word("原活动的消费和互请仍可从“已删除活动的历史”查看。恢复活动的显示不会自动重启周期和预留；此处不是还款或清偿。","「削除済みシーンの履歴」で元の支出とごちそうを確認できます。表示を復元しても定期予定や確保は自動再開しません。返済や清算の処理ではありません。"),12)
             YButton(word("确认删除活动","シーンを削除"),{
                 var saved=false
-                vm.execute(onSuccess={if(saved)onDeleted()}) {
+                vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Removed);onDeleted()}else vm.haptic(Haptic.Warning)}) {
                     saved=vm.repository.commitActivityDeletion(value)
                     if(!saved){review=vm.repository.previewActivityDeletion(a.bookId,a.id);refreshed=true}
                     else vm.reminders?.rebuildSafely(false)

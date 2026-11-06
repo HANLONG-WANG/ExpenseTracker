@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +19,7 @@ import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.LocalYohaku
 
 @Composable internal fun EntryQuickAmount(amount:String,onAmount:(String)->Unit){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val current=if(amount.isBlank())0L else runCatching{Money.parse(amount,Currency.JPY).minor}.getOrNull()
     FlowRow(Modifier.fillMaxWidth().testTag("entry-quick-amount"),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
@@ -28,7 +31,7 @@ import com.yohaku.expensetracker.ui.theme.LocalYohaku
             }
             val enabled=current!=null&&current<=Long.MAX_VALUE-increment
             YText(if(increment==1000L)"+¥1,000" else "+¥$increment",if(t.id=="journal")13 else 10,
-                Modifier.testTag("entry-quick-$increment").then(frame).clickable(enabled=enabled,role=Role.Button){onAmount((current!!+increment).toString())}
+                Modifier.testTag("entry-quick-$increment").then(frame).clickable(enabled=enabled,role=Role.Button){haptics.perform(Haptic.Step,scale=when(increment){100L->.8f;500L->1f;else->1.3f});onAmount((current!!+increment).toString())}
                     .padding(horizontal=if(t.id=="objects")0.dp else if(t.id=="magazine")11.dp else 10.dp,vertical=if(t.id=="objects")15.dp else if(t.id=="magazine")9.dp else 8.dp)
                     .then(if(t.id=="journal")Modifier.padding(bottom=1.dp) else Modifier),
                 color=t.accent,lineHeightMultiplier=1.8f,cssLineBox=true)

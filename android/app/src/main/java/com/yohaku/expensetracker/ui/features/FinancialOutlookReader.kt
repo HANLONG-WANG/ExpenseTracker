@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.room.withTransaction
@@ -18,7 +19,10 @@ internal sealed interface FinancialOutlookRead {
     val today by vm.today.collectAsStateWithLifecycle()
     val finance by vm.financialState.collectAsStateWithLifecycle()
     val rateRevision by vm.referenceRates.cacheRevision.collectAsStateWithLifecycle()
-    return key(s.book.id) { produceState<FinancialOutlookRead>(FinancialOutlookRead.Loading,s,finance,today,through,attempt,rateRevision) {
+    return key(s.book.id) {
+        val handledAttempt=remember{intArrayOf(attempt)}
+        produceState<FinancialOutlookRead>(FinancialOutlookRead.Loading,s,finance,today,through,attempt,rateRevision) {
+        val retry=attempt!=handledAttempt[0];handledAttempt[0]=attempt
         value=FinancialOutlookRead.Loading
         try {
             suspend fun read(rates:List<ReferenceRateSnapshot>)=vm.repository.db.withTransaction {
@@ -31,7 +35,7 @@ internal sealed interface FinancialOutlookRead {
             finance?.takeIf{it.book.id==s.book.id}?.let{f->
                 if(cashReferenceRates(s,f,vm.referenceRates).isNotEmpty())value=read(vm.referenceRates.store.referenceRateCache().rates)
             }
-        }catch(e:CancellationException){throw e}catch(e:Exception){value=FinancialOutlookRead.Failure(e.message?:"资金资料读取失败 / 資金情報の読込に失敗しました")}
+        }catch(e:CancellationException){throw e}catch(e:Exception){if(retry)vm.haptic(Haptic.Error);value=FinancialOutlookRead.Failure(e.message?:"资金资料读取失败 / 資金情報の読込に失敗しました")}
     }
     }
 }

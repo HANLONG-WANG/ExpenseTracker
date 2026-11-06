@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -119,7 +120,7 @@ import kotlinx.serialization.json.*
     }}
     voidId?.let{id->YSheet(word("作废恢复确认","回復確認を無効化"),{voidId=null}) {
         YText(word("保留原确认记录，额度重新按现有规则或其余有效确认计算。实际付款保持原样。","元の確認を保持し、現在の条件・残る有効な確認で枠を再計算します。実支払は保持します。"),12)
-        YButton(word("确认作废","無効化を確定"),{vm.execute(onSuccess={voidId=null}){vm.repository.voidCreditLimitRecovery(s.book.id,id)}},Modifier.testTag("limit-void-confirm"),primary=true,enabled=!busy)
+        YButton(word("确认作废","無効化を確定"),{vm.execute(onSuccess={voidId=null}){vm.repository.voidCreditLimitRecovery(s.book.id,id);vm.haptic(Haptic.Removed)}},Modifier.testTag("limit-void-confirm"),primary=true,enabled=!busy)
     }}
 }
 @Composable private fun LimitConfigFacts(c:CreditLimitConfigEntity) {

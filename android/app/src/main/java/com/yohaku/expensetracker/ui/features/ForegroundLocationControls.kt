@@ -22,6 +22,7 @@ import com.yohaku.expensetracker.domain.model.EntryDraft
 import com.yohaku.expensetracker.platform.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.*
 import kotlinx.coroutines.*
 
 internal sealed interface LocationRead {
@@ -30,26 +31,27 @@ internal sealed interface LocationRead {
     data class Ready(val fix:LocationFix):LocationRead
     data class Failure(val reason:LocationFailure?,val detail:String?=null):LocationRead
 }
-internal class LocationRequest(private val source:CurrentLocationSource,private val scope:CoroutineScope) {
+internal class LocationRequest(private val source:CurrentLocationSource,private val scope:CoroutineScope,private val onFailure:()->Unit={}) {
     var state by mutableStateOf<LocationRead>(LocationRead.Idle);private set
     private var job:Job?=null
     fun stop(){job?.cancel();job=null;state=LocationRead.Idle}
-    fun denied(){stop();state=LocationRead.Failure(LocationFailure.PERMISSION)}
-    fun request() {
+    fun denied(userInitiated:Boolean=true){stop();state=LocationRead.Failure(LocationFailure.PERMISSION);if(userInitiated)onFailure()}
+    fun request(userInitiated:Boolean=false) {
+        if(!userInitiated&&job?.isActive==true)return
         job?.cancel();state=LocationRead.Locating
         job=scope.launch {
             try {state=LocationRead.Ready(source.currentFix())}
             catch(e:CancellationException){throw e}
-            catch(e:LocationException){state=LocationRead.Failure(e.reason)}
-            catch(e:SecurityException){state=LocationRead.Failure(LocationFailure.PERMISSION)}
-            catch(e:Exception){state=LocationRead.Failure(null,e.message)}
+            catch(e:LocationException){state=LocationRead.Failure(e.reason);if(userInitiated)onFailure()}
+            catch(e:SecurityException){state=LocationRead.Failure(LocationFailure.PERMISSION);if(userInitiated)onFailure()}
+            catch(e:Exception){state=LocationRead.Failure(null,e.message);if(userInitiated)onFailure()}
         }
     }
 }
 @Composable private fun rememberLocationRequest(vm:AppViewModel,identity:String?=null):LocationRequest {
     val context=LocalContext.current;val owner=LocalLifecycleOwner.current;val scope=rememberCoroutineScope()
     val source=remember(vm.locationSource,context){vm.locationSource?:ForegroundLocation(context)}
-    val request=remember(source,scope,identity){LocationRequest(source,scope)}
+    val request=remember(source,scope,identity){LocationRequest(source,scope){vm.haptic(Haptic.Error)}}
     DisposableEffect(owner,request) {
         val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_STOP)request.stop()}
         owner.lifecycle.addObserver(observer)
@@ -57,13 +59,13 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
     }
     return request
 }
-@Composable private fun rememberLocationAction(request:LocationRequest):()->Unit {
+@Composable private fun rememberLocationAction(request:LocationRequest,userInitiated:Boolean=true):()->Unit {
     val context=LocalContext.current
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){result->
-        if(result.values.any{it})request.request()else request.denied()
+        if(result.values.any{it})request.request(userInitiated)else request.denied(userInitiated)
     }
     return {
-        if(context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED||context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED)request.request()
+        if(context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED||context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED)request.request(userInitiated)
         else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION))
     }
 }
@@ -92,6 +94,7 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
 }
 
 @Composable internal fun EntryLocation(s:BookSnapshot,d:EntryDraft,vm:AppViewModel,onChange:(EntryDraft)->Unit) {
+    val haptics=LocalHaptics.current
     val books by vm.preferences.foregroundLocationBooks.collectAsStateWithLifecycle(initialValue=emptySet())
     val today by vm.today.collectAsStateWithLifecycle()
     val currentDate=d.date==today.toString()
@@ -126,6 +129,7 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
                     YText(if(auto)word("唯一可信地点可自动带入；手填后保留你的输入。","確かな候補が1件なら自動入力。手入力した内容を優先します。")else word("请选择候选；已有商户不会被覆盖。","候補を選んでください。入力済みのお店は上書きしません。"),11)
                     FlowRow(horizontalArrangement=Arrangement.spacedBy(if(LocalYohaku.current.id=="magazine")15.dp else 5.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                         candidates.forEach{candidate->LocatedMerchantChip(candidate.merchant.name,candidate.location.name+" · ≈${candidate.distanceMeters.toInt()}m",{
+                            haptics.perform(Haptic.Select)
                             onChange(d.copy(merchant=candidate.merchant.name,merchantId=candidate.merchant.id,merchantManuallyEdited=true))
                         },Modifier.testTag("located-merchant-${candidate.merchant.id}"))}
                     }
@@ -133,15 +137,16 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
             }
             FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 YLink(word("重新定位","現在地を再取得"),locate,Modifier.testTag("entry-locate"))
-                YLink(word("关闭自动定位","位置の自動取得をオフ"),{request.stop();vm.execute{vm.preferences.setForegroundLocation(s.book.id,false)}})
+                YLink(word("关闭自动定位","位置の自動取得をオフ"),{request.stop();vm.execute{vm.preferences.setForegroundLocation(s.book.id,false)}},haptic=Haptic.ToggleOff)
             }
         }else YLink(word("启用定位，匹配保存商户","位置情報で保存済みのお店を選ぶ"),{
             vm.execute(onSuccess=locate){vm.preferences.setForegroundLocation(s.book.id,true)}
-        },Modifier.testTag("entry-enable-location"))
+        },Modifier.testTag("entry-enable-location"),haptic=Haptic.ToggleOn)
     }
 }
 
 @Composable internal fun MerchantLocationPreferences(s:BookSnapshot,vm:AppViewModel,onEntry:(String)->Unit) {
+    val haptics=LocalHaptics.current
     val books by vm.preferences.foregroundLocationBooks.collectAsStateWithLifecycle(initialValue=emptySet())
     val request=rememberLocationRequest(vm);val locate=rememberLocationAction(request)
     LocationCandidatesPanel(Modifier.testTag("merchant-location-panel")) {
@@ -155,7 +160,7 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
         val candidates=s.merchantCandidates(fix.latitude,fix.longitude,fix.accuracyMeters)
         if(candidates.isEmpty())YText(word("没有匹配的已保存地点","一致する保存場所はありません"),11)
         FlowRow(horizontalArrangement=Arrangement.spacedBy(if(LocalYohaku.current.id=="magazine")15.dp else 5.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-            candidates.forEach{candidate->LocatedMerchantChip(candidate.merchant.name,candidate.location.name,{onEntry(candidate.merchant.id)},Modifier.testTag("nearby-merchant-${candidate.merchant.id}"))}
+            candidates.forEach{candidate->LocatedMerchantChip(candidate.merchant.name,candidate.location.name,{haptics.perform(Haptic.Select);onEntry(candidate.merchant.id)},Modifier.testTag("nearby-merchant-${candidate.merchant.id}"))}
         }
     }
     }
@@ -165,7 +170,8 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
     val request=rememberLocationRequest(vm);val locate=rememberLocationAction(request)
     val read=request.state
     LaunchedEffect(read){(read as? LocationRead.Ready)?.let{onFix(it.fix)}}
-    LaunchedEffect(Unit){if(autoLocate)locate()}
+    val autoAction=rememberLocationAction(request,userInitiated=false)
+    LaunchedEffect(Unit){if(autoLocate)autoAction()}
     YLink(word("回到当前位置","現在地に戻る"),locate,Modifier.testTag("place-picker-locate"))
     if(read !is LocationRead.Idle&&read !is LocationRead.Ready)LocationStatus(read)
 }

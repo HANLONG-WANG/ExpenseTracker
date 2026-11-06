@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features.command
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -48,7 +49,7 @@ import java.time.YearMonth
     MonthlyPanel(word("给每个月，一个方向。","毎月の暮らしに、方針を。"),"monthly-plan") {
         YText(word("本账本共用一份月度计划。每次提交评语时会保存当时的原文，之后编辑不改变过去的评语。","この帳簿で使う月の計画です。振り返りの送信時に原文を保存し、その後の編集で過去の記録は変わりません。"),13)
         text?.let{value->YField(word("月度计划","月の計画"),value,{text=it.take(20000)},Modifier.testTag("monthly-plan-text"),multiline=true)}
-        YButton(word("保存月度计划","月の計画を保存"),{val value=text?:return@YButton;vm.execute(onSuccess={vm.navigate("budget")}){vm.repository.saveMonthlyPlan(s.book.id,value)}},Modifier.fillMaxWidth().testTag("monthly-plan-save"),primary=true,enabled=!busy&&text!=null&&!s.book.archived)
+        YButton(word("保存月度计划","月の計画を保存"),{val value=text?:return@YButton;vm.execute(onSuccess={vm.navigate("budget")}){vm.repository.saveMonthlyPlan(s.book.id,value);vm.haptic(Haptic.Done)}},Modifier.fillMaxWidth().testTag("monthly-plan-save"),primary=true,enabled=!busy&&text!=null&&!s.book.archived)
         YLink(word("评语历史与提交","振り返りの履歴・送信"),{vm.navigate("monthly-history")})
     }
 }
@@ -75,7 +76,7 @@ import java.time.YearMonth
         if(submitted)YText(word("这个月已经提交。请在云端交接台继续查看或重试原任务。","この月は送信済みです。クラウド画面で元のタスクの確認・再試行ができます。"),13)
         val title=word("${month} 月度评语","${month} 月の振り返り")
         val request=word("请按所附月度汇总、月计划与账本结构，评估本月情况。评语写入 message，可选建议写入 steps，不得代替用户声明事实。请用中文回复。","添付の月次集計・計画・帳簿構成から今月を振り返ってください。コメントは message、任意の提案は steps に記載し、利用者の事実確認を代行しないでください。日本語で回答してください。")
-        YButton(word("确认上传并提交评语","内容を確認して送信"),{val ready=bundle?:return@YButton;vm.execute(onSuccess={vm.navigate("monthly-history")}){cloud.prepareCommandTask(s.book.id,emptyList(),title,request,CommandExportBundle(ready.context,null),ready)}},Modifier.fillMaxWidth().testTag("monthly-submit-confirm"),primary=true,enabled=!busy&&bundle!=null&&!submitted)
+        YButton(word("确认上传并提交评语","内容を確認して送信"),{val ready=bundle?:return@YButton;vm.execute(onSuccess={vm.navigate("monthly-history")}){cloud.prepareCommandTask(s.book.id,emptyList(),title,request,CommandExportBundle(ready.context,null),ready);vm.haptic(Haptic.Done)}},Modifier.fillMaxWidth().testTag("monthly-submit-confirm"),primary=true,enabled=!busy&&bundle!=null&&!submitted)
         YLink(word("云端交接台","クラウド"),{vm.navigate("cloud")})
     }
     bundle?.let{MonthlyUploadDetails(it)}
@@ -117,7 +118,7 @@ import java.time.YearMonth
 }
 
 // Preference keys are protocol identifiers, never display them as labels.
-private fun monthlyPreferenceName(key:String)=when(key){"activeBook"->"当前账本 / 現在の帳簿";"reminders"->"提醒设置 / 通知設定";"automaticRates"->"自动汇率 / 自動レート";"photoOriginal"->"照片保存 / 写真保存";"location"->"定位 / 位置情報";else->"偏好 / 設定"}
+private fun monthlyPreferenceName(key:String)=when(key){"activeBook"->"当前账本 / 現在の帳簿";"reminders"->"提醒设置 / 通知設定";"automaticRates"->"自动汇率 / 自動レート";"photoOriginal"->"照片保存 / 写真保存";"haptics"->"触感反馈 / 触覚フィードバック";"location"->"定位 / 位置情報";else->"偏好 / 設定"}
 
 @Composable internal fun MonthlyHistoryScreen(s:BookSnapshot,vm:AppViewModel) {
     val cloud=vm.cloud?:return

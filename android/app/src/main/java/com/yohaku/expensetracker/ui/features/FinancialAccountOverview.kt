@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.unit.dp
@@ -75,8 +76,8 @@ import java.time.*
                 if(after?.baselineAfterMinor?.let{it<0}==true)YText(word("基础情景预计本账户不足；未到账收入不消除基础风险。","基本シナリオではこの口座が不足する見込み。未入金の収入で基本リスクは消えません。"),12,color=LocalYohaku.current.warm)
                 YText(word("含其他账单、周期、在途及主动预留；金额或折算缺失时保持未知。","他の請求・定期予定・振替途中・資金確保を含み、不明な金額・換算は不明のまま表示します。"),11)
                 val other=s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt&&it.id!=bank.id}.sortedByDescending{it.currency==bank.currency}.firstOrNull()
-                if(other!=null&&onFund!=null)YButton(word("安排账户转入","口座への振替を記録"),{onFund?.invoke(other.id,bank.id)},Modifier.testTag("finance-fund-transfer-${bank.id}"))
-                if(onFund!=null)YLink(word("补记已实际到账收入","実入金の記録を補完"),{onFund(bank.id,null)})
+                if(other!=null&&onFund!=null)YButton(word("安排账户转入","口座への振替を記録"),{onFund?.invoke(other.id,bank.id)},Modifier.testTag("finance-fund-transfer-${bank.id}"),haptic=Haptic.Compose)
+                if(onFund!=null)YLink(word("补记已实际到账收入","実入金の記録を補完"),{onFund(bank.id,null)},haptic=Haptic.Compose)
             }
         }
     }
@@ -138,8 +139,8 @@ import java.time.*
     val choices=(summary.rows.map{it.bill.date.take(7)}+month).distinct().sortedDescending()
     YSelect(word("还款月份","支払月"),month,choices.map{it to it},onMonth,Modifier.testTag("finance-statement-month"))
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        YButton(word("上个月","前月"),{onMonth(selected.minusMonths(1).toString())},Modifier.weight(1f).testTag("finance-statement-previous"),inline=true)
-        YButton(word("下个月","翌月"),{onMonth(selected.plusMonths(1).toString())},Modifier.weight(1f).testTag("finance-statement-next"),inline=true)
+        YButton(word("上个月","前月"),{onMonth(selected.minusMonths(1).toString())},Modifier.weight(1f).testTag("finance-statement-previous"),inline=true,haptic=Haptic.Step)
+        YButton(word("下个月","翌月"),{onMonth(selected.plusMonths(1).toString())},Modifier.weight(1f).testTag("finance-statement-next"),inline=true,haptic=Haptic.Step)
     }
     val rows=summary.rows.filter{it.bill.date.startsWith(month)};val total=rows.statementTotals()
     ThemeAuditPanel(month,Modifier.testTag("finance-statement-total")) {

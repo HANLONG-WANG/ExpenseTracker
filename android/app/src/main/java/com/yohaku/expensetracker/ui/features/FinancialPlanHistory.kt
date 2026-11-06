@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,11 +25,11 @@ private sealed interface PlanHistoryRead {
 
 @Composable internal fun FinancialPlanHistory(plan:FinancialPlanEntity,vm:AppViewModel,onClose:()->Unit,onCurrent:(String)->Unit={onClose()}) {
     val appState by vm.state.collectAsStateWithLifecycle()
-    var attempt by remember{mutableIntStateOf(0)}
+    var attempt by remember(plan.bookId,plan.id){mutableIntStateOf(0)}
     var selected by rememberSaveable(plan.bookId,plan.id){mutableStateOf<Int?>(null)}
-    val history=remember(plan.bookId,plan.id,attempt){vm.repository.db.financialDao().planRevisions(plan.bookId,plan.id)
-        .map<List<FinancialPlanRevisionEntity>,PlanHistoryRead>{rows->PlanHistoryRead.Ready(rows.map{PlanHistoryItem(it,vm.repository.json.decodeFromString(it.json))})}
-        .catch{emit(PlanHistoryRead.Failure(it.message?:"版本读取失败 / 版の読込に失敗しました"))}
+    val history=remember(plan.bookId,plan.id,attempt){var retry=attempt>0;vm.repository.db.financialDao().planRevisions(plan.bookId,plan.id)
+        .map<List<FinancialPlanRevisionEntity>,PlanHistoryRead>{rows->PlanHistoryRead.Ready(rows.map{PlanHistoryItem(it,vm.repository.json.decodeFromString(it.json))}).also{retry=false}}
+        .catch{if(retry){retry=false;vm.haptic(Haptic.Error)};emit(PlanHistoryRead.Failure(it.message?:"版本读取失败 / 版の読込に失敗しました"))}
     }
     YSheet(word("计划版本","予定の履歴"),onClose) {
         // Collect in the dialog composition that consumes the state, including its initial emission.

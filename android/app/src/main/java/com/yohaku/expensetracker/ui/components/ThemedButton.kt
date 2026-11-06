@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +16,8 @@ import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.LocalYohaku
 
 /** Final full-button/outline-button styles; caller still owns width and action. [compact] keeps primary colours at the outline button's size, for sharing a line with one. */
-@Composable fun YButton(label:String,onClick:()->Unit,modifier:Modifier=Modifier,primary:Boolean=false,enabled:Boolean=true,inline:Boolean=false,compact:Boolean=false){
+@Composable fun YButton(label:String,onClick:()->Unit,modifier:Modifier=Modifier,primary:Boolean=false,enabled:Boolean=true,inline:Boolean=false,compact:Boolean=false,haptic:Haptic?=null){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val large=primary&&!compact
     val journal=t.id=="journal";val objects=t.id=="objects"
@@ -28,7 +31,7 @@ import com.yohaku.expensetracker.ui.theme.LocalYohaku
     val textColor=if(primary)if(objects)Color(0xfffff6e3) else t.surface else t.accent
     val padding=if(large)if(objects)15 else if(journal)12 else 16 else 12
     val fontSize=if(large)if(objects)14 else if(journal)16 else 11 else if(objects)12 else if(journal)13 else 10
-    Box(modifier.then(if(primary)LocalActionRow.current?:Modifier.fillMaxWidth() else Modifier).then(if(journal&&!primary)Modifier.rotate(-.3f) else Modifier).alpha(if(enabled)1f else .5f).clickable(enabled=enabled,role=Role.Button,onClick=onClick),propagateMinConstraints=true){
+    Box(modifier.then(if(primary)LocalActionRow.current?:Modifier.fillMaxWidth() else Modifier).then(if(journal&&!primary)Modifier.rotate(-.3f) else Modifier).alpha(if(enabled)1f else .5f).clickable(enabled=enabled,role=Role.Button,onClick={haptic?.let{haptics.perform(it)};onClick()}),propagateMinConstraints=true){
         if(primary&&(journal||objects)||objects&&!primary)Box(Modifier.matchParentSize().offset(x=if(journal)2.dp else 0.dp,y=if(primary)if(journal)3.dp else 4.dp else 2.dp).background(if(journal)Color(0x233b5b70) else if(primary)Color(0x378b5437) else Color(0x15c6ab80),shape))
         val line=if(journal&&!primary)Modifier.drawBehind{
             val path=androidx.compose.ui.graphics.Path().apply{

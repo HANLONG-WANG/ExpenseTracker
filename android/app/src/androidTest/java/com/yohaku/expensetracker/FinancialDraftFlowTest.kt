@@ -15,6 +15,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.ui.features.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -30,6 +31,8 @@ class FinancialDraftFlowTest {
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
+    private val haptics=RecordingHapticOutput()
+    private var hapticsPreviouslyEnabled=true
     private var mounted by mutableStateOf(true)
     private var epoch by mutableIntStateOf(0)
     @Before fun open() {
@@ -37,9 +40,11 @@ class FinancialDraftFlowTest {
         if(InstrumentationRegistry.getArguments().getString("processPhase")!="read")context.deleteDatabase("financial-draft-ui.db");db=Room.databaseBuilder(context,YohakuDatabase::class.java,"financial-draft-ui.db").build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
         vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
-        ui.setContent{if(mounted)key(epoch){NativeApp(vm)}}
+        hapticsPreviouslyEnabled=runBlocking{vm.preferences.hapticsEnabled.first()}
+        runBlocking{vm.preferences.setHapticsEnabled(true)}
+        ui.setContent{if(mounted)key(epoch){NativeApp(vm,haptics=haptics)}}
     }
-    @After fun close(){vm.viewModelScope.cancel();db.close();if(InstrumentationRegistry.getArguments().getString("processPhase")!="write")InstrumentationRegistry.getInstrumentation().targetContext.deleteDatabase("financial-draft-ui.db")}
+    @After fun close(){runBlocking{vm.preferences.setHapticsEnabled(hapticsPreviouslyEnabled)};vm.viewModelScope.cancel();db.close();if(InstrumentationRegistry.getArguments().getString("processPhase")!="write")InstrumentationRegistry.getInstrumentation().targetContext.deleteDatabase("financial-draft-ui.db")}
     private fun tapTag(tag:String,ancestor:String?=null) {
         finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
@@ -124,7 +129,15 @@ class FinancialDraftFlowTest {
             textField(principal).assertTextEquals("3000");textField(name).assertTextEquals("循環の下書き")
             textField(text("实际到账","実入金額")+" · JPY").assertTextEquals("2900")
             shot("$theme-$language-draft-resumed")
-            tapTag("finance-borrow-preview");tapTag("finance-ledger-confirm")
+            tapTag("finance-borrow-preview")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialLedgerReview.value!=null}
+            runBlocking{repo.updateBook(repo.dao.book(book)!!.let{it.copy(name=it.name+" · revised")})}
+            haptics.clear();tapTag("finance-ledger-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialReviewRefreshed.value&&haptics.calls.isNotEmpty()}
+            assertEquals(listOf(Haptic.Warning),haptics.calls.map{it.second})
+            assertTrue(runBlocking{repo.snapshot(repo.dao.book(book)!!).first().visibleEvents.isEmpty()})
+            haptics.clear();tapTag("finance-ledger-confirm")
+            ui.waitUntil(10000){haptics.calls.isNotEmpty()};assertEquals(listOf(Haptic.Done),haptics.calls.map{it.second})
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.financialDao().draft(book,ctx.slot())==null}&&(vm.state.value as? AppState.Ready)?.snapshot?.visibleEvents?.size==1}
             tapTag("finance-tab-manage");tapTag("finance-manage-records");tapTag("finance-add-repayment")
             val paid=text("实际扣款总额","実出金総額")+" · JPY"
@@ -132,7 +145,8 @@ class FinancialDraftFlowTest {
             val repay=FinancialDraftContext("REPAY",loan)
             ui.waitUntil(10000){runBlocking{db.financialDao().draft(book,repay.slot())?.valuesJson?.contains("12.")==true}}
             tapTag("finance-flow-close");tapTag("finance-tab-overview");resume("REPAY")
-            textField(paid).assertTextEquals("12.");tapTag("financial-draft-discard")
+            textField(paid).assertTextEquals("12.");haptics.clear();tapTag("financial-draft-discard")
+            ui.waitUntil(10000){haptics.calls.isNotEmpty()};assertEquals(listOf(Haptic.Removed),haptics.calls.map{it.second})
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.financialDao().drafts(book,loan).first().isEmpty()}}
             val s=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(1,s.events.size);assertEquals(3000L,s.balance(s.accounts.first{it.id==loan}));assertEquals(12900L,s.balance(s.accounts.first{it.id==bank}));assertEquals(100L,s.monthExpense("2026-10"))

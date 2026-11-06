@@ -1,6 +1,6 @@
 # 云端办理 schema 后续改进审计
 
-本表逐项覆盖当前87条注册命令。源码路径前缀均为 `android/app/src/main/java/com/yohaku/expensetracker/`；除特别注明的领域文件，校验位置位于 `data/command/` 或 `data/repository/`。
+本表逐项覆盖当前88条注册命令。源码路径前缀均为 `android/app/src/main/java/com/yohaku/expensetracker/`；除特别注明的领域文件，校验位置位于 `data/command/` 或 `data/repository/`。
 
 - D：`format=date`、`pattern=^[0-9]{4}-[0-9]{2}-[0-9]{2}$`，本机另用严格 `LocalDate.parse` 排除不存在日期。
 - M：`pattern=^[0-9]{4}-(0[1-9]|1[0-2])$`、`x-format=year-month`，本机 `YearMonth.parse`。
@@ -95,11 +95,12 @@
 | 80. `preferences.automaticRates` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
 | 81. `preferences.location` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
 | 82. `preferences.photoStorage` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
-| 83. `attachment.attachSource` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
-| 84. `entry.prepareDraft` | set.date/settlementDate：D；其余金额/信用卡条件提示复用 entry schema，不把不完整草稿变成正式入账校验；rateDate/toDate/feeDate 仍无硬格式限制 | FollowupCommandAdapters.kt 本机草稿 execute → entryDraft(allowIncomplete=true)；仅解析 draft.date/settlementDate |
-| 85. `backup.export` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
-| 86. `statement.exportOriginal` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
-| 87. `command.exportResult` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
+| 83. `preferences.haptics` | enabled：必填 boolean；本机默认 true，全账本共用；应用前原值须匹配 | FollowupCommandAdapters.kt PreferenceAdapter → AppPreferences.applyCommandPreference；撤销沿用 RestorePreferenceAdapter |
+| 84. `attachment.attachSource` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
+| 85. `entry.prepareDraft` | set.date/settlementDate：D；其余金额/信用卡条件提示复用 entry schema，不把不完整草稿变成正式入账校验；rateDate/toDate/feeDate 仍无硬格式限制 | FollowupCommandAdapters.kt 本机草稿 execute → entryDraft(allowIncomplete=true)；仅解析 draft.date/settlementDate |
+| 86. `backup.export` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
+| 87. `statement.exportOriginal` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
+| 88. `command.exportResult` | 无本次约束；保持现有输入校验 | 对应注册 adapter.validate/execute |
 
 ## 没有新增硬规则的字段
 
@@ -113,9 +114,9 @@
 
 `CommandRegistry.planSchema()` 使用 `CommandPlan`/`CommandStep` serializer 推导对象字段和 required（顶层 message/questions/steps 可省略），固定 format/version，UUID 使用与现有规范化比较相容的大小写十六进制模式，两个 digest 声明64位小写十六进制，steps 上限与 capability limits 共用500。严格对象均为 additionalProperties=false，与 commandJson.ignoreUnknownKeys=false 一致。
 
-steps.items.oneOf 含87条命令分支，每个分支固定 command/command_version，id 共用本机正则，input 引用 `$defs/<command>`。`$defs` 包括 stepReference 及原封复用的87份 inputSchema。顶层 description 指向协议“引用与金额”“只看附件时的填写顺序”“确认与一致性”，说明前序/输出类型、ID唯一、附件身份与digest原样复制及手机预览要求。
+steps.items.oneOf 含88条命令分支，每个分支固定 command/command_version，id 共用本机正则，input 引用 `$defs/<command>`。`$defs` 包括 stepReference 及原封复用的88份 inputSchema。顶层 description 指向协议“引用与金额”“只看附件时的填写顺序”“确认与一致性”，说明前序/输出类型、ID唯一、附件身份与digest原样复制及手机预览要求。
 
-catalogDigest 仍计算现有能力内容，不加入额外schema摘要。输入schema和说明变化会自然改变 catalogDigest。两处 command-plan.v1.schema.json 与两处 capabilities.valid.json 均由验收方运行更新测试生成，本次未手写。按旧注册表 inputSchema 加完整87分支估算，未加本次注解时紧凑JSON约139 KB、四空格格式化约667 KB；新增约束/条件说明后预计上传约180–240 KB、文档约0.8–1.1 MB，以验收生成后的实际字节数为准。
+catalogDigest 仍计算现有能力内容，不加入额外schema摘要。输入schema和说明变化会自然改变 catalogDigest。两处 command-plan.v1.schema.json 与两处 capabilities.valid.json 触感增量已手工同步并重算 catalogDigest，待验收方运行更新测试重新生成比对。按旧注册表 inputSchema 加完整88分支估算，未加本次注解时紧凑JSON约139 KB、四空格格式化约667 KB；新增约束/条件说明后预计上传约180–240 KB、文档约0.8–1.1 MB，以验收生成后的实际字节数为准。
 
 ## 规格取舍及验证边界
 
@@ -123,7 +124,7 @@ catalogDigest 仍计算现有能力内容，不加入额外schema摘要。输入
 - 条件约束使用上述 C 元数据，而非一律加硬 minimum/format，原因是严格遵守“不发明本机尚未强制的规则”。这些元数据不能替代手机业务校验。
 - 按需求使用四位年日期/月 pattern；Java LocalDate/YearMonth 原本还能解析带符号的扩展年份，这个 pattern 对那部分输入更严格。普通四位年范围内不改变实际日期合法性判断。
 - 本轮无UI变动；不运行Gradle、模拟器，也未提交。Kotlin PSI仅检查语法，不能确认serialization代码生成、类型检查、Room或设备流程通过。正常/错误方案样例不含受影响的非法日期/月份，无需手工改写。
-- 最终生成文件一致性、87例校验、编译和设备附件流程由下列命令验收。先生成再跑其他测试，命令串行执行。
+- 最终生成文件一致性、88例校验、编译和设备附件流程由下列命令验收。先生成再跑其他测试，命令串行执行。
 
 ```sh
 cd /home/hubery-fedora/Projects/ExpenseTracker/android

@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
@@ -125,7 +126,7 @@ import java.time.*
                         "DEFERRED"->deferredPaymentDate(date,YearMonth.parse(singleMonth),r.billing!!)
                         else->billingDates(date,r.billing!!).paymentDate
                     }.toString();clearRows()
-                }},enabled=!busy)
+                }},enabled=!busy,haptic=Haptic.Select)
             }
             val dates=mutableListOf(word("变更生效日","変更適用日") to effective)
             if(destinationPool==null) {
@@ -162,7 +163,7 @@ import java.time.*
                     val source=finance.plans.first{it.id==bill.planId};val due=s.billOutstanding(bill)
                     YText(source.name+" · "+word("第${bill.number}期","第${bill.number}回")+" · "+bill.date,12)
                     YText(word("已记录待还本金：","記録済み未返済元金：")+(due.principalMinor?.let{Money(currency,it).display()}?:word("未知","不明")),11)
-                    YButton(word("选择本金","元金を選ぶ"),{poolPartsJson=vm.repository.json.encodeToString(poolParts+PoolTransferDraft(bill.id))},Modifier.testTag("pool-transfer-select-${bill.id}"))
+                    YButton(word("选择本金","元金を選ぶ"),{poolPartsJson=vm.repository.json.encodeToString(poolParts+PoolTransferDraft(bill.id))},Modifier.testTag("pool-transfer-select-${bill.id}"),haptic=Haptic.Select)
                 }}
                 poolParts.forEachIndexed{index,part->Panel(Modifier.testTag("pool-transfer-part-${part.billId}")) {
                     val bill=finance.bills.firstOrNull{it.id==part.billId}
@@ -194,7 +195,7 @@ import java.time.*
                 encoded=vm.repository.json.encodeToString(List(n){i->val previous=end.plusMonths(i-1L);val interest=rule?.revolving?.interest
                     val nextStart=if(i==0)start else if(interest?.frequency==ChargeFrequency.MONTHLY||interest?.includeStart==true&&interest.includeEnd==true)previous.plusDays(1)else if(interest?.includeStart==false&&interest.includeEnd==false)previous.minusDays(1)else previous
                     ArrangementDateDraft(payment.plusMonths(i.toLong()).toString(),nextStart.toString(),end.plusMonths(i.toLong()).toString())})
-            }},Modifier.testTag("arrangement-generate"),enabled=!busy)
+            }},Modifier.testTag("arrangement-generate"),enabled=!busy,haptic=Haptic.Step)
             if(destinationPool==null)rows.forEachIndexed{i,row->Panel {
                 YText(word("第${i+1}期","第${i+1}回"),14)
                 val fields=if(revolving&&!manual)listOf(word("计费开始","計算開始") to row.start,word("计费截止","計算終了") to row.end,word("付款日","支払日") to row.date)else listOf(word("付款日","支払日") to row.date)
@@ -221,7 +222,7 @@ import java.time.*
                         YField(word("分配费用","充当手数料"),move.fee,{changeMove(index,move.copy(fee=it))},Modifier.testTag("arrangement-clearing-fee-$index"),numeric=true)
                         YButton(word("移除此分配行","この充当行を削除"),{movesJson=vm.repository.json.encodeToString(clearingMoves.filterIndexed{i,_->i!=index})},enabled=!busy)
                     }
-                    YButton(if(assigned.isEmpty())word("分配这笔清偿","この返済を充当")else word("拆分另一部分","別の部分に分ける"),{movesJson=vm.repository.json.encodeToString(clearingMoves+if(assigned.isEmpty())ClearingMoveDraft(source.id,principal=Money(currency,source.principalMinor!!).decimal.toPlainString(),interest=Money(currency,source.interestMinor!!).decimal.toPlainString(),fee=Money(currency,source.feeMinor!!).decimal.toPlainString())else ClearingMoveDraft(source.id))},Modifier.testTag("arrangement-clearing-add-${source.id}"),enabled=!busy)
+                    YButton(if(assigned.isEmpty())word("分配这笔清偿","この返済を充当")else word("拆分另一部分","別の部分に分ける"),{movesJson=vm.repository.json.encodeToString(clearingMoves+if(assigned.isEmpty())ClearingMoveDraft(source.id,principal=Money(currency,source.principalMinor!!).decimal.toPlainString(),interest=Money(currency,source.interestMinor!!).decimal.toPlainString(),fee=Money(currency,source.feeMinor!!).decimal.toPlainString())else ClearingMoveDraft(source.id))},Modifier.testTag("arrangement-clearing-add-${source.id}"),enabled=!busy,haptic=Haptic.Select)
                 }}
                 if(clearingMoves.any{m->laterClearings.none{it.id==m.allocationId}})YButton(word("清偿资料已变化，移除旧分配选择","返済情報が変わりました。古い充当選択を削除"),{movesJson=vm.repository.json.encodeToString(clearingMoves.filter{m->laterClearings.any{it.id==m.allocationId}})},enabled=!busy)
             }

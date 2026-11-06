@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -28,13 +29,14 @@ private sealed interface HistoryRead{
 @Composable internal fun RevisionHistory(s:BookSnapshot,event:EventEntity,vm:AppViewModel){
     var attempt by remember(s.book.id,event.id){mutableIntStateOf(0)}
     val result by remember(s.book.id,event.id,attempt){
+        var retryPending=attempt>0
         vm.repository.dao.revisions(s.book.id,event.id).map<List<RevisionEntity>,HistoryRead>{rows->
             HistoryRead.Ready(rows.filter{it.beforeJson!=null}.map{r->
                 Change(r.version,r.timestamp,vm.repository.json.decodeFromString(r.beforeJson!!),vm.repository.json.decodeFromString(r.afterJson),
                     r.beforeDetailsJson?.let{vm.repository.json.decodeFromString<LedgerDetails>(it)},
                     r.afterDetailsJson?.let{vm.repository.json.decodeFromString<LedgerDetails>(it)})
             })
-        }.catch{emit(HistoryRead.Failure(it.message ?: "读取失败 / 読込失敗"))}
+        }.onEach{retryPending=false}.catch{if(retryPending){retryPending=false;vm.haptic(Haptic.Error)};emit(HistoryRead.Failure(it.message ?: "读取失败 / 読込失敗"))}
     }.collectAsStateWithLifecycle(HistoryRead.Loading)
     when(val state=result){
         HistoryRead.Loading->YText(word("正在读取修改记录…","変更履歴を読み込み中…"),11,color=LocalYohaku.current.muted)

@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.room.Room
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +34,57 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CsvImportRoundTripTest {
     @get:Rule val ui=createComposeRule()
+    @Test fun importUndoAndRepeatedParseFailuresEmitOnce()=runBlocking {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+        val path=File(context.cacheDir,"csv-haptics-${java.util.UUID.randomUUID()}.preferences_pb")
+        val malformed=File(context.cacheDir,"csv-invalid-${java.util.UUID.randomUUID()}.csv").apply{writeText("\"unclosed")}
+        val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))
+        val book=repo.createBook("CSV feedback",Currency.JPY,theme="journal",startDate="2025-01-01")
+        repo.dao.putBook(repo.dao.book(book)!!.copy(initialized=true))
+        val account=repo.saveAccount(book,"Cash",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2025-01-01")
+        val bytes="日期,金额,类别\n2024-01-01,100,食物".toByteArray()
+        val document=CsvParser.read(bytes);val settings=CsvParser.guess(document).copy(accountId=account)
+        val preview=repo.csvPreview(book,document,settings,emptyMap())
+        val model=CsvImportViewModel(repo,book)
+        val recorder=RecordingHapticOutput()
+        val factory=object:androidx.lifecycle.ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST") override fun <T:androidx.lifecycle.ViewModel> create(modelClass:Class<T>):T=model as T
+        }
+        try {
+            prefs.select(book)
+            ui.setContent {
+                androidx.lifecycle.viewmodel.compose.viewModel<CsvImportViewModel>(key="csv-$book",factory=factory)
+                NativeApp(vm,haptics=recorder)
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&vm.hapticsEnabled.value==true}
+            ui.runOnIdle{model.state.value=CsvUiState(fileName="fixture.csv",sha256=CsvParser.hash(bytes),document=document,settings=settings,preview=preview,step=3);vm.navigate("csv-import")}
+            ui.onNodeWithTag("csv-import").performScrollTo().performClick()
+            recorder.clear();ui.onNodeWithText("确认导入").performScrollTo().performClick()
+            ui.waitUntil(10000){!model.state.value.busy&&model.state.value.imported==1&&recorder.calls.isNotEmpty()}
+            assertEquals(listOf(Triple("journal",Haptic.Done,1f)),recorder.calls.toList())
+            ui.runOnIdle{vm.navigate("home")};ui.waitForIdle()
+            ui.runOnIdle{vm.navigate("csv-import")};ui.waitForIdle()
+            assertEquals(1,recorder.calls.size)
+            val batch=db.csvImportDao().batches(book).first().single()
+            recorder.clear();ui.runOnIdle{model.undo(batch)}
+            ui.waitUntil(10000){!model.state.value.busy&&recorder.calls.isNotEmpty()}
+            assertTrue(db.csvImportDao().events(book,batch.id).all{it.deletedAt!=null})
+            assertEquals(listOf(Triple("journal",Haptic.Removed,1f)),recorder.calls.toList())
+            ui.runOnIdle{model.closeEvents()};recorder.clear()
+            repeat(2){attempt->
+                ui.runOnIdle{model.open(context,android.net.Uri.fromFile(malformed))}
+                ui.waitUntil(10000){!model.state.value.busy&&model.state.value.error!=null&&recorder.calls.size==attempt+1}
+            }
+            assertTrue(model.state.value.error!!.contains("CSV"))
+            assertEquals(listOf(Haptic.Error,Haptic.Error),recorder.calls.map{it.second})
+            ui.runOnIdle{vm.navigate("home")};ui.waitForIdle()
+            ui.runOnIdle{vm.navigate("csv-import")};ui.waitForIdle()
+            assertEquals(2,recorder.calls.size);assertNull(vm.error.value)
+        }finally{vm.viewModelScope.cancel();model.viewModelScope.cancel();scope.cancel();db.close();path.delete();malformed.delete()}
+    }
     @Test fun importHistoricalRowsUndoAndRestoreAsOneGroup()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()

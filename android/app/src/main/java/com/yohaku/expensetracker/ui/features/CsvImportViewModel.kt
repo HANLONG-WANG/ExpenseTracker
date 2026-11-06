@@ -11,13 +11,18 @@ import com.yohaku.expensetracker.domain.csv.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.encodeToString
+import com.yohaku.expensetracker.ui.haptics.*
 
 data class CsvUiState(val fileName:String="",val sha256:String="",val document:CsvDocument?=null,val settings:CsvSettings=CsvSettings(),
     val edits:Map<Int,CsvEdit> = emptyMap(),val preview:CsvPreview?=null,val step:Int=0,val busy:Boolean=false,val progress:Pair<Int,Int>?=null,
     val error:String?=null,val imported:Int?=null,val repeated:Boolean=false,val remembered:Boolean=false,val batchEvents:List<EventEntity>?=null)
 class CsvImportViewModel(private val repo:LedgerRepository,private val bookId:String):ViewModel() {
     val state=MutableStateFlow(CsvUiState())
+    private val feedback=Channel<Haptic>(Channel.BUFFERED)
+    val haptics=feedback.receiveAsFlow()
     private var bytes:ByteArray?=null
     private fun work(block:suspend ()->Unit) {
         if(state.value.busy)return
@@ -25,7 +30,7 @@ class CsvImportViewModel(private val repo:LedgerRepository,private val bookId:St
         viewModelScope.launch {
             try{withContext(Dispatchers.IO){block()}}
             catch(e:CancellationException){throw e}
-            catch(e:Exception){state.value=state.value.copy(error=e.message?:e.javaClass.simpleName)}
+            catch(e:Exception){state.value=state.value.copy(error=e.message?:e.javaClass.simpleName);feedback.trySend(Haptic.Error)}
             finally{state.value=state.value.copy(busy=false,progress=null)}
         }
     }
@@ -84,9 +89,9 @@ class CsvImportViewModel(private val repo:LedgerRepository,private val bookId:St
             state.value=state.value.copy(progress=done to total)
         }
         state.value=state.value.copy(imported=batch.importedCount,preview=null,document=null,step=0,repeated=true)
-        bytes=null
+        bytes=null;feedback.trySend(Haptic.Done)
     }
-    fun undo(batch:CsvBatchEntity)=work{repo.undoCsvBatch(bookId,batch.id);state.value=state.value.copy(batchEvents=repo.db.csvImportDao().events(bookId,batch.id))}
+    fun undo(batch:CsvBatchEntity)=work{repo.undoCsvBatch(bookId,batch.id);feedback.trySend(Haptic.Removed);state.value=state.value.copy(batchEvents=repo.db.csvImportDao().events(bookId,batch.id))}
     fun events(batch:CsvBatchEntity)=work{state.value=state.value.copy(batchEvents=repo.db.csvImportDao().events(bookId,batch.id))}
     fun closeEvents(){state.value=state.value.copy(batchEvents=null)}
 }

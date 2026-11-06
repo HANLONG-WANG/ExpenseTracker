@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -58,10 +59,13 @@ internal class FinancialDraftSession(val vm:AppViewModel,val bookId:String,val c
     suspend fun commit(action:suspend()->String?):String?=writes.withLock {
         // Flush the latest input before trying the transaction; rejection/failure keeps it resumable.
         store(payload())
-        vm.repository.commitFinancialDraft(bookId,context.slot(),action).also{if(it!=null){consumed=true;generation++;vm.financialDraftSessions.remove(key,this)}}
+        vm.repository.commitFinancialDraft(bookId,context.slot(),action).also{
+            if(it!=null){consumed=true;generation++;vm.financialDraftSessions.remove(key,this)}
+            vm.haptic(if(it!=null)Haptic.Done else Haptic.Warning)
+        }
     }
     suspend fun discard()=writes.withLock {
-        vm.repository.discardFinancialDraft(bookId,context.slot());consumed=true;generation++;vm.financialDraftSessions.remove(key,this)
+        vm.repository.discardFinancialDraft(bookId,context.slot());consumed=true;generation++;vm.financialDraftSessions.remove(key,this);vm.haptic(Haptic.Removed)
     }
 }
 
@@ -81,7 +85,7 @@ internal class FinancialDraftSession(val vm:AppViewModel,val bookId:String,val c
 internal suspend fun commitFinancialDraft(session:FinancialDraftSession,action:suspend()->String?):String?=session.commit(action)
 internal suspend fun discardFinancialDraft(vm:AppViewModel,bookId:String,context:FinancialDraftContext) {
     val session=vm.financialDraftSessions[bookId+"/"+context.slot()]
-    if(session!=null)session.discard()else vm.repository.discardFinancialDraft(bookId,context.slot())
+    if(session!=null)session.discard()else {vm.repository.discardFinancialDraft(bookId,context.slot());vm.haptic(Haptic.Removed)}
 }
 
 private sealed interface DraftRead {
@@ -102,12 +106,12 @@ private sealed interface DraftRowsRead {
 @Composable private fun FinancialDraftHostContent(s:BookSnapshot,context:FinancialDraftContext,vm:AppViewModel,onClose:()->Unit,content:@Composable ()->Unit) {
     val finance by vm.financialState.collectAsStateWithLifecycle()
     val limitGraph by vm.creditLimitState.collectAsStateWithLifecycle()
-    var attempt by remember{mutableIntStateOf(0)}
+    var attempt by remember(s.book.id,context){mutableIntStateOf(0)}
     val read by produceState<DraftRead>(DraftRead.Loading,s.book.id,context,attempt) {
         value=DraftRead.Loading
         value=try{DraftRead.Ready(vm.repository.db.financialDao().draft(s.book.id,context.slot()))}
             catch(e:CancellationException){throw e}
-            catch(e:Exception){DraftRead.Failure(e.message?:"草稿读取失败 / 下書き読込失敗")}
+            catch(e:Exception){if(attempt>0)vm.haptic(Haptic.Error);DraftRead.Failure(e.message?:"草稿读取失败 / 下書き読込失敗")}
     }
     when(val result=read) {
         DraftRead.Loading->YSheet(word("金融草稿","金融の下書き"),onClose){YText(word("正在读取…","読込中…"),12)}
@@ -158,10 +162,10 @@ private sealed interface DraftRowsRead {
 }
 
 @Composable internal fun FinancialDraftList(s:BookSnapshot,account:AccountEntity?,vm:AppViewModel,onResume:(FinancialDraftContext)->Unit,onOpen:(()->Unit)?=null,alwaysExpanded:Boolean=false) {
-    var attempt by remember{mutableIntStateOf(0)}
-    val read by remember(s.book.id,account?.id,attempt){vm.repository.db.financialDao().drafts(s.book.id,account?.id)
-        .map<List<FinancialDraftEntity>,DraftRowsRead>{DraftRowsRead.Ready(it)}
-        .catch{emit(DraftRowsRead.Failure(it.message?:"草稿读取失败 / 下書き読込失敗"))}
+    var attempt by remember(s.book.id,account?.id){mutableIntStateOf(0)}
+    val read by remember(s.book.id,account?.id,attempt){var retry=attempt>0;vm.repository.db.financialDao().drafts(s.book.id,account?.id)
+        .map<List<FinancialDraftEntity>,DraftRowsRead>{retry=false;DraftRowsRead.Ready(it)}
+        .catch{if(retry){retry=false;vm.haptic(Haptic.Error)};emit(DraftRowsRead.Failure(it.message?:"草稿读取失败 / 下書き読込失敗"))}
     }.collectAsStateWithLifecycle(DraftRowsRead.Loading)
     var expanded by rememberSaveable(s.book.id,account?.id){mutableStateOf(false)}
     val rows=when(val result=read){DraftRowsRead.Loading->return;is DraftRowsRead.Ready->result.rows;is DraftRowsRead.Failure->{YText(result.message,12);YButton(word("重新读取草稿","下書きを再読込"),{attempt++});return}}

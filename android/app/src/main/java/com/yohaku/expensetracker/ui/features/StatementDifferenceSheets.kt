@@ -12,6 +12,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import java.time.LocalDate
 
 @Composable internal fun StatementDifferenceSheet(s:BookSnapshot,p:StatementReviewProjection,all:List<StatementReviewProjection>,row:StatementRow,
@@ -47,7 +48,7 @@ import java.time.LocalDate
             RecordFacts(listOf(word("原决定依据","旧判断の根拠") to "${manual.original.postedDate} · ${manual.original.currency} ${manual.original.amount}",
                 word("当前依据","現在の根拠") to (manual.current?.let{"${it.postedDate} · ${it.currency} ${it.amount}"}?:word("已不存在","存在しません"))))
             if(manual.saved.note.isNotBlank())YText(manual.saved.note,12)
-            YButton(word("解除此人工关联","この手動関連を解除"),{vm.execute(onSuccess=onClose){vm.repository.clearStatementDecision(s.book.id,p.batch.id,row.row_id)}},Modifier.testTag("statement-unlink-difference"),enabled=!busy)
+            YButton(word("解除此人工关联","この手動関連を解除"),{vm.execute(onSuccess=onClose){vm.repository.clearStatementDecision(s.book.id,p.batch.id,row.row_id);vm.haptic(Haptic.Removed)}},Modifier.testTag("statement-unlink-difference"),enabled=!busy)
         }
         val currentReview=review
         if(currentReview!=null) {
@@ -57,7 +58,7 @@ import java.time.LocalDate
                     word("记账入账日","記録の計上日") to posting.postedDate,word("记账发生日","記録の利用日") to posting.occurredDate))
                 YText(word("只保存人工核对决定，此行仍显示差异，不改金额、日期、余额或预算。","手動照合の判断だけを保存し、差異表示を維持。金額・日付・残高・予算は変更しません。"),12)
                 YActionRow {
-                    YButton(word("确认保留差异","差異を保持して確定"),{vm.execute(onSuccess=onClose){vm.repository.acceptStatementDifference(currentReview)}},Modifier.testTag("statement-confirm-difference"),primary=true,enabled=!busy)
+                    YButton(word("确认保留差异","差異を保持して確定"),{vm.execute(onSuccess=onClose){vm.repository.acceptStatementDifference(currentReview);vm.haptic(Haptic.Done)}},Modifier.testTag("statement-confirm-difference"),primary=true,enabled=!busy)
                     YButton(word("返回选择","候補に戻る"),{review=null},enabled=!busy)
                 }
             }
@@ -148,7 +149,7 @@ import java.time.LocalDate
         StatementInfoFacts(info)
         if(wrongCurrency)YText(word("补充资料币种与账户不一致，不能套用；原文件仍完整保留。","補足資料の通貨が口座と一致せず適用できません。元ファイルは保持しています。"),12,color=LocalYohaku.current.warm)
         if(bills.isEmpty())YEmpty(word("没有可确认的正式账单。请先在金融账户中建立手动已知账单或计划。","確定できる正式な請求がありません。金融口座で既知の請求や予定を作成してください。"))
-        bills.forEach { bill->YButton(bill.date+" · "+Money(Currency.valueOf(account.currency),bill.totalMinor).display(),{onSelect(bill.id)},Modifier.testTag("statement-bill-${bill.id}"),enabled=!wrongCurrency) }
+        bills.forEach { bill->YButton(bill.date+" · "+Money(Currency.valueOf(account.currency),bill.totalMinor).display(),{onSelect(bill.id)},Modifier.testTag("statement-bill-${bill.id}"),enabled=!wrongCurrency,haptic=Haptic.Select) }
         if(AccountType.valueOf(account.type).debt)YLink(word("打开金融账户管理","金融口座の管理を開く"),onManage)
         YText(word("选择后进入正式账单表单，检查输入并预览；确认之前不会修改计划或账单。","選択後は正式な請求フォームで入力を確認・プレビュー。確定前に予定・請求は変更しません。"),11,color=LocalYohaku.current.muted)
     }

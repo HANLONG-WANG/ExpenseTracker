@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
@@ -47,9 +48,9 @@ import com.yohaku.expensetracker.ui.theme.*
                 YActionRow {
                     YButton(label,{
                         var saved=false
-                        vm.execute(onSuccess={if(saved){onClose();if(value.operation==AccountOperation.DELETE)onDeleted()}}) {
+                        vm.execute(onSuccess={if(saved){vm.haptic(if(value.operation==AccountOperation.DELETE)Haptic.Removed else Haptic.Done);onClose();if(value.operation==AccountOperation.DELETE)onDeleted()}}) {
                             saved=vm.repository.commitAccountOperation(value)
-                            if(!saved){review=vm.repository.previewAccountOperation(a.bookId,a.id,value.operation);refreshed=true}
+                            if(!saved){review=vm.repository.previewAccountOperation(a.bookId,a.id,value.operation);refreshed=true;vm.haptic(Haptic.Warning)}
                             else vm.reminders?.rebuildSafely(false)
                         }
                     },Modifier.testTag("confirm-account-operation"),primary=true,enabled=!busy&&(!deleting||!value.usage.inUse))

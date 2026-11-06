@@ -12,6 +12,7 @@ import com.yohaku.expensetracker.data.db.YohakuDatabase
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.features.*
+import com.yohaku.expensetracker.ui.haptics.*
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -28,7 +29,8 @@ class EntryFlowTest {
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
-    @Before fun setup(){val context=InstrumentationRegistry.getInstrumentation().targetContext;db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db);vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}}
+    private val haptics=RecordingHapticOutput()
+    @Before fun setup(){val context=InstrumentationRegistry.getInstrumentation().targetContext;db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db);vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=haptics)}}
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun waitFor(text:String){ui.waitUntil(10000){ui.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}}
     private fun tap(text:String){waitFor(text);ui.onNodeWithText(text).performScrollTo().performClick()}
@@ -75,8 +77,10 @@ class EntryFlowTest {
         ui.onNodeWithTag("field-账本名称").performTextReplacement("我的外币日常")
         ui.onNodeWithTag("field-月预算 / 可稍后设置").performScrollTo().performTextReplacement("68000")
         ui.onNodeWithTag("header-settings").performScrollTo().performClick()
+        ui.runOnIdle{haptics.clear()}
         tap("纸质手账")
         ui.waitUntil(10000){vm.setupDraft.value?.theme=="journal"}
+        ui.runOnIdle{assertEquals(listOf(Triple("journal",Haptic.Select,1f)),haptics.calls.toList())}
         ui.onNodeWithTag("field-账本名称").performScrollTo().assertTextEquals("我的外币日常")
         ui.onNodeWithTag("field-月预算 / 可稍后设置").performScrollTo().assertTextEquals("68000")
         ui.onNodeWithTag("header-settings").performScrollTo().performClick()
@@ -86,8 +90,10 @@ class EntryFlowTest {
         ui.onNodeWithTag("field-帳簿名").performScrollTo().assertTextEquals("我的外币日常")
         ui.onNodeWithTag("field-月予算・後から設定可").performScrollTo().assertTextEquals("68000")
         ui.onNodeWithTag("header-settings").performScrollTo().performClick()
+        ui.runOnIdle{haptics.clear()}
         tap("日常の小物")
         ui.waitUntil(10000){vm.setupDraft.value?.theme=="objects"}
+        ui.runOnIdle{assertEquals(listOf(Triple("objects",Haptic.Select,1f)),haptics.calls.toList())}
         ui.onNodeWithTag("field-帳簿名").performScrollTo().assertTextEquals("我的外币日常")
         ui.onNodeWithTag("field-月予算・後から設定可").performScrollTo().assertTextEquals("68000")
         ui.onNodeWithTag("header-book").assertDoesNotExist()

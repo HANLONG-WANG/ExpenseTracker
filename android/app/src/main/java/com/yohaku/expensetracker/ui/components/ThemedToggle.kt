@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -18,12 +20,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontStyle
 import com.yohaku.expensetracker.ui.theme.LocalYohaku
 
-@Composable fun YToggle(label:String,value:Boolean,onChange:(Boolean)->Unit,modifier:Modifier=Modifier){
+@Composable fun YToggle(label:String,value:Boolean,onChange:(Boolean)->Unit,modifier:Modifier=Modifier,labelSize:Int?=null,labelLineHeight:Float?=null){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
-    Row(modifier.fillMaxWidth().testTag("toggle-$label").toggleable(value,role=if(journal)Role.Checkbox else Role.Switch,onValueChange=onChange).padding(vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-        val size=if(journal)13 else if(objects)12 else 11
-        YText(label,size,Modifier.weight(1f),lineHeightMultiplier=if(journal)19f/13 else if(objects)17f/12 else 16f/11)
+    Row(modifier.fillMaxWidth().testTag("toggle-$label").toggleable(value,role=if(journal)Role.Checkbox else Role.Switch,onValueChange={haptics.perform(if(it)Haptic.ToggleOn else Haptic.ToggleOff);onChange(it)}).padding(vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+        val size=labelSize?:if(journal)13 else if(objects)12 else 11
+        YText(label,size,Modifier.weight(1f),lineHeightMultiplier=labelLineHeight?:if(journal)19f/13 else if(objects)17f/12 else 16f/11)
         when(t.id){
             "journal"->Box(Modifier.size(22.dp).rotate(-4f).background(if(value)Color(0xffdae1d3) else Color.Transparent,RoundedCornerShape(2.dp)).border(1.dp,t.accent,RoundedCornerShape(2.dp)),contentAlignment=Alignment.Center){
                 // The check is a fixed-size icon; the label still follows fontScale.

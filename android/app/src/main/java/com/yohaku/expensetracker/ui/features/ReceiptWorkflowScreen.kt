@@ -15,8 +15,10 @@ import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.*
 
 @Composable internal fun ReceiptsScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit) {
+    val haptics=LocalHaptics.current
     val busy by vm.busy.collectAsStateWithLifecycle()
     var tab by rememberSaveable(s.book.id){mutableStateOf("UNSORTED")}
     var selected by rememberSaveable(s.book.id){mutableStateOf(listOf<String>())}
@@ -36,7 +38,7 @@ import com.yohaku.expensetracker.ui.theme.*
     if(showNote)YText(word("所选图片交给云端分析台整理，结果回来后在本机预览并保存商品明细。图片只在你上传时离开本机。","選んだ画像をクラウド分析デスクで整理し、結果を端末で確認して商品明細を保存。画像は送信したときだけ端末の外へ出ます。"),11,color=LocalYohaku.current.muted)
     ReceiptInboxTabs(tab){tab=it}
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
-        YLink(word("全选待整理","未整理を全選択"),{selected=if(pending.all{it in selected})emptyList()else pending},Modifier.testTag("receipt-select-all"))
+        YLink(word("全选待整理","未整理を全選択"),{selected=if(pending.all{it in selected})emptyList()else pending},Modifier.testTag("receipt-select-all"),haptic=Haptic.Select)
         YText(word("已选 ${selected.count{it in pending}}","選択 ${selected.count{it in pending}}"),11)
     }
     val records=available.filter{tab=="ALL"||it.status==tab}
@@ -46,7 +48,7 @@ import com.yohaku.expensetracker.ui.theme.*
         val images=s.entryReceiptImages(event.id)
         ReceiptInboxCard(receipt.id,index,event.merchant.ifBlank{word("这张小票","このレシート")},event.date+" · "+s.path(event.categoryId)+" · "+Money(Currency.valueOf(event.currency),event.amountMinor).display()+" · "+word("第${receipt.revision}版","第${receipt.revision}版"),
             if(receipt.status=="SORTED")if(receipt.id in incompleteIds)word("已整理 · 明细待确认","整理済・明細要確認")else word("已整理","整理済み")else if(receipt.id in exportedReceiptIds)word("已交云端 · 待回填","クラウドへ送信済・取込待ち")else word("待整理","未整理"),receipt.status=="SORTED",images.size,{onRecord(event)},
-            selected=receipt.id in selected,onSelect=if(receipt.status!="SORTED"&&!busy)({selected=if(receipt.id in selected)selected-receipt.id else selected+receipt.id})else null) {
+            selected=receipt.id in selected,onSelect=if(receipt.status!="SORTED"&&!busy)({haptics.perform(Haptic.Select);selected=if(receipt.id in selected)selected-receipt.id else selected+receipt.id})else null) {
             images.forEachIndexed{imageIndex,file->ReceiptThumbnailFrame(file.id,imageIndex,{imagePreview=file.id}){MediaThumbnail(vm.repository,file,Modifier.fillMaxSize(),crop=true)}}
         }
     }
@@ -55,9 +57,12 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable internal fun ReceiptBackfillSheet(s:BookSnapshot,preview:ReceiptBackfillPreview,busy:Boolean,onClose:()->Unit,onReselect:()->Unit,onSave:(Boolean,Boolean)->Unit) {
+    val resultHaptic=LocalResultHaptic.current
     var confirming by rememberSaveable(preview.file.bundle_id){mutableStateOf(false)}
     val needsStale=preview.targets.any{it.staleExport}
     val needsReplacement=preview.targets.any{it.existingItemsRevision!=null}
+    val differs=preview.targets.any{it.totals.differenceFromOriginal?.signum()?.let{v->v!=0}==true||it.totals.differenceFromDeclared?.signum()?.let{v->v!=0}==true}
+    LaunchedEffect(preview,confirming){if(confirming&&(needsStale||needsReplacement)||!confirming&&differs){resultHaptic(Haptic.Warning)}}
     if(confirming&&(needsStale||needsReplacement)) {
         YSheet(if(needsReplacement)word("确认替换已有商品明细","既存の商品明細を置換")else word("确认使用旧修订结果","旧リビジョンの結果を確認"),{if(!busy)confirming=false}) {
             YText(word("只替换已预览的商品明细。原记账金额、分类和小票图片保持原样。","確認した商品明細のみ置換。記録額・カテゴリ・画像は保持。"),12,color=LocalYohaku.current.muted)

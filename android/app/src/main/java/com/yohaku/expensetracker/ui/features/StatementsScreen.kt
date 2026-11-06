@@ -22,6 +22,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 
 @Composable internal fun StatementsScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,
     onSupplement:(StatementSupplementSeed)->Unit,onActual:(String,String,StatementRow,String)->Unit,onFinancial:(String)->Unit) {
@@ -114,7 +115,7 @@ import com.yohaku.expensetracker.ui.theme.*
         supplement?.let{id->file.rows.find{it.row_id==id}?.let{row->StatementSupplementSheet(s,file,row,vm,{supplement=null},{seed->supplement=null;onSupplement(seed)},{kind,debt->supplement=null;financialAccount=debt;financialKind=kind})}}
         if(deleting)YSheet(word("删除核对资料","照合資料を削除"),{deleting=false}) {
             YText(word("只移除本批原文件和核对关联，不删除或修改手动账目。","このバッチの元ファイルと照合関連だけを削除し、手動記録は削除・変更しません。"),13)
-            YButton(word("确认删除资料","資料の削除を確認"),{vm.execute(onSuccess={deleting=false}){vm.repository.deleteStatement(s.book.id,p.batch.id)}},Modifier.testTag("statement-delete-confirm"),primary=true,enabled=!busy)
+            YButton(word("确认删除资料","資料の削除を確認"),{vm.execute(onSuccess={deleting=false}){vm.repository.deleteStatement(s.book.id,p.batch.id);vm.haptic(Haptic.Removed)}},Modifier.testTag("statement-delete-confirm"),primary=true,enabled=!busy)
         }
         if(billChooser)StatementBillChooser(s,p,graph,{billChooser=false},{billId=it;billChooser=false},{billChooser=false;onFinancial(account.id)})
         billId?.let { id->graph?.bills?.firstOrNull{it.id==id}?.let { bill->

@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
@@ -87,6 +88,6 @@ import com.yohaku.expensetracker.ui.theme.*
                 YButton(word("计划版本与变化","予定の履歴と変化"),onHistory,Modifier.testTag("finance-plan-history-${plan.id}"),enabled=!busy)
                 YText(word("付款账户：","引落口座：")+(s.accounts.firstOrNull{it.id==bill.paymentAccountId}?.name?:word("未确定","未定")),11)
                 YButton(if(bill.confirmed)word("明确调整这期账单","この回の請求を明示的に修正")else word("确认平台账单","返済先の請求を確定"),{onConfirm(bill.id)},Modifier.testTag("finance-confirm-bill-${bill.id}"),enabled=!busy)
-                if(bill.confirmed&&bill.ruleVersionId!=null&&bill.predictedTotalMinor!=null)YButton(word("与原预测核对规则","元の予測で条件を検証"),{vm.execute{vm.repository.validateFinancialRule(s.book.id,bill.id)}},Modifier.testTag("finance-validate-bill-${bill.id}"),enabled=!busy)
+                if(bill.confirmed&&bill.ruleVersionId!=null&&bill.predictedTotalMinor!=null)YButton(word("与原预测核对规则","元の予測で条件を検証"),{vm.execute{val result=vm.repository.validateFinancialRule(s.book.id,bill.id);vm.haptic(if(result.dateChanged||result.totalDifferenceMinor!=0L||result.principalDifferenceMinor!=0L||result.feeDifferenceMinor!=0L)Haptic.Warning else Haptic.Done)}},Modifier.testTag("finance-validate-bill-${bill.id}"),enabled=!busy)
     }
 }

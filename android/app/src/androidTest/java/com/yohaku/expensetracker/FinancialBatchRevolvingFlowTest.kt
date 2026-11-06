@@ -14,6 +14,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.features.*
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -47,15 +48,19 @@ class FinancialBatchRevolvingFlowTest {
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
+    private val haptics=RecordingHapticOutput()
+    private var hapticsPreviouslyEnabled=true
     private val clock=Clock.fixed(Instant.parse("2026-11-04T01:59:42.123456789Z"),ZoneId.of("Asia/Tokyo"))
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,clock)
         vm=AppViewModel(repo,AppPreferences(context),testReferenceRates(AppPreferences(context),repo.clock))
-        ui.setContent{NativeApp(vm)}
+        hapticsPreviouslyEnabled=runBlocking{vm.preferences.hapticsEnabled.first()}
+        runBlocking{vm.preferences.setHapticsEnabled(true)}
+        ui.setContent{NativeApp(vm,haptics=haptics)}
     }
-    @After fun close(){vm.viewModelScope.cancel();db.close()}
+    @After fun close(){runBlocking{vm.preferences.setHapticsEnabled(hapticsPreviouslyEnabled)};vm.viewModelScope.cancel();db.close()}
     private fun tap(tag:String) {
         finishFinancialInputBeforeTap(ui,tag)
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()}
@@ -125,7 +130,8 @@ class FinancialBatchRevolvingFlowTest {
             val beforeCancel=runBlocking{db.financialDao().graph(x.book).first()!!}
             tap("finance-batch-undo-cancel")
             assertEquals(beforeCancel,runBlocking{db.financialDao().graph(x.book).first()!!})
-            tap("finance-batch-open-$group");tap("batch-revolving-undo-confirm")
+            tap("finance-batch-open-$group");haptics.clear();tap("batch-revolving-undo-confirm")
+            ui.waitUntil(10000){haptics.calls.isNotEmpty()};assertEquals(listOf(Haptic.Restored),haptics.calls.map{it.second})
             ui.waitUntil(10000){!vm.busy.value&&vm.financialState.value?.arrangements?.isEmpty()==true&&ui.onAllNodesWithText(if(language=="ja")"取消済み・元の予定を復元。手続き履歴は保持します。"else"已撤销，原安排已恢复；办理历史保留。").fetchSemanticsNodes().isNotEmpty()}
             val restored=runBlocking{db.financialDao().graph(x.book).first()!!}
             for(bill in original.bills)assertEquals(bill.totalMinor,restored.bills.first{it.id==bill.id}.totalMinor)
@@ -151,7 +157,8 @@ class FinancialBatchRevolvingFlowTest {
             }
             enter(x);tap("finance-tab-manage");tap("finance-manage-history");tap("finance-batch-open-$group")
             val before=runBlocking{db.financialDao().graph(x.book).first()!!}
-            tap("batch-revolving-undo-confirm")
+            haptics.clear();tap("batch-revolving-undo-confirm")
+            ui.waitUntil(10000){haptics.calls.isNotEmpty()};assertEquals(listOf(Haptic.Warning),haptics.calls.map{it.second})
             ui.waitUntil(10000){ui.onAllNodesWithTag("finance-batch-undo-blocked").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("finance-batch-undo-blocked").assertTextContains(if(language=="ja")"支払・予定の変更"else"付款或安排变化",substring=true)
             assertEquals(before,runBlocking{db.financialDao().graph(x.book).first()!!})

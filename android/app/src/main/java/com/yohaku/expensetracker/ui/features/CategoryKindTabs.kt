@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.*
@@ -17,6 +19,7 @@ import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun CategoryKindTabs(selected:EntryKind,onChoose:(EntryKind)->Unit){
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     Column(Modifier.fillMaxWidth().padding(vertical=7.dp)){
@@ -30,7 +33,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 val bg=if(journal)if(active)Color(0xffdce4dc) else Color(0xffe7e4d4) else if(objects)if(active)Color(0xfffffaf0) else Color.Transparent else if(active)t.ink else Color.Transparent
                 val ink=if(active)if(journal||objects)t.accent else t.surface else t.ink
                 val shape=RoundedCornerShape(if(objects)12.dp else 0.dp)
-                Box(Modifier.weight(1f).testTag("category-kind-${kind.name}").then(if(journal)Modifier.rotate(-1f) else Modifier).selectable(active,role=Role.Tab,onClick={onChoose(kind)}),contentAlignment=Alignment.Center){
+                Box(Modifier.weight(1f).testTag("category-kind-${kind.name}").then(if(journal)Modifier.rotate(-1f) else Modifier).selectable(active,role=Role.Tab,onClick={if(!active)haptics.perform(Haptic.TabSwitch);onChoose(kind)}),contentAlignment=Alignment.Center){
                     if(objects&&active)Box(Modifier.matchParentSize().offset(y=2.dp).background(Color(0x2ec5ab81),shape))
                     Box(Modifier.fillMaxWidth().background(bg,shape).padding(horizontal=if(journal)5.dp else if(objects)4.dp else 12.dp,vertical=if(journal)8.dp else 9.dp),contentAlignment=Alignment.Center){
                         val size=if(journal)14 else if(objects)11 else 12

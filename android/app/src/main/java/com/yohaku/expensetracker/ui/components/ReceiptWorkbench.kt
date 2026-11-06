@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,11 +53,12 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 @Composable internal fun ReceiptInboxTabs(current:String,onSelect:(String)->Unit) {
+    val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     Row(Modifier.fillMaxWidth().then(if(objects)Modifier.background(Color(0xfff0e6d5),RoundedCornerShape(16.dp)).padding(5.dp)else Modifier.drawBehind{drawLine(if(journal)t.line else t.ink,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(journal)PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)}.padding(bottom=if(journal)10.dp else 0.dp)),horizontalArrangement=Arrangement.spacedBy(if(journal)6.dp else if(objects)3.dp else 0.dp)) {
         listOf("UNSORTED" to word("待整理","未整理"),"SORTED" to word("已整理","整理済み"),"ALL" to word("全部","すべて")).forEach{(id,label)->
             val chosen=id==current
-            Box(Modifier.weight(1f).testTag("receipt-tab-$id").selectable(selected=chosen,role=Role.Tab,onClick={onSelect(id)}).then(if(journal)Modifier.rotate(-1f)else Modifier).background(if(objects)if(chosen)Color(0xfffffaf0)else Color.Transparent else if(journal)if(chosen)Color(0xffdce4dc)else Color(0xffe7e4d4)else if(chosen)t.ink else Color.Transparent,RoundedCornerShape(if(objects)12.dp else 0.dp)).padding(horizontal=if(journal)5.dp else 4.dp,vertical=9.dp),contentAlignment=Alignment.Center){YText(label,if(journal)14 else if(objects)11 else 12,color=if(t.id=="magazine"&&chosen)t.surface else if(chosen)t.accent else t.ink)}
+            Box(Modifier.weight(1f).testTag("receipt-tab-$id").selectable(selected=chosen,role=Role.Tab,onClick={if(!chosen)haptics.perform(Haptic.TabSwitch);onSelect(id)}).then(if(journal)Modifier.rotate(-1f)else Modifier).background(if(objects)if(chosen)Color(0xfffffaf0)else Color.Transparent else if(journal)if(chosen)Color(0xffdce4dc)else Color(0xffe7e4d4)else if(chosen)t.ink else Color.Transparent,RoundedCornerShape(if(objects)12.dp else 0.dp)).padding(horizontal=if(journal)5.dp else 4.dp,vertical=9.dp),contentAlignment=Alignment.Center){YText(label,if(journal)14 else if(objects)11 else 12,color=if(t.id=="magazine"&&chosen)t.surface else if(chosen)t.accent else t.ink)}
         }
     }
 }

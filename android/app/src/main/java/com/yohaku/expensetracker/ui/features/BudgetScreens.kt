@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -17,9 +18,9 @@ import java.time.YearMonth
 
 @Composable internal fun MonthChooser(month:String,onMonth:(String)->Unit,previousTag:String="month-previous",nextTag:String="month-next",monthTag:String="month-current",previousEnabled:Boolean=true) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-        YButton("‹",{onMonth(YearMonth.parse(month).minusMonths(1).toString())},Modifier.testTag(previousTag),enabled=previousEnabled)
+        YButton("‹",{onMonth(YearMonth.parse(month).minusMonths(1).toString())},Modifier.testTag(previousTag),enabled=previousEnabled,haptic=Haptic.Step)
         YText(month,19,Modifier.weight(1f).testTag(monthTag),number=true,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-        YButton("›",{onMonth(YearMonth.parse(month).plusMonths(1).toString())},Modifier.testTag(nextTag))
+        YButton("›",{onMonth(YearMonth.parse(month).plusMonths(1).toString())},Modifier.testTag(nextTag),haptic=Haptic.Step)
     }
 }
 @Composable internal fun BudgetValues(projection:BudgetProjection) {
@@ -127,7 +128,7 @@ import java.time.YearMonth
         YText(month,18,number=true)
         YField(word("预算金额 / 留空取消设置","予算額・空欄で未設定")+" · "+currency.name,amount,onAmount,numeric=true)
         val previous=s.budgetLimit(YearMonth.parse(month).minusMonths(1).toString(),categoryId)
-        YButton(word("沿用上月金额","前月の金額を引継ぐ"),{onAmount(previous?.let{Money(currency,it).decimal.toPlainString()}.orEmpty())},enabled=!busy&&previous!=null)
+        YButton(word("沿用上月金额","前月の金額を引継ぐ"),{onAmount(previous?.let{Money(currency,it).decimal.toPlainString()}.orEmpty())},enabled=!busy&&previous!=null,haptic=Haptic.Select)
         if(categoryId!=null)YText(word("父级覆盖子级与未细分消费，子级只是专项限制。","親は子と未分類分を含み、子は個別の上限です。"),11,color=LocalYohaku.current.muted)
         YButton(word("预览预算调整","予算変更を確認"),{vm.previewBudget(s.book.id,month,categoryId,amount,currency)},primary=true,enabled=!busy)
     }

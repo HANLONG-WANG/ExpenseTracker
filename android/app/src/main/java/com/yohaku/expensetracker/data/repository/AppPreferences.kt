@@ -18,6 +18,9 @@ internal fun completeCommandPreference(key:String,value:JsonElement):JsonElement
     if(key=="reminders"&&value is JsonObject&&"monthlyReview" !in value)JsonObject(value+("monthlyReview" to JsonPrimitive(true)))else value
 
 class AppPreferences(private val context: Context,private val storage:DataStore<Preferences> = context.preferences):ReferenceRateStore {
+    private val hapticsKey=booleanPreferencesKey("haptics_enabled")
+    val hapticsEnabled=storage.data.map{it[hapticsKey]?:true}.distinctUntilChanged()
+    suspend fun setHapticsEnabled(value:Boolean){storage.edit{it[hapticsKey]=value}}
     private val photoOriginalKey=booleanPreferencesKey("photo_save_original")
     val photoSaveOriginal=storage.data.map{it[photoOriginalKey]?:false}.distinctUntilChanged()
     suspend fun setPhotoSaveOriginal(value:Boolean){storage.edit{it[photoOriginalKey]=value}}
@@ -78,13 +81,14 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
         "activeBook"->p[active]?.let(::JsonPrimitive)?:JsonNull
         "automaticRates"->JsonPrimitive(p[automaticRates]?:true)
         "photoOriginal"->JsonPrimitive(p[photoOriginalKey]?:false)
+        "haptics"->JsonPrimitive(p[hapticsKey]?:true)
         "location"->JsonPrimitive(bookId in (p[locationBooksKey]?:emptySet()))
         "reminders"->json.encodeToJsonElement(p[reminderSettingsKey]?.let{json.decodeFromString<Map<String,com.yohaku.expensetracker.domain.reminders.ReminderPreferences>>(it)}?.get(bookId)?:com.yohaku.expensetracker.domain.reminders.ReminderPreferences())
         else->error("Unknown preference: $key")
     }
     suspend fun commandValues(bookId:String):Map<String,JsonElement> {
         val p=storage.data.first()
-        return listOf("activeBook","automaticRates","photoOriginal","location","reminders").associateWith{commandValue(p,bookId,it)}
+        return listOf("activeBook","automaticRates","photoOriginal","haptics","location","reminders").associateWith{commandValue(p,bookId,it)}
     }
     suspend fun commandPreferenceApplied(effectId:String)=effectId in (storage.data.first()[commandReceipts]?:emptySet())
     suspend fun applyCommandPreference(effectId:String,bookId:String,key:String,before:JsonElement,after:JsonElement) {
@@ -97,6 +101,7 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
                     "activeBook"->if(after==JsonNull)p.remove(active)else p[active]=after.jsonPrimitive.content
                     "automaticRates"->p[automaticRates]=after.jsonPrimitive.boolean
                     "photoOriginal"->p[photoOriginalKey]=after.jsonPrimitive.boolean
+                    "haptics"->p[hapticsKey]=after.jsonPrimitive.boolean
                     "location"->{val books=p[locationBooksKey]?:emptySet();p[locationBooksKey]=if(after.jsonPrimitive.boolean)books+bookId else books-bookId}
                     "reminders"->{val old=p[reminderSettingsKey]?.let{json.decodeFromString<Map<String,com.yohaku.expensetracker.domain.reminders.ReminderPreferences>>(it)}?:emptyMap();p[reminderSettingsKey]=json.encodeToString(old+(bookId to json.decodeFromJsonElement<com.yohaku.expensetracker.domain.reminders.ReminderPreferences>(after)))}
                     else->error("Unknown preference: $key")
@@ -112,7 +117,7 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
             p[rateCache]?.let{json.decodeFromString<ReferenceRateCache>(it)}?:ReferenceRateCache(),
             p[reminderSettingsKey]?.let{json.decodeFromString(it)}?:emptyMap(),
             p[reminderDeliveryKey]?.let{json.decodeFromString(it)}?:com.yohaku.expensetracker.domain.reminders.ReminderDeliveryState(),
-            p[locationBooksKey]?:emptySet(),p[active],p[setup]?.let{json.decodeFromString<SetupDraft>(it)},p[photoOriginalKey]?:false,p[commandReceipts]?:emptySet()
+            p[locationBooksKey]?:emptySet(),p[active],p[setup]?.let{json.decodeFromString<SetupDraft>(it)},p[photoOriginalKey]?:false,p[commandReceipts]?:emptySet(),hapticsEnabled=p[hapticsKey]?:true
         )
     }
     suspend fun restoreBackup(value:com.yohaku.expensetracker.data.backup.BackupPreferences) {
@@ -122,6 +127,7 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
             p[commandReceipts]=value.commandEffectReceipts
             p[automaticRates]=value.automaticReferenceRates
             p[photoOriginalKey]=value.photoSaveOriginal
+            p[hapticsKey]=value.hapticsEnabled
             p[rateCache]=json.encodeToString(value.referenceRates)
             p[reminderSettingsKey]=json.encodeToString(value.reminderSettings)
             p[reminderDeliveryKey]=json.encodeToString(value.reminderDelivery)

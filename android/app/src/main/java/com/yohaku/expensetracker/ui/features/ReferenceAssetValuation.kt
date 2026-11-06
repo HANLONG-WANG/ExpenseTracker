@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.repository.*
@@ -18,11 +19,12 @@ import java.time.LocalDate
     var results by remember(s.book.id,base,currencies){mutableStateOf<Map<Currency,ReferenceRateResult>>(emptyMap())}
     var loading by remember{mutableStateOf(false)}
     var error by remember{mutableStateOf<String?>(null)}
+    val resultHaptic=LocalResultHaptic.current
     val scope=rememberCoroutineScope();val today=LocalDate.now(service.clock)
     suspend fun load(force:Boolean) {
         loading=true;error=null
-        try{for(c in currencies)results=results+(c to service.lookup(c,base,today,force))}
-        catch(e:java.io.IOException){error=e.message}
+        try{for(c in currencies)results=results+(c to service.lookup(c,base,today,force));if(force&&results.values.any{it.failure!=null&&it.failure!="AUTO_DISABLED"})resultHaptic(Haptic.Error)}
+        catch(e:java.io.IOException){error=e.message;if(force)resultHaptic(Haptic.Error)}
         finally{loading=false}
     }
     LaunchedEffect(s.book.id,base,currencies,today,automatic){load(false)}

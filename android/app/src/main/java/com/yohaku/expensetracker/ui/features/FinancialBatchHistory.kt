@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -60,8 +61,8 @@ import java.time.*
             YButton(word("查看当前还款安排","現在の返済予定を見る"),{selected=null;onCurrent(item.archive.before.first{it.plan.origin=="POOL"}.plan.id)},Modifier.testTag("finance-batch-current"))
         }
         if(!item.undone&&blocked==null)YButton(word("确认撤销这次批量转换记录","この一括変更の記録を取り消す"),{vm.execute{
-            try { vm.repository.undoBatchRevolving(bookId,item.archive.undoGroupId);selected=null }
-            catch(e:IllegalArgumentException){blocked=e.message?.let{if(language=="ja")it.substringAfter(" / ",it)else it.substringBefore(" / ")}}
+            try { vm.repository.undoBatchRevolving(bookId,item.archive.undoGroupId);vm.haptic(Haptic.Restored);selected=null }
+            catch(e:IllegalArgumentException){vm.haptic(Haptic.Warning);blocked=e.message?.let{if(language=="ja")it.substringAfter(" / ",it)else it.substringBefore(" / ")}}
         }},Modifier.testTag("batch-revolving-undo-confirm"),primary=true,enabled=!busy)
         YButton(word("返回历史","履歴に戻る"),{selected=null},Modifier.testTag("finance-batch-undo-cancel"))
     }}
