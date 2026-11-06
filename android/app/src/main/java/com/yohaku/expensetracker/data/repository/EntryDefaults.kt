@@ -2,8 +2,6 @@ package com.yohaku.expensetracker.data.repository
 
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.model.*
-import java.text.Normalizer
-import java.util.Locale
 
 fun EventEntity.isFinancialSource(account:AccountEntity)=accountId==account.id&&if(account.type==AccountType.CREDIT.name)kind in listOf(EntryKind.EXPENSE.name,EntryKind.TRANSFER.name)else kind==EntryKind.BORROWING.name
 fun BookSnapshot.lastSavedEntry(predicate:(EventEntity)->Boolean)=visibleEvents.filter(predicate).maxWithOrNull(compareBy<EventEntity>{eventSaveTimes[it.id]?:it.createdAt}.thenBy{it.createdAt})
@@ -36,7 +34,7 @@ fun EntryDraft.hasManualInput(baseline:EntryDraft?):Boolean {
 }
 fun AccountBalanceChange.needsNegativeBalanceConfirmation()=!AccountType.valueOf(account.type).debt&&after<0&&after<before
 fun LedgerChangeReview.negativeBalanceChanges()=impacts.flatMap{it.balances}.filter{it.needsNegativeBalanceConfirmation()}
-fun normalizedMerchantName(value:String)=Normalizer.normalize(value,Normalizer.Form.NFKC).trim().lowercase(Locale.ROOT)
+fun normalizedMerchantName(value:String)=normalizedSearchText(value)
 fun List<MerchantEntity>.matchingMerchants(query:String)=filter{it.active&&normalizedMerchantName(it.name).contains(normalizedMerchantName(query))}
 fun BookSnapshot.merchantInput(d:EntryDraft,value:String)=d.copy(merchant=value,merchantId=merchants.firstOrNull{it.active&&normalizedMerchantName(it.name)==normalizedMerchantName(value)}?.id,merchantManuallyEdited=true,merchantLocated=false)
 

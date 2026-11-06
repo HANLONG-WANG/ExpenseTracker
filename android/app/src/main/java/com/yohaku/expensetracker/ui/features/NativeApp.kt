@@ -225,7 +225,10 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                     {PageFootnote(baseRoute)})
                 val detailAccount=snapshot.accounts.find{it.id==selectedAccountId}
                 // Pages listing every record own a lazy list instead of the shared scrolling column.
-                if(baseRoute=="ledger")LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today,Modifier.weight(1f),chrome)
+                if(baseRoute=="ledger"){
+                    val receiptItems by remember(snapshot.book.id){vm.repository.db.fileWorkflowDao().items(snapshot.book.id)}.collectAsStateWithLifecycle(emptyList())
+                    LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today,Modifier.weight(1f),chrome,receiptItems)
+                }
                 else if(baseRoute=="account-detail"&&detailAccount!=null)detailAccount.let{a->AccountDetail(snapshot,a,{editAccount=a;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)},{managedAccountId=a.id},Modifier.weight(1f),chrome)}
                 else if(baseRoute=="rules"&&detailAccount!=null) financialPages.SaveableStateProvider(book.id+"/"+detailAccount.id) {
                     FinancialAccountScreen(snapshot,detailAccount,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,

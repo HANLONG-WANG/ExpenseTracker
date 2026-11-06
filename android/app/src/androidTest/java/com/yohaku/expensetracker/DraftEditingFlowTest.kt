@@ -435,7 +435,11 @@ class DraftEditingFlowTest {
     @Test fun ledgerSearchAndParentFilterKeepOriginalRecordsAcrossThemes() {
         val second=runBlocking {
             val root=repo.dao.category(a,category)!!.parentId!!
-            repo.saveEntry(a,EntryDraft(accountId=account,categoryId=root,amount="500",merchant="食材店",note="每周采购"))
+            repo.saveEntry(a,EntryDraft(accountId=account,categoryId=root,amount="500",merchant="食材店",note="每周采购")).also{id->
+                repo.dao.putReceipt(ReceiptEntity(a,"receipt-second",id))
+                db.fileWorkflowDao().putItems(ReceiptItemDocumentEntity(a,"receipt-second","receipt-second",com.yohaku.expensetracker.data.files.FileProtocols.json.encodeToString(com.yohaku.expensetracker.data.files.ReceiptItemsRecord.serializer(),
+                    com.yohaku.expensetracker.data.files.ReceiptItemsRecord(id,"receipt-second",1,1,"JPY",emptyList(),listOf(com.yohaku.expensetracker.data.files.ReceiptItem("item",emptyList(),emptyList(),name="ｵｰｶﾞﾆｯｸ牛乳")),emptyList(),false,emptyList())),1,0))
+            }
         }
         for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             ui.runOnIdle{vm.appearance(a,theme=theme);vm.navigate("ledger")}
@@ -443,13 +447,19 @@ class DraftEditingFlowTest {
             waitFor("日常的每一笔。")
             ui.revealOnPage("event-"+event).assertIsDisplayed()
             captureScreen("ledger",theme)
-            ui.revealOnPage("field-搜索商户、备注或金额").performTextReplacement("采购")
+            ui.revealOnPage("field-搜索商户、备注、金额或商品").performTextReplacement("采购")
             ui.onNodeWithTag("event-"+event).assertDoesNotExist()
             ui.revealOnPage("event-"+second).assertIsDisplayed()
-            ui.revealOnPage("field-搜索商户、备注或金额").performTextReplacement("300")
+            ui.onNodeWithTag("event-products-"+second,useUnmergedTree=true).assertDoesNotExist()
+            ui.revealOnPage("field-搜索商户、备注、金额或商品").performTextReplacement("オーガニック")
+            ui.onNodeWithTag("event-"+event).assertDoesNotExist()
+            ui.revealOnPage("event-"+second)
+            ui.onNodeWithTag("event-products-"+second,useUnmergedTree=true).assertIsDisplayed()
+            captureScreen("ledger-product-search",theme)
+            ui.revealOnPage("field-搜索商户、备注、金额或商品").performTextReplacement("300")
             ui.revealOnPage("event-"+event).assertIsDisplayed()
             ui.onNodeWithTag("event-"+second).assertDoesNotExist()
-            ui.revealOnPage("field-搜索商户、备注或金额").performTextReplacement("")
+            ui.revealOnPage("field-搜索商户、备注、金额或商品").performTextReplacement("")
             ui.revealOnPage("ledger-filters").performClick()
             ui.revealOnPage("select-trigger-分类").performClick()
             ui.onNodeWithTag("select-option-分类-1").performScrollTo().performClick()

@@ -14,9 +14,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.data.db.EventEntity
+import com.yohaku.expensetracker.data.db.ReceiptItemDocumentEntity
 import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.data.repository.accountMoney
 import com.yohaku.expensetracker.data.repository.accountEventPostings
+import com.yohaku.expensetracker.data.repository.ledgerSearch
+import com.yohaku.expensetracker.data.repository.receiptProductNames
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
@@ -24,7 +27,7 @@ import com.yohaku.expensetracker.domain.category.*
 import java.time.LocalDate
 import java.time.YearMonth
 
-@Composable internal fun EventRow(s:BookSnapshot,e:EventEntity,onClick:()->Unit,accountId:String?=null,showDate:Boolean=true,last:Boolean=false) {
+@Composable internal fun EventRow(s:BookSnapshot,e:EventEntity,onClick:()->Unit,accountId:String?=null,showDate:Boolean=true,last:Boolean=false,matchedProducts:List<String> = emptyList()) {
     val t=LocalYohaku.current
     val kind=EntryKind.valueOf(e.kind)
     val settlement=s.settlementByEvent[e.id]
@@ -53,7 +56,7 @@ import java.time.YearMonth
                 else if(settlement?.confirmed==false)YText(if(kind==EntryKind.REFUND)word("待到账","未入金")else word("换算待确认","換算未確定"),if(journal)10 else 8,color=t.warm)
                 else if(kind==EntryKind.REFUND&&settlement?.confirmed==true)YText(word("已到账","入金済"),if(journal)10 else 8,color=t.accent)
                 if(settlement!=null&&settlement.accountCurrency!=e.currency)YText(Money(Currency.valueOf(e.currency),e.amountMinor).display(),if(journal)10 else 8,color=t.muted)
-
+                if(matchedProducts.isNotEmpty())ReceiptProductHint(matchedProducts,Modifier.padding(top=if(objects)6.dp else 5.dp).testTag("event-products-"+e.id))
             }
             Column(Modifier.widthIn(max=170.dp),horizontalAlignment=Alignment.End) {
                 val incoming=if(accountDelta!=null)accountDelta>=0 else e.kind in listOf("INCOME","REFUND","BORROWING")
@@ -68,7 +71,27 @@ import java.time.YearMonth
     }
 }
 
-@Composable internal fun LedgerScreen(s:BookSnapshot,onSelect:(EventEntity)->Unit,onStart:(EntryKind)->Unit,onStartOn:(String)->Unit,today:LocalDate,modifier:Modifier=Modifier,chrome:PageChrome=PageChrome()) {
+/** Says which receipt products a search hit, so rows found only through their receipt explain themselves. */
+@Composable private fun ReceiptProductHint(products:List<String>,modifier:Modifier) {
+    val t=LocalYohaku.current
+    val names=products.take(2).joinToString(word("、","・"))+if(products.size>2)word(" 等${products.size}件"," ほか${products.size-2}件")else ""
+    when(t.id) {
+        "journal"->Row(modifier,verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+            CategoryGlyph("receipt",Modifier.size(12.dp),t.accent,1.5f)
+            YText(names,10,Modifier.weight(1f,fill=false),color=t.accent,lineHeightMultiplier=15f/10,cssLineBox=true)
+        }
+        "objects"->Row(modifier.background(Color(0xfff2e6d0),RoundedCornerShape(50)).padding(horizontal=8.dp,vertical=2.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+            CategoryGlyph("receipt",Modifier.size(10.dp),Color(0xffa8804a),1.6f)
+            YText(names,8,Modifier.weight(1f,fill=false),color=Color(0xffa8804a),weight=androidx.compose.ui.text.font.FontWeight.Medium,lineHeightMultiplier=11f/8,cssLineBox=true)
+        }
+        else->Row(modifier,verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            YText("RECEIPT",7,color=t.ink,weight=androidx.compose.ui.text.font.FontWeight.SemiBold,letterSpacing=1.2f,lineHeightMultiplier=13f/7,cssLineBox=true)
+            YText(names,8,Modifier.weight(1f,fill=false),color=t.muted,lineHeightMultiplier=13f/8,cssLineBox=true)
+        }
+    }
+}
+
+@Composable internal fun LedgerScreen(s:BookSnapshot,onSelect:(EventEntity)->Unit,onStart:(EntryKind)->Unit,onStartOn:(String)->Unit,today:LocalDate,modifier:Modifier=Modifier,chrome:PageChrome=PageChrome(),receiptItems:List<ReceiptItemDocumentEntity> = emptyList()) {
     val t=LocalYohaku.current
     var calendar by rememberSaveable(s.book.id){mutableStateOf(false)}
     var type by rememberSaveable(s.book.id){mutableStateOf("ALL")}
@@ -83,14 +106,17 @@ import java.time.YearMonth
     val categories=category?.let{id->setOf(id)+s.categories.filter{it.parentId==id}.map{it.id}}
     // The calendar keeps account and category filters; it only counts spending, so type, date range and search do not apply.
     val scoped=remember(s,calendar,account,categories){if(!calendar)emptyList() else s.visibleEvents.filter{e->(account==null||e.accountId==account||s.storedPostingsByEvent[e.id].orEmpty().any{it.accountId==account})&&(categories==null||e.categoryId in categories)}}
-    val entries=remember(s,calendar,type,query,account,categories,period,from,to){if(calendar)emptyList() else s.visibleEvents.filter{e->
+    val products=remember(s.receipts,receiptItems){s.receiptProductNames(receiptItems)}
+    val matches=remember(s,calendar,type,query,account,categories,period,from,to,products){if(calendar)emptyMap() else s.visibleEvents.mapNotNull{e->
         val sides=account?.let{id->s.storedPostingsByEvent[e.id].orEmpty().filter{it.accountId==id}}
         val dates=if(account==null)listOf(e.date)else sides.orEmpty().map{it.date}.ifEmpty{listOf(e.date)}
-        (type=="ALL"||e.kind==type)&&(account==null||e.accountId==account||!sides.isNullOrEmpty())&&(categories==null||e.categoryId in categories)&&
-        (period=="ALL"||period=="MONTH"&&dates.any{it.take(7)==YearMonth.now().toString()}||period=="CUSTOM"&&dates.any{it in from..to})&&
-        (query.isBlank()||(listOf(e.merchant,e.note)+(listOf(s.accountMoney(e),Money(Currency.valueOf(e.currency),e.amountMinor))+sides.orEmpty().map{Money(Currency.valueOf(it.currency),if(it.deltaMinor<0)Math.negateExact(it.deltaMinor)else it.deltaMinor)}).flatMap{listOf(it.display(),it.decimal.toPlainString())}).any{it.contains(query.trim(),true)})
-    }}
+        val kept=(type=="ALL"||e.kind==type)&&(account==null||e.accountId==account||!sides.isNullOrEmpty())&&(categories==null||e.categoryId in categories)&&
+            (period=="ALL"||period=="MONTH"&&dates.any{it.take(7)==YearMonth.now().toString()}||period=="CUSTOM"&&dates.any{it in from..to})
+        if(kept)s.ledgerSearch(e,query,sides,products[e.id].orEmpty())?.let{e to it}else null
+    }.toMap()}
+    val entries=remember(matches){matches.keys.toList()}
     val rows=rememberTransactionRows(s,entries,account,byDay=true)
+    val productHits=remember(matches){matches.mapNotNull{(e,m)->m.products.takeIf{it.isNotEmpty()}?.let{e.id to it}}.toMap()}
     LazyPage(chrome,s.book.id,modifier,top={
         YTitle(word("日常的每一笔。","日々の記録。"),"THE LEDGER",pageFlow=true)
         LedgerEntryActions(onStart)
@@ -103,7 +129,7 @@ import java.time.YearMonth
             }
             LedgerCalendar(s,scoped,category,account==null,today,onSelect,onStartOn)
         }else{
-            Box(Modifier.padding(top=2.dp)){YSearch(word("搜索商户、备注或金额","お店・メモ・金額で検索"),query,{query=it})}
+            Box(Modifier.padding(top=2.dp)){YSearch(word("搜索商户、备注、金额或商品","お店・メモ・金額・商品で検索"),query,{query=it})}
             Box(Modifier.padding(top=2.dp)){YSelect(word("类型","種類"),type,listOf("ALL" to word("全部","すべて"),"EXPENSE" to word("支出","支出"),"INCOME" to word("收入","収入"),"TRANSFER" to word("转账 / 换汇","振替・両替"),"REFUND" to word("退款","返金")),{type=it})}
             // The list follows the disclosure without the page's section gap; its rows are lazy items below.
             Box(Modifier.fillMaxWidth().padding(top=1.dp)){LedgerFilterDisclosure(filtersOpen,{filtersOpen=!filtersOpen}){
@@ -118,7 +144,7 @@ import java.time.YearMonth
             }}
         }
     }){
-        if(!calendar)transactionItems(s,rows,onSelect,{YEmpty(if(s.visibleEvents.isEmpty())word("还没有记录","記録はまだありません") else word("没有符合筛选的记录","条件に合う記録はありません"))},accountId=account,gapBefore=true)
+        if(!calendar)transactionItems(s,rows,onSelect,{YEmpty(if(s.visibleEvents.isEmpty())word("还没有记录","記録はまだありません") else word("没有符合筛选的记录","条件に合う記録はありません"))},accountId=account,gapBefore=true,matchedProducts=productHits)
     }
 }
 

@@ -89,7 +89,7 @@
 | UI03 | 首页 `home` | 预算余量、预留后可花、日均/剩余天数、今日消费、独立活动与全部净消费、实际资金、近期安排 | `experience.js`、`completion.js` | P05,P10,P18 |
 | UI04 | 分类选择与分类管理 `categories` | 中央记账先选分类；支出/收入独立两级树、未细分、常用/最近、搜索/新建/编辑、预算 | `capture.js`、`hierarchy.js`、`completion.js` | P06,P10 |
 | UI05 | 收支录入、草稿、原记录编辑 | 原币/入账/统计金额；账户/日期/商户/活动；无拆分类；编辑原ID；切主题保留；空账户创建后继续 | `capture.js`、`experience.js`、`completion.js` | P06,P07,P08 |
-| UI06 | 流水 `ledger`、记录详情 | 类型与时间列表、列表/日历切换（每日净支出、日均预算进度、选中日流水与「记在这一天」）、实际金额、原币、关联资料、编辑/退款/删除入口、修改记录 | `views.js`、`capture.js`、`completion.js` | P06,P07,P23 |
+| UI06 | 流水 `ledger`、记录详情 | 类型与时间列表、搜索商户/备注/金额/小票商品名（`LedgerSearch.kt`，商品命中时行内提示）、列表/日历切换（每日净支出、日均预算进度、选中日流水与「记在这一天」）、实际金额、原币、关联资料、编辑/退款/删除入口、修改记录 | `views.js`、`capture.js`、`completion.js` | P06,P07,P23 |
 | UI07 | 退款 | 全额/部分/分次、待到账/已到账、原币与实际到账、原消费月净额影响、关联编辑 | `completion.js`、`capture.js` | P08 |
 | UI08 | 转账/换汇 | 同币/异币自动判断；实扣/实收、预计反推、费用位置、在途/到账、双侧核对；全宽单日历 | `experience.js`、`completion.js`、`themes.js` | P09,P19 |
 | UI09 | 分析 `analysis/budget` | 自选排序；分类一级/二级/未细分、商户下钻、时间/活动筛选、原消费/退款、预算与趋势原因 | `views.js`、`experience.js`、`hierarchy.js`、`completion.js` | P10,P12 |

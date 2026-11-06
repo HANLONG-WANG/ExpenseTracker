@@ -44,7 +44,7 @@ internal class TransactionRows(val days:List<Pair<String,List<EventEntity>>>,val
 }
 
 /** Lazy counterpart of [TransactionList]: one item per day (or per row), each carrying the list's own spacing. */
-internal fun LazyListScope.transactionItems(s:BookSnapshot,list:TransactionRows,onSelect:(EventEntity)->Unit,emptyContent:@Composable ()->Unit,accountId:String?=null,gapBefore:Boolean=false,startGap:Dp=0.dp) {
+internal fun LazyListScope.transactionItems(s:BookSnapshot,list:TransactionRows,onSelect:(EventEntity)->Unit,emptyContent:@Composable ()->Unit,accountId:String?=null,gapBefore:Boolean=false,startGap:Dp=0.dp,matchedProducts:Map<String,List<String>> = emptyMap()) {
     item("transaction-list-start") {
         val t=LocalYohaku.current
         // Objects cards keep an 8dp gap from the controls above; it sits outside the list itself.
@@ -57,13 +57,13 @@ internal fun LazyListScope.transactionItems(s:BookSnapshot,list:TransactionRows,
         val objects=LocalYohaku.current.id=="objects"
         Column(Modifier.fillMaxWidth().padding(pageContentPadding()).padding(top=if(objects&&index>0)8.dp else 0.dp).testTag("transaction-list-day-$day"),verticalArrangement=Arrangement.spacedBy(if(objects)8.dp else 0.dp)) {
             LedgerDayHeader(day,Money(Currency.valueOf(s.book.currency),list.spent[day]?:0L))
-            events.forEach{EventRow(s,it,{onSelect(it)},accountId,showDate=false,last=it===events.last())}
+            events.forEach{EventRow(s,it,{onSelect(it)},accountId,showDate=false,last=it===events.last(),matchedProducts=matchedProducts[it.id].orEmpty())}
         }
     }}
     else list.rows.forEachIndexed{index,e->item("transaction-list-row-${e.id}") {
         val objects=LocalYohaku.current.id=="objects"
         Box(Modifier.fillMaxWidth().padding(pageContentPadding()).padding(top=if(objects&&index>0)8.dp else 0.dp).testTag("transaction-list-row-${e.id}")) {
-            EventRow(s,e,{onSelect(e)},accountId,last=index==list.rows.lastIndex)
+            EventRow(s,e,{onSelect(e)},accountId,last=index==list.rows.lastIndex,matchedProducts=matchedProducts[e.id].orEmpty())
         }
     }}
     if(list.rows.isEmpty())item("transaction-list-empty"){Box(Modifier.fillMaxWidth().padding(pageContentPadding()).testTag("transaction-list-empty")){emptyContent()}}
