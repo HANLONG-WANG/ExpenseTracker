@@ -1,0 +1,8 @@
+<resources>
+    <string name="widget_label">余量 · 今月の予算</string>
+    <string name="widget_description">帳簿の予算残額を確認し、テンプレートから記録</string>
+    <string name="widget_preview_heading">Yohaku · 日々の暮らし      11月 · 残り24日</string>
+    <string name="widget_preview_caption">今月の予算内で使える</string>
+    <string name="widget_preview_stats">自由に使える ¥49,640     1日 ¥2,068</string>
+    <string name="widget_preview_templates">01 昼食    02 カフェ    03 電車    04 コンビニ</string>
+</resources>

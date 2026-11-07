@@ -1,0 +1,16 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:id="@+id/widget_root" android:padding="14dp" android:background="@drawable/widget_magazine">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:orientation="vertical" android:id="@+id/widget_balance" android:layout_weight="1">
+        <ImageView android:id="@+id/widget_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:scaleType="fitStart" />
+        <ImageView android:layout_width="match_parent" android:layout_height="1.5dp" android:background="#263d32" android:importantForAccessibility="no" android:layout_marginTop="6dp" />
+        <ImageView android:id="@+id/widget_caption" android:layout_width="match_parent" android:layout_height="wrap_content" android:scaleType="fitStart" android:layout_marginTop="8dp" />
+        <ImageView android:id="@+id/widget_amount" android:layout_width="match_parent" android:layout_height="wrap_content" android:scaleType="fitStart" />
+        <ProgressBar android:progressDrawable="@drawable/widget_progress" android:id="@+id/widget_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="6dp" android:progressTint="#355b43" android:progressBackgroundTint="#d2dacc" android:importantForAccessibility="no" />
+        <ProgressBar android:progressDrawable="@drawable/widget_progress" android:visibility="gone" android:id="@+id/widget_over_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="6dp" android:progressTint="#bc664f" android:progressBackgroundTint="#d2dacc" android:importantForAccessibility="no" />
+        <ImageView android:importantForAccessibility="no" android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:id="@+id/widget_stats" android:layout_marginTop="6dp">
+            <ImageView android:layout_width="match_parent" android:layout_height="1dp" android:background="#d2dacc" android:importantForAccessibility="no" />
+            <ImageView android:id="@+id/widget_free" android:layout_width="match_parent" android:layout_height="wrap_content" android:scaleType="fitStart" />
+            <ImageView android:id="@+id/widget_daily" android:layout_width="match_parent" android:layout_height="wrap_content" android:scaleType="fitStart" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

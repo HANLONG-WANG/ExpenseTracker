@@ -133,6 +133,16 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         require(item==null||item.bookId==bookId)
         preferences.select(bookId);reminderTarget.value=item
     }
+    val desktopTarget=MutableStateFlow<com.yohaku.expensetracker.platform.desktop.DesktopTarget?>(null)
+    val desktopTemplateEditor=MutableStateFlow<String?>(null)
+    fun desktopNotice(bookId:String,zh:String,ja:String) {notice.value=AppNotice(++noticeSequence,bookId,zh,ja)}
+    fun openDesktopBook(target:com.yohaku.expensetracker.platform.desktop.DesktopTarget)=execute(onSuccess={
+        entry.value=null;backStack.clear();route.value="home";desktopTarget.value=target
+    }) {
+        val book=repository.dao.book(target.bookId)
+        require(book!=null&&book.deletedAt==null){"账本不可用，请重新选择小组件账本 / 帳簿が利用できません。ウィジェットの帳簿を選び直してください"}
+        preferences.select(book.id)
+    }
     fun selectBook(bookId:String)=execute({entry.value=null;backStack.clear();route.value="home"}) { require(repository.dao.book(bookId)!=null){"账本不可用 / 帳簿が利用できません"};preferences.select(bookId) }
     val bookOperationReview=MutableStateFlow<BookLifecycleReview?>(null)
     val bookOperationRefreshed=MutableStateFlow(false)

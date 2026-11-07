@@ -60,6 +60,40 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 必要验证：`EntryDefaultsTest`（保存顺序、付款方式、草稿基线、负余额、名称规范化）；`TransferTransactionsTest`（信用卡充值 posting/预测/额度/对账/现金时间线及净余额预览）；`EntryExperienceFlowTest`（tab/附件/默认账户、负余额两种保存路径、商户联想与一览）；更新 `DraftEditingFlowTest`、`LocationEntryFlowTest`、`EntryLifecycleFlowTest`、`ThemeControlsTest`。本轮仅运行 JVM 测试和两个 APK 构建，不启动模拟器或运行 connected 测试；相关 UI 类在设备上使用 `looks=all` + `visual=true` 并查看截图，实际视觉结果仍待验。
 
+## 桌面小组件与模板快捷方式（2026-11-07）
+
+本节对应当前源码，文首既有发布 APK 不包含本功能。视觉依据为 [widgets.html](../design/widgets.html)：小组件默认 4×2、最小 2×2，宽度达到 250dp 显示前四个模板。Android 12+ 使用两种尺寸映射的 RemoteViews，Android 10–11 根据尺寸选布局；支持添加时选账本和 Android 12+ 长按重新配置。配置页用当前账本的 Compose 主题；小组件按所绑定账本的主题与中日语言显示。杂志用报头、分隔线和编号目录，手账用横线纸、红页边、装订孔、胶带、算式、波浪线和清单，小物用钱袋、提带、分半奶油卡及带分类图标的模板纸条。
+
+月份取设备当地今天；`WidgetBudget` 纯函数接收 `BudgetProjection` 和日期。预算内还能花为 `remainingMinor`，自由可花为 `availableMinor`（扣除本月待付预留），与首页相同。剩余天数包含今天，日均为非负自由可花除以剩余天数、按币种最小单位向下取整，金额仍用 `Money.display()`。未设预算显示本月已花、未设预算和剩余天数；超支显示正数超出额、月预算和剩余天数；预留金额未知时自由可花/日均显示「—」，仅自由可花为负时保留负数而日均为零。
+
+余额点击切到账本首页；宽版模板按 sortOrder 取前四个（包含失效模板），无模板时进入模板管理。失效格置灰并进入编辑；已删除模板打开管理并显示主题提示。有效模板复用 `startTemplate`、既有草稿确认和金额聚焦，不新增保存流程。长按 app 图标的动态快捷方式取当前账本前四个**可用**模板；标签为模板名、长标签附固定金额。图标用共享字体链或现有分类路径绘制 adaptive bitmap，三主题独立设计；没有 pinned 快捷方式或桌面记账弹窗。快捷方式内容未变时不重复发布；系统限流会记录错误并安排重试，应用回到前台也重新检查。
+
+刷新集中在 `YohakuApplication.desktop`：Room `InvalidationTracker` 监听已提交变化，约一秒合并刷新所有小组件及快捷方式；activeBook 偏好另行监听。观察账本、事件/退款确认/手续费、预算、周期规则/实例、活动及关联、预留及使用、模板、账户、分类、商户、账本功能和记录保存顺序相关表；不在记账、云端执行/撤销、CSV 导入等写入点插入调用。`onUpdate`/调整尺寸通过 `goAsync()` 在 IO 线程读数据库；每天当地零点后 5 秒安排非精确 AlarmManager 刷新，系统可延迟投递，时间/时区、日期、重启、升级和语言变化也触发刷新。系统周期更新为 30 分钟。绑定按 widgetId 存在 noBackup 下独立 DataStore，删除小组件时清理；账本备份恢复不替换启动器绑定，`:restore` 前停止观察，应用重启先恢复数据库再启动桌面刷新。绑定账本不存在时保留最后主题/语言显示空状态，点击重新配置。
+
+`ThemeTypefaces` 抽出原 `ThemeFonts` 的原生 Typeface 构建与缓存，资源顺序、400 字重和 variable font 参数完全不变，Compose 仍包装同一组原生字体。journal 为 journal_math → hand → hand_cn → hand_full → hand_cn_full → journal_check → journal_star，objects 为 round → round_cn → round_full → round_cn_full，magazine 正文为 editorial → editorial_full，数字前置 editorial_number。运行时每个主题文字字段按系统 fontScale、实际 dp×density 独立绘制到 ImageView，设置完整 contentDescription；名称超长省略但读屏保留全文，金额必要时按列宽缩小。位图高度按 `ascent/descent`（hhea 行高）计算，不用 `top/bottom`：后者取回退链首个字体的包围盒，journal_math 只有 0.22–0.28em 会把手账文字裁成细线，editorial/round_cn 又过大。`DesktopArtwork` 的像素密度字段命名为 `pxPerDp`，因为 `TextPaint.apply{}` 内的 `density` 会解析成 `TextPaint.density`（默认 1）。高于设计稿的尺寸（如 S24 Ultra 4×2 约 230dp、Pixel 4×3）把多出的高度平分给间隔与模板行。只保留大小两种布局并裁去文字尾部透明像素，不把整个小组件画成一张位图。装饰为 XML shape/vector 与小尺寸平铺位图；静态选择器预览用 magazine，Android 12+ 为 previewLayout、旧版为 previewImage。
+
+验证入口：JVM `WidgetBudgetTest` 五项覆盖正常（11 月 7 日含当天共 24 天）、未设预算、超支、未知预留、最小单位取整及负自由可花归零。仪器 `DesktopWidgetVisualTest` 默认只运行一次模板描述、失效提示与余额/模板点击绑定断言，使用独立内存仓库，不写真实账本；截图方法须显式开启 `visual=true`，用 `testLooks(this)` 选择主题/语言，`looks=all` 覆盖六组。固定日期 2026-11-07，直接展开生产 RemoteViews，宽版 356×180dp、小版 172×180dp，背景为桌面近似色；Android 12+ 直接使用渲染器单尺寸布局，避免 `apply` 自动选择映射分支。每组输出 normal 宽/小版、over、nobudget、unknown、edge（失效模板及长名称）、empty、unavailable，共八张；每主题另输出一张四个快捷方式图标的圆形遮罩拼图。
+
+`connectedDebugAndroidTest` 结束后会卸载 app，截图和种子账本随之消失，因此先串行构建并安装两个 APK，再用 `am instrument` 运行。截图在 `getExternalFilesDir(null)/desktop-widget/`（开发包通常为 `/sdcard/Android/data/com.yohaku.expensetracker.dev/files/desktop-widget/`），文件名为 `{theme}-{language}-{state}.png` 和 `{theme}-shortcuts.png`：
+
+```sh
+adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisualTest -e looks all -e visual true \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+真实启动器种子仅在 `desktopSeed=true` 时运行：向 app 真实数据库新增三本中文 JPY 账本（每主题一本），每本月预算 180,000、已花 90,360、待付 40,000 和四个模板，activeBook 选择 objects。种子日期同截图夹具，为 **2026 年 11 月**；手动添加小组件检查正常状态时，设备当地月份也应设为 2026-11（11 月 7 日的剩余天数和日均与截图一致）。此方法会保留新账本供后续手动验证，重复运行会再次新增三本，不清空已有账本。
+
+```sh
+adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisualTest#seedRealDesktopBooks -e desktopSeed true \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+2026-11-07 验收：JVM 全量 156 项（1 项既有跳过）通过；模拟器以 S24 Ultra 尺寸（1080×2340/density 450）运行 `DesktopWidgetVisualTest`（`looks=all visual=true`）3 项通过，三主题×中日文 48 张状态截图与 3 张快捷方式图标已查看。Pixel 启动器实测：添加时配置页（复用账本页 `BookCard`）选账本、默认 4×2、4×3 拉伸、模板点击切换账本并预填聚焦、已有草稿时走草稿确认、保存后约一秒刷新余额/自由可花/日均、长按图标显示当前账本四个主题快捷方式并可进入记账。One UI 实机外观、跨日零点刷新和备份恢复后刷新尚未在设备上验证。
+
+本轮只串行运行 `:app:testDebugUnitTest`、`:app:assembleDebug` 和 `:app:assembleDebugAndroidTest`（均加 `--max-workers=2`），不启动模拟器或执行仪器测试。截图审阅、真实桌面的配置/重配/删除、跨日与备份恢复等设备验收由验收方执行并补充结论。
+
+云端办理不新增命令或 schema，能力样例 JSON 不变：现有命令仍只修改业务事实，桌面作为本机派生展示由提交后的数据库通知刷新。已检查本 README「云端办理」、`docs/implementation-spec.md` 与 `docs/android-cloud-handoff-package`；协议、能力说明及样例不需调整。
+
 ## 支出不计入预算（2026-11-06）
 
 支出表单展开「备注和其他」后可选「不计入预算 / 予算に含めない」，说明为「仍计入分析与账户余额 / 分析と口座残高には含めます」。与历史补录共用三主题 `EntryOptionToggle`，相邻开关只画一条分隔线；历史补录标签和 description testTag 保留，新开关为 `toggle-budget-excluded`。模板管理支持同款开关；存为模板、套用模板、草稿恢复、编辑、详情、修改记录与云端导出/撤销均保存该值。记账切类型重建草稿，模板切类型显式清零，仓库非支出强制 false。

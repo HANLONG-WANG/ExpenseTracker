@@ -14,9 +14,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
-import android.graphics.Typeface
-import android.graphics.fonts.Font as NativeFont
-import android.graphics.fonts.FontFamily as NativeFamily
 import android.content.Context
 import com.yohaku.expensetracker.R
 
@@ -31,26 +28,14 @@ val Objects=ThemeStyle("objects",Color(0xfffaf1e5),Color(0xfffffcf5),Color(0xff6
 val LocalYohaku=staticCompositionLocalOf{Magazine}
 val LocalLanguage=staticCompositionLocalOf{"zh"}
 @Composable fun word(zh:String,ja:String)=if(LocalLanguage.current=="ja")ja else zh
-private fun fallback(context:Context,vararg resources:Int):FontFamily {
-    val families=resources.map { id->
-        val font=NativeFont.Builder(context.resources,id).setWeight(400)
-        if(id==R.font.editorial || id==R.font.round_cn)font.setFontVariationSettings("'wght' 400")
-        NativeFamily.Builder(font.build()).build()
-    }
-    val builder=Typeface.CustomFallbackBuilder(families.first())
-    families.drop(1).forEach{builder.addCustomFallback(it)}
-    return FontFamily(builder.build())
-}
-/** Native fallback builders allocate direct font buffers. Reuse them across activities. */
 private object ThemeFonts {
     private var cached:List<ThemeStyle>?=null
     @Synchronized fun styles(context:Context):List<ThemeStyle> {
         cached?.let{return it}
-        val app=context.applicationContext
-        val serif=fallback(app,R.font.editorial,R.font.editorial_full)
-        val editorialNumbers=fallback(app,R.font.editorial_number,R.font.editorial,R.font.editorial_full)
-        val ink=fallback(app,R.font.journal_math,R.font.hand,R.font.hand_cn,R.font.hand_full,R.font.hand_cn_full,R.font.journal_check,R.font.journal_star)
-        val rounded=fallback(app,R.font.round,R.font.round_cn,R.font.round_full,R.font.round_cn_full)
+        val serif=FontFamily(ThemeTypefaces.body(context,"magazine"))
+        val editorialNumbers=FontFamily(ThemeTypefaces.number(context,"magazine"))
+        val ink=FontFamily(ThemeTypefaces.body(context,"journal"))
+        val rounded=FontFamily(ThemeTypefaces.body(context,"objects"))
         return listOf(Magazine.copy(body=serif,display=serif,number=editorialNumbers),Journal.copy(body=ink,display=ink,number=ink),Objects.copy(body=rounded,display=rounded,number=rounded)).also{cached=it}
     }
 }

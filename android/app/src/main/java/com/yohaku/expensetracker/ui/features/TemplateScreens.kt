@@ -36,6 +36,8 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun TemplatesScreen(s:BookSnapshot,vm:AppViewModel) {
     var editing by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
+    val requestedEditor by vm.desktopTemplateEditor.collectAsStateWithLifecycle()
+    LaunchedEffect(requestedEditor){requestedEditor?.let{editing=it;vm.desktopTemplateEditor.value=null}}
     var deleting by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     YTitle(word("常用的一笔，留作模板。","いつもの記録を、テンプレートに。"),"ENTRY TEMPLATES",word("首页点一下模板，只填金额就能记好。","ホームでテンプレートを押せば、金額だけで記録できます。"),pageFlow=true)

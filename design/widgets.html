@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>桌面小组件</title>
+<style>
+@font-face{font-family:YohakuEditorial;src:url('fonts/editorial.woff2?v=55') format('woff2');font-display:swap;font-weight:100 900}
+@font-face{font-family:YohakuHand;src:url('fonts/hand.woff2?v=55') format('woff2');font-display:swap}
+@font-face{font-family:YohakuHandCN;src:url('fonts/hand-cn.woff2?v=55') format('woff2');font-display:swap}
+@font-face{font-family:YohakuRound;src:url('fonts/round.woff2?v=55') format('woff2');font-display:swap}
+@font-face{font-family:YohakuRoundCN;src:url('fonts/round-cn.woff2?v=55') format('woff2');font-display:swap;font-weight:100 900}
+:root{--page:#ebeae4;--page-ink:#2b2f2c;--page-muted:#7b7f78;--page-line:#d6d5cd}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--page);color:var(--page-ink);font-family:"Noto Sans CJK SC","PingFang SC",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.intro{max-width:1340px;margin:0 auto;padding:44px 24px 8px}
+.intro small{letter-spacing:.24em;font-size:11px;color:var(--page-muted)}
+.intro h1{font-size:30px;font-weight:600;margin:10px 0 10px}
+.intro p{max-width:780px;font-size:14px;line-height:1.8;color:#5c605a}
+.grid{max-width:1340px;margin:0 auto;padding:24px 24px 40px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;justify-items:center}
+.col{width:100%;max-width:400px}
+.col>h2{font-size:17px;font-weight:600}
+.col>.sub{font-size:12px;color:var(--page-muted);margin:6px 0 16px;line-height:1.7}
+.notes{max-width:1340px;margin:0 auto;padding:0 24px 64px}
+.notes h3{font-size:15px;margin-bottom:10px}
+.notes ul{padding-left:18px;font-size:13px;line-height:1.9;color:#555a54;max-width:900px}
+@media (max-width:1100px){.grid{grid-template-columns:1fr}}
+
+/* ---------- Home screen (S24 Ultra, ~384dp) ---------- */
+.phone{width:384px;max-width:100%;margin:0 auto;border-radius:38px;padding:14px 16px 22px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 80% at 20% 0%,#9fb0b8 0%,#7f8f99 40%,#5d6b72 100%);box-shadow:0 0 0 7px #1d1f1e,0 18px 40px rgba(0,0,0,.18)}
+.status{display:flex;justify-content:space-between;color:#fff;font-size:12px;padding:0 10px 18px;opacity:.95}
+.home{display:grid;grid-template-columns:repeat(4,1fr);column-gap:8px;row-gap:16px}
+.w42{grid-column:span 4;height:180px}
+.w22{grid-column:span 2;height:180px}
+.dock{display:grid;grid-template-columns:repeat(4,1fr);margin-top:318px;position:relative}
+.cell-apps{display:grid;grid-template-columns:1fr 1fr;align-content:space-around;justify-items:center}
+.app{display:flex;flex-direction:column;align-items:center;gap:6px;color:#fff;font-size:11px}
+.app i{width:54px;height:54px;border-radius:17px;background:rgba(255,255,255,.28);display:block}
+.app i.yohaku{background:#355b43;display:grid;place-items:center}
+.app i.yohaku svg{width:54px;height:54px}
+.app.pressed i{box-shadow:0 0 0 3px rgba(255,255,255,.7)}
+.slot{position:relative}
+/* One UI shortcut popup: frame drawn by the system, icons + labels are ours */
+.popup{position:absolute;left:0;bottom:84px;width:210px;background:rgba(250,250,250,.97);border-radius:24px;padding:8px 0;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:3}
+.popup .row{display:flex;align-items:center;gap:12px;padding:7px 14px;font-size:13.5px;color:#222}
+.popup .row .ico{width:34px;height:34px;border-radius:11px;flex:none;display:grid;place-items:center;overflow:hidden}
+.popup .sys{border-top:1px solid #e5e5e5;margin-top:6px;padding:10px 14px 4px;display:flex;justify-content:space-around;color:#666;font-size:11px}
+.sysnote{font-size:11px;color:var(--page-muted);margin-top:12px;line-height:1.6}
+.states{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px;padding:16px;border-radius:24px;background:#7f8f99}
+.states .w22{height:172px;grid-column:auto}
+.states-cap{font-size:12px;color:var(--page-muted);margin-top:22px}
+.lbl{font-size:11px;color:#fff;opacity:.85;text-align:center;margin-top:6px}
+
+/* ============ 01 Magazine ============ */
+.mag{--bg:#f7f7ef;--sf:#fffef8;--ink:#263d32;--mu:#788577;--ac:#355b43;--soft:#e8eddf;--line:#d2dacc;--warm:#bc664f;
+  font-family:YohakuEditorial,serif;color:var(--ink)}
+.mag .w{background:var(--sf);height:100%;padding:13px 15px 0;display:flex;flex-direction:column;position:relative}
+.mag .mast{display:flex;justify-content:space-between;align-items:baseline;font-size:9px;letter-spacing:.18em;color:var(--mu);text-transform:uppercase}
+.mag .rule{height:1.5px;background:var(--ink);margin:6px 0 0}
+.mag .kick{font-size:9px;letter-spacing:.2em;color:var(--mu);margin-top:10px;text-transform:uppercase}
+.mag .body{display:flex;align-items:flex-end;gap:12px}
+.mag .amt{font-size:40px;line-height:1.02;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.mag .amt sup{font-size:17px;vertical-align:0;margin-right:2px}
+.mag .aside{border-left:1px solid var(--line);padding-left:10px;font-size:10.5px;color:var(--mu);line-height:1.55;margin-bottom:5px}
+.mag .aside b{display:block;color:var(--ink);font-weight:400;font-size:14px}
+.mag .track{height:1px;background:var(--line);margin-top:8px;position:relative}
+.mag .track span{position:absolute;left:0;top:-1px;height:3px;background:var(--ac)}
+.mag .tpl{margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--ink);height:44px}
+.mag .tpl div{padding:7px 6px 0;border-left:1px solid var(--line);font-size:13px;line-height:1.15}
+.mag .tpl div:first-child{border-left:0;padding-left:0}
+.mag .tpl em{font-style:normal;display:block;font-size:8.5px;letter-spacing:.14em;color:var(--warm)}
+.mag .tpl small{font-size:9.5px;color:var(--mu);margin-left:3px}
+.mag .small .amt{font-size:33px}
+.mag .small .foot{margin-top:auto;padding:8px 0 12px;border-top:1px solid var(--line);font-size:10.5px;color:var(--mu);display:flex;justify-content:space-between}
+.mag .small .foot b{color:var(--ink);font-weight:400}
+.mag .small .foot.two{flex-direction:column;gap:3px;padding:6px 0 10px}
+.mag .small .foot.two span{display:flex;justify-content:space-between;align-items:baseline}
+.mag .small .foot.two b{font-size:13px}
+.mag .over .amt{color:var(--warm)}
+.mag .over .track span{background:var(--warm)}
+.mag .num{font-size:28px;color:var(--warm);position:absolute;right:14px;top:30px;opacity:.9}
+
+/* ============ 02 Journal ============ */
+.jou{--bg:#f1e8d5;--sf:#faf5e7;--ink:#354d61;--mu:#898679;--ac:#3b5b70;--soft:#e6e6d9;--line:#d4cbb5;--warm:#ae6657;
+  font-family:YohakuHand,YohakuHandCN,cursive;color:var(--ink)}
+.jou .w{height:100%;position:relative;border-radius:3px;background:
+  linear-gradient(90deg,transparent 21px,rgba(174,102,87,.45) 21px,rgba(174,102,87,.45) 22px,transparent 22px),
+  repeating-linear-gradient(180deg,transparent 0 21px,rgba(59,91,112,.13) 21px 22px),var(--sf);
+  background-position:0 0,0 9px,0 0;padding:14px 14px 0 32px;box-shadow:0 1px 0 rgba(0,0,0,.05),0 3px 8px rgba(60,40,10,.12)}
+.jou .tape{position:absolute;top:-6px;left:34%;width:66px;height:17px;background:rgba(222,203,150,.85);transform:rotate(-3deg);
+  background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.25) 0 4px,transparent 4px 9px)}
+.jou .holes{position:absolute;left:7px;top:26px;bottom:26px;display:flex;flex-direction:column;justify-content:space-between}
+.jou .holes i{width:8px;height:8px;border-radius:50%;background:#7f8f99;box-shadow:inset 0 1px 1px rgba(0,0,0,.35)}
+.jou .split{display:grid;grid-template-columns:1.15fr .85fr;height:100%}
+.jou .head{font-size:13px;color:var(--warm);line-height:22px}
+.jou .eq{font-size:15px;color:var(--mu);line-height:22px}
+.jou .amt{font-size:38px;line-height:44px;color:var(--ac);font-variant-numeric:tabular-nums}
+.jou .amt sup{font-size:17px;vertical-align:0}
+.jou .wave{height:6px;width:86%;margin-top:-4px;background:
+  radial-gradient(circle at 5px -2px,transparent 5px,var(--warm) 5.5px,var(--warm) 6.6px,transparent 7px) 0 0/10px 6px repeat-x;opacity:.75}
+.jou .pace{font-size:13px;color:var(--mu);line-height:22px;margin-top:4px}
+.jou .list{border-left:1.5px dashed var(--line);padding-left:12px;padding-top:0;font-size:15px;line-height:33px}
+.jou .list div{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.jou .list .box{width:14px;height:14px;border:1.6px solid var(--ac);border-radius:2px 4px 2px 3px;transform:rotate(-4deg);flex:none}
+.jou .list small{font-size:12px;color:var(--mu)}
+.jou .list .cap{font-size:12px;color:var(--warm);line-height:22px}
+.jou .small{padding-left:16px}
+.jou .small .amt{font-size:33px}
+.jou .small .holes{display:none}
+.jou .small.w{background:repeating-linear-gradient(180deg,transparent 0 21px,rgba(59,91,112,.13) 21px 22px),var(--sf);background-position:0 9px,0 0}
+.jou .pace .free{font-weight:400;color:var(--warm);font-size:15px}
+.jou .over .amt{color:var(--warm)}
+.jou .stamp{position:absolute;right:12px;bottom:14px;width:46px;height:46px;border:1.5px solid var(--warm);border-radius:50%;color:var(--warm);
+  display:grid;place-items:center;font-size:11px;transform:rotate(-12deg);opacity:.8;line-height:1.1;text-align:center}
+
+/* ============ 03 Objects ============ */
+.obj{--bg:#faf1e5;--sf:#fffcf5;--ink:#634b3b;--mu:#9c8976;--ac:#ae6246;--soft:#f0e3cc;--line:#e9d8be;--warm:#b56340;
+  --pk:#ecd3a9;--pk-edge:#ddbf8e;--strap:#b98b5c;--card:#fff6e6;
+  font-family:YohakuRound,YohakuRoundCN,sans-serif;color:var(--ink)}
+/* the widget is the home-page money pocket itself: one layer, strap across its opening */
+.obj .w{position:relative;height:100%;border-radius:26px;background:var(--pk);border:1px solid var(--pk-edge);
+  box-shadow:0 4px 0 rgba(150,105,60,.28);padding:24px 14px 12px;display:flex;flex-direction:column}
+.obj .w:before{content:'';position:absolute;top:9px;left:50%;width:42%;transform:translateX(-50%);height:6px;border-radius:6px;background:var(--strap)}
+.obj .lab{font-size:10.5px;color:#8a6a4c;display:flex;align-items:center;gap:6px}
+.obj .lab i{width:8px;height:8px;border-radius:50%;background:var(--ac);flex:none}
+.obj .top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.obj .amt{font-size:35px;line-height:1;color:var(--warm);font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.5px;margin-top:8px}
+.obj .amt sup{font-size:15px;vertical-align:0;margin-right:2px}
+.obj .cap{font-size:10px;color:#9b7a58;margin-top:5px}
+/* pace card: one cream card, two halves split by a dashed seam */
+.obj .pace{display:flex;background:var(--card);border-radius:14px;box-shadow:0 2px 0 rgba(150,105,60,.15)}
+.obj .pace div{padding:6px 10px;font-size:9px;color:#a58763;line-height:1.35;white-space:nowrap}
+.obj .pace div+div{border-left:1px dashed #e2c9a3}
+.obj .pace b{display:block;font-weight:500;font-size:13px;color:var(--ink)}
+/* templates: cream slips tucked into the pocket, icon badge in its category-pocket colour */
+.obj .slips{margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.obj .slip{background:var(--card);border-radius:14px;height:50px;padding:0 7px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 0 rgba(150,105,60,.15);min-width:0}
+.obj .slip .ic{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--b);color:var(--k)}
+.obj .slip .ic svg{width:14px;height:14px}
+.obj .slip span:last-child{min-width:0;font-size:12px;font-weight:500;line-height:1.2;white-space:nowrap}
+.obj .slip small{display:block;font-size:9.5px;font-weight:400;color:var(--mu)}
+.obj .p1{--b:#e2e7d5;--k:#6f7f5c}.obj .p2{--b:#e0e9ec;--k:#5f7f89}.obj .p3{--b:#f0ddcf;--k:#a0664a}.obj .p4{--b:#efe3cc;--k:#8a6948}
+.obj .small .pace{margin-top:auto}
+.obj .small .pace div{flex:1}
+.obj .over .w{--pk:#e9c0a3;--pk-edge:#d9a582;--strap:#9b4a32}
+.obj .over .amt{color:#8f3f2a}
+.obj .nob .w{--pk:#e6dcc8;--pk-edge:#d3c5ab;--strap:#a8916f}
+.obj .nob .amt{color:var(--ink)}
+</style>
+</head>
+<body>
+<section class="intro">
+  <small>HOME SCREEN WIDGETS / 效果图</small>
+  <h1>桌面小组件与长按快捷方式</h1>
+  <p>小组件绑定一个账本，跟随该账本的主题。宽版（4×2）显示预算内还能花、自由可花和前 4 个模板；小版（2×2）只显示这两个数。自由可花 = 预算内还能花 − 本月待付安排（与首页同一口径），日均按自由可花 ÷ 本月剩余天数计算。点模板会打开记账页，模板内容已预填，金额框获得焦点。点余额区域进入该账本首页。长按 app 图标弹出当前账本的前 4 个模板。示例按 S24 Ultra 默认桌面（4×5 网格，约 384dp 宽）绘制，日期为 11 月 7 日，本月剩 24 天。</p>
+</section>
+
+<main class="grid">
+<!-- ================= 01 Magazine ================= -->
+<div class="col mag">
+  <h2>01 / 现代生活杂志</h2>
+  <p class="sub">报头、粗细两级分隔线、编号目录。模板按编号排成一栏栏目录，不用图标。直角，不加阴影。</p>
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>5G ▮▮▮ 86%</span></div>
+    <div class="home">
+      <div class="w42"><div class="w">
+        <div class="mast"><span>Yohaku · 日常生活</span><span>Nov. 2026 · 剩 24 天</span></div>
+        <div class="rule"></div>
+        <div class="kick">本月预算内还能花</div>
+        <div class="body">
+          <div class="amt"><sup>¥</sup>89,640</div>
+          <div class="aside">自由可花 <b>¥49,640</b></div>
+          <div class="aside">日均 <b>¥2,068</b></div>
+        </div>
+        <div class="track"><span style="width:50.2%"></span></div>
+        <div class="tpl">
+          <div><em>01</em>午饭</div>
+          <div><em>02</em>咖啡<small>480</small></div>
+          <div><em>03</em>电车<small>220</small></div>
+          <div><em>04</em>便利店</div>
+        </div>
+      </div></div>
+      <div class="w22"><div class="w small">
+        <div class="mast"><span>剩 24 天</span><span>日常生活</span></div>
+        <div class="rule"></div>
+        <div class="kick">预算内还能花</div>
+        <div class="amt" style="margin-top:6px"><sup>¥</sup>89,640</div>
+        <div class="track"><span style="width:50.2%"></span></div>
+        <div class="foot two"><span>自由可花<b>¥49,640</b></span><span>日均<b>¥2,068</b></span></div>
+      </div></div>
+      <div class="w22 cell-apps"><div class="app"><i></i>日历</div><div class="app"><i></i>天气</div><div class="app"><i></i>照片</div><div class="app"><i></i>时钟</div></div>
+    </div>
+    <div class="dock">
+      <div class="slot">
+        <div class="popup">
+          <div class="row"><span class="ico" style="background:#fffef8;box-shadow:inset 0 0 0 1px #d2dacc"><svg viewBox="0 0 34 34"><text x="17" y="22" font-family="YohakuEditorial" font-size="15" fill="#263d32" text-anchor="middle">午</text><rect x="9" y="26" width="16" height="1.3" fill="#bc664f"/></svg></span>午饭</div>
+          <div class="row"><span class="ico" style="background:#fffef8;box-shadow:inset 0 0 0 1px #d2dacc"><svg viewBox="0 0 34 34"><text x="17" y="22" font-family="YohakuEditorial" font-size="15" fill="#263d32" text-anchor="middle">咖</text><rect x="9" y="26" width="16" height="1.3" fill="#bc664f"/></svg></span>咖啡 ¥480</div>
+          <div class="row"><span class="ico" style="background:#fffef8;box-shadow:inset 0 0 0 1px #d2dacc"><svg viewBox="0 0 34 34"><text x="17" y="22" font-family="YohakuEditorial" font-size="15" fill="#263d32" text-anchor="middle">电</text><rect x="9" y="26" width="16" height="1.3" fill="#bc664f"/></svg></span>电车 ¥220</div>
+          <div class="row"><span class="ico" style="background:#fffef8;box-shadow:inset 0 0 0 1px #d2dacc"><svg viewBox="0 0 34 34"><text x="17" y="22" font-family="YohakuEditorial" font-size="15" fill="#263d32" text-anchor="middle">便</text><rect x="9" y="26" width="16" height="1.3" fill="#bc664f"/></svg></span>便利店</div>
+          <div class="sys"><span>应用信息</span><span>选择</span><span>小组件</span></div>
+        </div>
+        <div class="app pressed"><i class="yohaku"><svg viewBox="27 20 54 64"><path fill="#fffef8" d="M38,28h32a2,2 0 0,1 2,2V78l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3V30a2,2 0 0,1 2,-2z"/><path stroke="#355b43" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M47,35L54,44L61,35M54,44V57M48,47H60M48,52H60"/></svg></i>余量</div>
+      </div>
+      <div class="app"><i></i>相机</div><div class="app"><i></i>地图</div><div class="app"><i></i>设置</div>
+    </div>
+  </div>
+  <p class="sysnote">长按菜单的白色外框、底部“应用信息”等是 One UI 系统画的，我们只能控制图标和文字。杂志版图标：米白底、衬线字、红色细线。</p>
+  <p class="states-cap">其他状态（小版）：超出预算 / 账本未设月预算</p>
+  <div class="states">
+    <div class="w22 over"><div class="w small">
+      <div class="mast"><span>No.11</span><span>日常生活</span></div><div class="rule"></div>
+      <div class="kick">本月已超出预算</div>
+      <div class="amt" style="margin-top:6px"><sup>¥</sup>12,400</div>
+      <div class="track"><span style="width:100%"></span></div>
+      <div class="foot"><span>预算 <b>¥180,000</b></span><span>剩 <b>24</b> 天</span></div>
+    </div></div>
+    <div class="w22"><div class="w small">
+      <div class="mast"><span>No.11</span><span>兴趣</span></div><div class="rule"></div>
+      <div class="kick">本月已花</div>
+      <div class="amt" style="margin-top:6px"><sup>¥</sup>23,180</div>
+      <div class="foot"><span>未设月预算</span><span>剩 <b>24</b> 天</span></div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ================= 02 Journal ================= -->
+<div class="col jou">
+  <h2>02 / 纸质手账</h2>
+  <p class="sub">横线纸页、胶带、装订孔、红色页边线。余额写成手写算式，模板做成勾选清单。</p>
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>5G ▮▮▮ 86%</span></div>
+    <div class="home">
+      <div class="w42"><div class="w">
+        <span class="tape"></span>
+        <div class="holes"><i></i><i></i><i></i></div>
+        <div class="split">
+          <div>
+            <div class="eq">180,000 − 90,360 =</div>
+            <div class="amt"><sup>¥</sup>89,640</div>
+            <div class="wave"></div>
+            <div class="pace">自由可花 <b class="free">¥49,640</b></div>
+            <div class="pace" style="margin-top:0">还有24天，每天约 ¥2,068</div>
+          </div>
+          <div class="list">
+            <div class="cap" style="line-height:22px">11月 · 记一笔 ↓</div>
+            <div><span class="box"></span>午饭</div>
+            <div><span class="box"></span>咖啡 <small>480</small></div>
+            <div><span class="box"></span>电车 <small>220</small></div>
+            <div><span class="box"></span>便利店</div>
+          </div>
+        </div>
+      </div></div>
+      <div class="w22"><div class="w small">
+        <span class="tape" style="left:28%"></span>
+        <div class="head">11月还能花</div>
+        <div class="amt"><sup>¥</sup>89,640</div>
+        <div class="wave" style="width:90%"></div>
+        <div class="pace">自由可花 <b class="free">¥49,640</b></div>
+        <div class="pace" style="margin-top:0">剩24天 · 每天约2,068</div>
+      </div></div>
+      <div class="w22 cell-apps"><div class="app"><i></i>日历</div><div class="app"><i></i>天气</div><div class="app"><i></i>照片</div><div class="app"><i></i>时钟</div></div>
+    </div>
+    <div class="dock">
+      <div class="slot">
+        <div class="popup">
+          <div class="row"><span class="ico" style="background:#faf5e7;box-shadow:inset 0 0 0 1px #d4cbb5"><svg viewBox="0 0 34 34"><rect x="6" y="9" width="13" height="13" rx="2" fill="none" stroke="#3b5b70" stroke-width="1.6" transform="rotate(-5 12 15)"/><path d="M8 15l4 4 9-12" fill="none" stroke="#ae6657" stroke-width="2" stroke-linecap="round"/><text x="25" y="29" font-family="YohakuHand,YohakuHandCN" font-size="10" fill="#3b5b70" text-anchor="middle">午</text></svg></span>午饭</div>
+          <div class="row"><span class="ico" style="background:#faf5e7;box-shadow:inset 0 0 0 1px #d4cbb5"><svg viewBox="0 0 34 34"><rect x="6" y="9" width="13" height="13" rx="2" fill="none" stroke="#3b5b70" stroke-width="1.6" transform="rotate(-5 12 15)"/><path d="M8 15l4 4 9-12" fill="none" stroke="#ae6657" stroke-width="2" stroke-linecap="round"/><text x="25" y="29" font-family="YohakuHand,YohakuHandCN" font-size="10" fill="#3b5b70" text-anchor="middle">咖</text></svg></span>咖啡 ¥480</div>
+          <div class="row"><span class="ico" style="background:#faf5e7;box-shadow:inset 0 0 0 1px #d4cbb5"><svg viewBox="0 0 34 34"><rect x="6" y="9" width="13" height="13" rx="2" fill="none" stroke="#3b5b70" stroke-width="1.6" transform="rotate(-5 12 15)"/><path d="M8 15l4 4 9-12" fill="none" stroke="#ae6657" stroke-width="2" stroke-linecap="round"/><text x="25" y="29" font-family="YohakuHand,YohakuHandCN" font-size="10" fill="#3b5b70" text-anchor="middle">电</text></svg></span>电车 ¥220</div>
+          <div class="row"><span class="ico" style="background:#faf5e7;box-shadow:inset 0 0 0 1px #d4cbb5"><svg viewBox="0 0 34 34"><rect x="6" y="9" width="13" height="13" rx="2" fill="none" stroke="#3b5b70" stroke-width="1.6" transform="rotate(-5 12 15)"/><path d="M8 15l4 4 9-12" fill="none" stroke="#ae6657" stroke-width="2" stroke-linecap="round"/><text x="25" y="29" font-family="YohakuHand,YohakuHandCN" font-size="10" fill="#3b5b70" text-anchor="middle">便</text></svg></span>便利店</div>
+          <div class="sys"><span>应用信息</span><span>选择</span><span>小组件</span></div>
+        </div>
+        <div class="app pressed"><i class="yohaku"><svg viewBox="27 20 54 64"><path fill="#fffef8" d="M38,28h32a2,2 0 0,1 2,2V78l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3V30a2,2 0 0,1 2,-2z"/><path stroke="#355b43" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M47,35L54,44L61,35M54,44V57M48,47H60M48,52H60"/></svg></i>余量</div>
+      </div>
+      <div class="app"><i></i>相机</div><div class="app"><i></i>地图</div><div class="app"><i></i>设置</div>
+    </div>
+  </div>
+  <p class="sysnote">手账版图标：纸色底，手绘勾选框里打一个红勾，右下角手写分类首字。</p>
+  <p class="states-cap">其他状态（小版）：超出预算 / 账本未设月预算</p>
+  <div class="states">
+    <div class="w22 over"><div class="w small">
+      <span class="tape" style="left:28%"></span>
+      <div class="head">11月 · 超出了</div>
+      <div class="eq" style="font-size:13px">180,000 − 192,400 =</div>
+      <div class="amt">−<sup>¥</sup>12,400</div>
+      <div class="pace">剩24天，先缓一缓</div>
+    </div></div>
+    <div class="w22"><div class="w small">
+      <span class="tape" style="left:28%"></span>
+      <div class="head">11月 · 兴趣</div>
+      <div class="eq" style="font-size:13px">这个月花了</div>
+      <div class="amt"><sup>¥</sup>23,180</div>
+      <div class="pace">没有设月预算</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ================= 03 Objects ================= -->
+<div class="col obj">
+  <h2>03 / 日常小物</h2>
+  <p class="sub">小组件本身就是首页那只钱袋：土黄口袋，开口处一条棕色提带。剩余天数和日均写在奶油色小卡上；模板是插在袋口的一排小纸条，图标底色沿用分类页口袋的豆绿、雾蓝、杏粉、米色。</p>
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>5G ▮▮▮ 86%</span></div>
+    <div class="home">
+      <div class="w42"><div class="w">
+        <div class="lab"><i></i>日常钱袋 · 11月 · 剩 24 天</div>
+        <div class="top">
+          <div><div class="amt"><sup>¥</sup>89,640</div><div class="cap">本月预算内还能花</div></div>
+          <div class="pace"><div>自由可花<b>¥49,640</b></div><div>每天约<b>¥2,068</b></div></div>
+        </div>
+        <div class="slips"><div class="slip p1"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h12a6 6 0 0 1-12 0zM5 5c0-1 1-1 1-2M9 5c0-1 1-1 1-2"/></svg></span><span>午饭</span></div><div class="slip p2"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h8v5a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM11 6h1.5a1.5 1.5 0 0 1 0 3H11"/></svg></span><span>咖啡<small>¥480</small></span></div><div class="slip p3"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2" width="9" height="10" rx="2.5"/><path d="M3.5 8h9M5 14l1.5-2M11 14l-1.5-2"/></svg></span><span>电车<small>¥220</small></span></div><div class="slip p4"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h10l-1 9H4zM6 5V4a2 2 0 0 1 4 0v1"/></svg></span><span>便利店</span></div></div>
+      </div></div>
+      <div class="w22 "><div class="w small">
+          <div class="lab"><i></i>日常钱袋 · 剩 24 天</div><div class="amt"><sup>¥</sup>89,640</div><div class="cap">预算内还能花</div>
+          <div class="pace"><div>自由可花<b>¥49,640</b></div><div>每天约<b>¥2,068</b></div></div></div></div>
+      <div class="w22 cell-apps"><div class="app"><i></i>日历</div><div class="app"><i></i>天气</div><div class="app"><i></i>照片</div><div class="app"><i></i>时钟</div></div>
+    </div>
+    <div class="dock">
+      <div class="slot">
+        <div class="popup"><div class="row"><span class="ico" style="background:#e2e7d5;color:#6f7f5c"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h12a6 6 0 0 1-12 0zM5 5c0-1 1-1 1-2M9 5c0-1 1-1 1-2"/></svg></span>午饭</div><div class="row"><span class="ico" style="background:#e0e9ec;color:#5f7f89"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h8v5a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM11 6h1.5a1.5 1.5 0 0 1 0 3H11"/></svg></span>咖啡 ¥480</div><div class="row"><span class="ico" style="background:#f0ddcf;color:#a0664a"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2" width="9" height="10" rx="2.5"/><path d="M3.5 8h9M5 14l1.5-2M11 14l-1.5-2"/></svg></span>电车 ¥220</div><div class="row"><span class="ico" style="background:#efe3cc;color:#8a6948"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h10l-1 9H4zM6 5V4a2 2 0 0 1 4 0v1"/></svg></span>便利店</div><div class="sys"><span>应用信息</span><span>选择</span><span>小组件</span></div></div>
+        <div class="app pressed"><i class="yohaku"><svg viewBox="27 20 54 64"><path fill="#fffef8" d="M38,28h32a2,2 0 0,1 2,2V78l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3V30a2,2 0 0,1 2,-2z"/><path stroke="#355b43" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M47,35L54,44L61,35M54,44V57M48,47H60M48,52H60"/></svg></i>余量</div>
+      </div>
+      <div class="app"><i></i>相机</div><div class="app"><i></i>地图</div><div class="app"><i></i>设置</div>
+    </div>
+  </div>
+  <p class="sysnote">小物版图标：用模板分类在 app 里的实际图标，底色取对应口袋的颜色。</p>
+  <p class="states-cap">其他状态（小版）：超出预算 / 账本未设月预算</p>
+  <div class="states">
+    <div class="w22 over"><div class="w small">
+          <div class="lab"><i></i>钱袋见底了</div><div class="amt"><sup>¥</sup>12,400</div><div class="cap">本月已超出预算</div>
+          <div class="pace"><div>月预算<b>¥180,000</b></div><div>剩余<b>24 天</b></div></div></div></div>
+    <div class="w22 nob"><div class="w small">
+          <div class="lab"><i></i>兴趣钱袋</div><div class="amt"><sup>¥</sup>23,180</div><div class="cap">本月已花</div>
+          <div class="pace"><div>月预算<b>未设置</b></div><div>剩余<b>24 天</b></div></div></div></div>
+  </div>
+</div>
+</main>
+
+<section class="notes">
+  <h3>说明</h3>
+  <ul>
+    <li>本月有金额未定的待付安排时，自由可花和日均显示为“—”，与首页一致。</li>
+    <li>小组件放到桌面时先选账本，之后长按小组件可以重新选。换账本后主题跟着变。</li>
+    <li>宽版只显示模板排序中的前 4 个。模板失效时（账户停用、分类归档等），对应格子置灰，点击后进入模板编辑页。</li>
+    <li>任何来源的记账（app 内、云端工作台、恢复备份、CSV 导入）都会触发刷新；跨天、跨月时自动刷新。</li>
+    <li>手账、小物用的日文字体缺部分简体字，XML 布局又只能引用单个字体文件，所以小组件里的文字用 app 同一套字体回退链逐个字段画成位图，读屏文字另行设置；背景和装饰用 XML drawable / vector 实现。</li>
+  </ul>
+</section>
+</body>
+</html>

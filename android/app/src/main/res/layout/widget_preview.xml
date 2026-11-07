@@ -1,0 +1,9 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="14dp" android:background="@drawable/widget_magazine">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/widget_preview_heading" android:textColor="#788577" android:textSize="9sp" android:fontFamily="@font/editorial_full" />
+    <ImageView android:layout_width="match_parent" android:layout_height="2dp" android:layout_marginTop="6dp" android:background="#263d32" android:importantForAccessibility="no" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/widget_preview_caption" android:textColor="#788577" android:textSize="10sp" android:fontFamily="@font/editorial_full" android:layout_marginTop="8dp" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="¥89,640" android:textColor="#263d32" android:textSize="34sp" android:fontFamily="@font/editorial_full" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/widget_preview_stats" android:textColor="#263d32" android:textSize="12sp" android:fontFamily="@font/editorial_full" />
+    <ImageView android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="8dp" android:background="#d2dacc" android:importantForAccessibility="no" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/widget_preview_templates" android:textColor="#263d32" android:textSize="12sp" android:fontFamily="@font/editorial_full" android:layout_marginTop="8dp" />
+</LinearLayout>

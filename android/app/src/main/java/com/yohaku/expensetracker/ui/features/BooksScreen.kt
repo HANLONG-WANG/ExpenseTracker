@@ -40,7 +40,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable private fun BookCard(overview:BookOverview,selected:Boolean,onClick:()->Unit){
+@Composable internal fun BookCard(overview:BookOverview,selected:Boolean,onClick:()->Unit){
     val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=if(objects)RoundedCornerShape(21.dp,21.dp,25.dp,21.dp) else RoundedCornerShape(0.dp)

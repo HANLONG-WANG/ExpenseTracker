@@ -7,6 +7,7 @@ class YohakuApplication:android.app.Application() {
     val cloud by lazy { com.yohaku.expensetracker.data.cloud.CloudRepository(this,repository) }
     private val applicationScope=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.IO)
     val reminders by lazy { com.yohaku.expensetracker.platform.ReminderCoordinator(this) }
+    val desktop by lazy { com.yohaku.expensetracker.platform.desktop.DesktopCoordinator(this) }
     override fun onCreate() {
         super.onCreate()
         if(getProcessName()!=packageName)return
@@ -20,12 +21,18 @@ class YohakuApplication:android.app.Application() {
         // surviving worker can open Room while an interrupted restore is being rolled back.
         androidx.work.WorkManager.initialize(this,androidx.work.Configuration.Builder().build())
         reminders.start()
+        desktop.start()
         com.yohaku.expensetracker.platform.LocalMaintenanceWorker.schedule(this)
         applicationScope.launch { try { cloud.resumePending() } catch(e:Exception) { android.util.Log.e("YohakuCloud","Cloud resume skipped",e) } }
+    }
+    override fun onConfigurationChanged(config:android.content.res.Configuration) {
+        super.onConfigurationChanged(config)
+        if(getProcessName()==packageName)desktop.requestRefresh()
     }
     suspend fun stopForRestore() {
         applicationScope.coroutineContext[kotlinx.coroutines.Job]!!.cancelAndJoin()
         reminders.stopForRestore()
+        desktop.stopForRestore()
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             androidx.work.WorkManager.getInstance(this@YohakuApplication).cancelAllWork().result.get()
             repository.db.close()

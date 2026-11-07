@@ -130,7 +130,12 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
             var managedAccountId by rememberSaveable(book.id){mutableStateOf<String?>(null)}
             fun openRecord(event:EventEntity){selectedEventId=event.id;detailReturnRoute=baseRoute;vm.navigate("detail")}
             fun startRequestedEntry(current:BookSnapshot) {
-                requestedTemplate?.let{id->vm.startTemplate(current,current.templates.first{it.id==id});return}
+                requestedTemplate?.let{id->
+                    val template=current.templates.firstOrNull{it.id==id}
+                    if(template!=null&&current.templateIssue(template)==null)vm.startTemplate(current,template)
+                    else {vm.navigate("templates");vm.desktopTemplateEditor.value=template?.id;vm.desktopNotice(current.book.id,"模板已变更，请检查后重试。","テンプレートが変更されました。確認してください。")}
+                    return
+                }
                 val kind=EntryKind.valueOf(requestedEntryKind)
                 if(kind==EntryKind.TRANSFER)vm.startTransfer(current,requestedTransferAccount,requestedDestination)
                 else vm.startEntry(current,kind,requestedActivity,requestedTreatFriend,requestedMerchant)
@@ -181,6 +186,26 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                 else openTimelineItem(com.yohaku.expensetracker.data.repository.CashTimelineItem(item.id,item.kind,item.sourceId,today.toString(),"",item.accountId,book.currency,null,false,null,issue=item.reason))
             }
             fun openRisk(id:String){riskAccountId=id;sheet="cash-risk"}
+            val desktopTarget by vm.desktopTarget.collectAsStateWithLifecycle()
+            LaunchedEffect(book.id,desktopTarget) {
+                val target=desktopTarget?.takeIf{it.bookId==book.id}?:return@LaunchedEffect
+                vm.desktopTarget.value=null;sheet=null
+                val templateId=target.templateId
+                if(templateId!=null) {
+                    val template=snapshot.templates.firstOrNull{it.id==templateId}
+                    val issue=template?.let{snapshot.templateIssue(it)}
+                    if(template==null||issue!=null) {
+                        vm.navigate("templates")
+                        vm.desktopTemplateEditor.value=template?.id
+                        if(templateId.isNotEmpty())vm.desktopNotice(book.id,
+                            if(template==null)"模板已删除，请选择或创建模板。"else "模板暂不可用，请检查并编辑。",
+                            if(template==null)"テンプレートは削除済みです。選択または作成してください。"else "テンプレートが利用できません。内容を確認して編集してください。")
+                    }else {
+                        requestedTemplate=template.id
+                        if(snapshot.draft!=null)sheet="existing-draft"else vm.startTemplate(snapshot,template)
+                    }
+                }
+            }
             LaunchedEffect(book.id,reminderBook) {
                 if(reminderBook==book.id) {
                     val target=vm.reminderTarget.value

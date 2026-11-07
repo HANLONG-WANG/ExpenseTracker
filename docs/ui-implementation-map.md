@@ -2,6 +2,12 @@
 
 更新：2026-11-05。一次付规模化与页签外观修正的默认回归、三主题中日文视觉及真实备份查看已验收，见下方增量。金融账户阶段 1–5 已通过复核，第 8.3 节整合验证及风险见[金融 UI 计划](plans/financial-account-ui-plan.md#83-最终整合验证)；阶段 2 已实现计划分层、新建引导与合同候选，阶段 3 已实现就地还款和简化录入，阶段 4 接入复杂金融全屏流程、变化摘要与差异，阶段 5 收口历史撤销、额度关系、时间及术语；流程、标签与测试入口见下方增量及 README。当前：云端办理阶段1–8已验收，阶段8为审计/协议/工具，未改UI；当前覆盖见文末与[审计表](plans/cloud-command-coverage.md)。历史状态：阶段A–C P01–P18涉及范围已实施、对照并交付APK。阶段C当前结论见文末C32与[阶段C状态](../android/verification/phase-c-status.md)；UI24本轮仅含重要事项基础，系统通知/设置按P21继续，UI01–UI27其余后续业务仍按阶段D/E完成。历史待验说明保留当时状态。
 
+## 桌面入口增量（2026-11-07）
+
+本次桌面功能唯一视觉依据为 [widgets.html](../design/widgets.html)，不修改 v55 冻结包。`platform/desktop/WidgetRenderer` 与 `res/layout/widget_{magazine,journal,objects}_{wide,small}` 实现三套独立 RemoteViews；`WidgetConfigurationActivity` 沿用 Compose 主题组件。`DesktopArtwork` 通过共享 `ThemeTypefaces` 绘制独立文字字段与快捷方式图标，避免单个 XML 字体缺简体字。余额、模板、失效/删除模板分别进入账本首页、既有预填记账路径和模板管理/编辑；保存与草稿保护继续使用原入口。
+
+纯数据验证为 `WidgetBudgetTest`；视觉为 `DesktopWidgetVisualTest`（`looks=all visual=true`，三主题×中日文×八种状态），2026-11-07 已以 S24 Ultra 尺寸查看截图并在 Pixel 启动器实测添加、点击、刷新与快捷方式；One UI 实机外观待验。细节、刷新来源与边界见 [Android README](../android/README.md#桌面小组件与模板快捷方式2026-11-07)。
+
 ## 1. 基准与优先级
 
 - 基准是已获认可的第55版实际渲染结果，以及本次冻结的源码包 [design-v55-source.tar.gz](reference/design-v55-source.tar.gz) 和 [逐文件校验值](reference/design-v55.sha256)。`?v=55` 只是缓存参数，不是不可变版本；后续对照应使用冻结包，不依赖随时可改的工作文件。
