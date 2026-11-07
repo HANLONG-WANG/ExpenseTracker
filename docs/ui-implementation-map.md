@@ -256,6 +256,8 @@ UI03接自然月预算内消费/独立活动/全部净消费、待付固定预�
 
 UI11接活动列表/详情、日期与总/分类预算、历史月排除预览、按账本启用/记录模式及退出、资金预留建立/调整/使用/部分释放、结束历史。UI12接本人付款整单的附属份额、朋友付款独立关系、均分/金额/比例与可选尾差、本活动每位朋友的承担差额和明细，原支出编辑及删除/恢复同账务处理。首页/预算页分列固定预算预留、活动预算预留和全部活动资金预留。
 
+UI11活动分类预算按需添加（2026-11-07）：`ActivityScreens.kt` 的编辑器接入 `ActivityCategoryBudgetEditor.kt`，只列已添加分类；原地展开父子选择器、选中聚焦金额、× 移除、空金额不写入，保留预览→确认流程。杂志编号索引/细线选择列表、手账胶带勾选便签/波浪合计、小物托盘卡片/标签/锯齿小票独立绘制。父级金额优先的合计由 `domain/budget/ActivityCategoryBudgets.kt` 计算，超额仅提示。详情复用 `BudgetLimitList`/`BudgetLimitRow`，分类行聚焦编辑、添加入口直接展开；功能关闭时只读。新仪器入口 `ActivityFlowTest#categoryBudgetsAddParentAndChildSaveOverTotalAndRemove`，`looks=all visual=true` 截图 `phase-b-p11/*-category-{empty,picker,editor,detail}.png`。2026-11-07 在 S24 Ultra 尺寸下运行通过，三主题×中日文截图已查看；testTag 与运行入口见 [Android README](../android/README.md#活动分类预算按需添加2026-11-07)。云端 `activity.save` 的完整分类预算替换语义不变。
+
 三主题中日文代表操作和原生截图证据见[阶段B状态](../android/verification/phase-b-status.md)。完整冻结稿独立构图、各状态测量、窄屏/大字/键盘/进程恢复尚待验，UI11/UI12不勾选完整通过。
 
 

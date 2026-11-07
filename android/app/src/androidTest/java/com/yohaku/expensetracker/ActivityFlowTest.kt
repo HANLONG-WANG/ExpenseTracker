@@ -170,6 +170,79 @@ class ActivityFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.features?.activeActivityId==null&&!vm.busy.value}
         }
     }
+    @Test fun categoryBudgetsAddParentAndChildSaveOverTotalAndRemove() {
+        for((theme,language) in testLooks(this@ActivityFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val ids=runBlocking {
+                val book=repo.createBook("分类预算 $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val parent=repo.saveCategory(book,"餐饮",EntryKind.EXPENSE,null)
+                val child=repo.saveCategory(book,"咖啡",EntryKind.EXPENSE,parent)
+                val unused=repo.saveCategory(book,"交通",EntryKind.EXPENSE,null)
+                repo.setActivityMode(book,true)
+                val activity=repo.saveActivity(book,"秋の旅","2026-10-01","2026-10-31",Money(Currency.JPY,5000))
+                vm.preferences.select(book);listOf(book,activity,parent,child,unused)
+            }
+            val (book,activity,parent,child,unused)=ids
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.openActivity.value=activity;vm.navigate("life")}
+            tap(text("编辑活动与预算","シーンと予算を編集"))
+            ui.onAllNodes(hasTestTag("activity-category-row-$parent")).assertCountEquals(0)
+            clearHeader(ui.onNodeWithTag("activity-category-section"))
+            shot("$theme-$language-category-empty",true,reset=false)
+            fun tagTap(tag:String){ui.onNodeWithTag(tag).performScrollTo().performClick()}
+            fun pick(id:String) {
+                tagTap("activity-category-option-$id")
+                ui.onNodeWithTag("activity-category-picker").assertDoesNotExist()
+                ui.waitUntil(10000){ui.onAllNodes(hasTestTag("activity-category-amount-$id") and isFocused()).fetchSemanticsNodes().isNotEmpty()}
+                ui.onNodeWithTag("activity-category-amount-$id").assertIsFocused()
+            }
+            tagTap("activity-category-add");pick(parent)
+            ui.onNodeWithTag("activity-category-amount-$parent").performTextReplacement("6000")
+            tagTap("activity-category-add")
+            ui.onNodeWithTag("activity-category-option-$parent").assertIsNotEnabled()
+            clearHeader(ui.onNodeWithTag("activity-category-picker-close"))
+            shot("$theme-$language-category-picker",true,reset=false)
+            pick(child)
+            ui.onNodeWithTag("activity-category-amount-$child").performTextReplacement("2000")
+            tagTap("activity-category-add");pick(unused)
+            ui.onNodeWithTag("activity-category-amount-$unused").performTextReplacement("100")
+            ui.onNodeWithTag("activity-category-amount-$unused").performTextClearance()
+            ui.onNodeWithTag("activity-category-row-$unused").assertExists()
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
+            ui.onNode(hasText(text("超出总预算","総予算を超過")) and hasAnyAncestor(hasTestTag("activity-category-summary"))).performScrollTo().assertExists()
+            ui.onNode(hasText("¥6,000") and hasAnyAncestor(hasTestTag("activity-category-summary"))).assertExists()
+            clearHeader(ui.onNodeWithTag("activity-category-row-$parent"))
+            shot("$theme-$language-category-editor",true,reset=false)
+            fun save() {
+                tap(text("预览影响","影響を確認"));tap(text("确认保存","保存を確定"))
+                ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("sheet-close").fetchSemanticsNodes().isEmpty()}
+                assertNull(vm.error.value)
+            }
+            fun budgets()=runBlocking{repo.snapshot(repo.dao.book(book)!!).first().activityBudgets.filter{it.activityId==activity}.associate{it.categoryId to it.amountMinor}}
+            save()
+            assertEquals(mapOf(parent to 6000L,child to 2000L),budgets())
+            ui.onNodeWithTag("budget-category-list").performScrollTo()
+            shot("$theme-$language-category-detail",false,reset=false)
+            tagTap("budget-category-$child")
+            ui.waitUntil(10000){ui.onAllNodes(hasTestTag("activity-category-amount-$child") and isFocused()).fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("activity-category-amount-$child").assertIsFocused()
+            ui.onNodeWithTag("activity-category-row-$unused").assertDoesNotExist()
+            tagTap("activity-category-remove-$parent")
+            ui.onNodeWithTag("activity-category-row-$parent").assertDoesNotExist()
+            save()
+            assertEquals(mapOf(child to 2000L),budgets())
+            tagTap("activity-category-detail-add")
+            ui.onNodeWithTag("activity-category-picker").assertExists()
+            ui.onNodeWithTag("activity-category-option-$child").assertIsNotEnabled()
+            ui.onNodeWithTag("sheet-close").performClick()
+            runBlocking{repo.setActivityMode(book,false)}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.features?.activityMode==false}
+            ui.onNodeWithTag("budget-category-$child").assertHasNoClickAction()
+            ui.onNodeWithTag("activity-category-detail-add").assertDoesNotExist()
+        }
+    }
+
     @Test fun friendShortcutsPreselectSecondFriendProtectDraftAndSaveOnlyOnce() {
         for((theme,language) in testLooks(this@ActivityFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh

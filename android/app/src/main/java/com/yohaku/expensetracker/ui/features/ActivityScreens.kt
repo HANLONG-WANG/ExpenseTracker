@@ -12,6 +12,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.budget.orderedActivityCategories
+import com.yohaku.expensetracker.domain.category.resolveCategoryIcon
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import com.yohaku.expensetracker.ui.haptics.Haptic
@@ -23,6 +25,8 @@ import java.time.LocalDate
     var selected by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var deleting by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var editing by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
+    var editingCategory by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
+    var editingPicker by rememberSaveable(s.book.id){mutableStateOf(false)}
     var reserveFor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var treatFor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var treatId by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
@@ -79,7 +83,6 @@ import java.time.LocalDate
             YText(word("总预算：","総予算：")+(activity.budgetMinor?.let{money(it)}?:word("未设置","未設定")),12)
             activity.budgetMinor?.let{BudgetTrack(s.activitySpent(activity.id),it,12)}
             activity.budgetMinor?.let{YText(word("剩余：","残り：")+money(it-s.activitySpent(activity.id)),15,number=true)}
-            s.activityBudgets.filter{it.activityId==activity.id}.forEach{b->YText((s.categories.find{it.id==b.categoryId}?.name.orEmpty())+" · "+money(s.activitySpent(activity.id,b.categoryId))+" / "+money(b.amountMinor),12)}
             YText(if(activity.excludeMonthly)word("活动消费从各历史月份预算排除，分析与资产仍保留。","シーン支出は各月予算から除外し、分析・資産には残します。")else word("活动消费计入各自然月预算。","シーン支出は各暦月の予算に含みます。"),11,color=LocalYohaku.current.muted)
             if(s.features?.activityMode==true) {
                 YActionRow {
@@ -91,6 +94,19 @@ import java.time.LocalDate
             YButton(if(activity.ended)word("补录期间的支出","期間内の支出を追加")else word("记一笔活动支出","シーンの支出を記録"),{
                 onExpense(activity.id,null)
             },enabled=s.features?.activityMode==true)
+        }
+        val categoryBudgets=s.activityBudgets.filter{it.activityId==activity.id}.associateBy{it.categoryId}
+        val budgetCategories=orderedActivityCategories(s.categories).filter{it.id in categoryBudgets}
+        val canEdit=s.features?.activityMode==true
+        if(budgetCategories.isNotEmpty()||canEdit) {
+            ThemeSection(word("活动里的分类预算","シーン内のカテゴリ予算"),"WITHIN THIS SCENE")
+            if(budgetCategories.isNotEmpty())BudgetLimitList(budgetCategories,budgetCategories.map{money(categoryBudgets.getValue(it.id).amountMinor-s.activitySpent(activity.id,it.id))}) {category,modifier->
+                val limit=categoryBudgets.getValue(category.id).amountMinor
+                val spent=s.activitySpent(activity.id,category.id)
+                BudgetLimitRow(category.id,category.name,resolveCategoryIcon(category.id,s.categories),category.parentId!=null,spent,limit,money(spent),money(limit),money(limit-spent),
+                    if(canEdit)({editingCategory=category.id;editing=activity.id})else null,modifier)
+            }
+            if(canEdit)ActivityCategoryAddButton(false,{editingPicker=true;editing=activity.id},Modifier.testTag("activity-category-detail-add"))
         }
         ThemeSection(word("主动预留","資金を確保"),"MONEY SET ASIDE")
         Panel {
@@ -161,18 +177,20 @@ import java.time.LocalDate
         }
     }}}
     deleting?.let{id->s.activities.find{it.id==id}?.let{a->ActivityDeletionSheet(a,vm,{deleting=null},{deleting=null;selected=null})}}
-    editing?.let{id->ActivityEditor(s,s.activities.find{it.id==id},vm,{editing=null})}
+    editing?.let{id->ActivityEditor(s,s.activities.find{it.id==id},vm,{editing=null;editingCategory=null;editingPicker=false},editingCategory,editingPicker)}
     reserveFor?.let{id->ReserveEditor(s,id,vm,{reserveFor=null})}
     treatFor?.let{id->OtherTreatEditor(s,id,treatId,vm,treatFriend,{treatFor=null;treatId=null;treatFriend=null})}
 }
 
-@Composable private fun ActivityEditor(s:BookSnapshot,old:ActivityEntity?,vm:AppViewModel,onDismiss:()->Unit) {
+@Composable private fun ActivityEditor(s:BookSnapshot,old:ActivityEntity?,vm:AppViewModel,onDismiss:()->Unit,initialCategory:String?=null,initialPicker:Boolean=false) {
     val currency=Currency.valueOf(s.book.currency)
     var name by rememberSaveable{mutableStateOf(old?.name.orEmpty())}
     var start by rememberSaveable{mutableStateOf(old?.startDate?:LocalDate.now(vm.repository.clock).toString())}
     var end by rememberSaveable{mutableStateOf(old?.endDate?:start)}
     var amount by rememberSaveable{mutableStateOf(old?.budgetMinor?.let{Money(currency,it).decimal.toPlainString()}.orEmpty())}
     var categoryValues by remember{mutableStateOf(s.activityBudgets.filter{it.activityId==old?.id}.associate{it.categoryId to Money(currency,it.amountMinor).decimal.toPlainString()})}
+    var focusCategory by rememberSaveable{mutableStateOf(initialCategory)}
+    var pickerOpen by rememberSaveable{mutableStateOf(initialPicker)}
     var excluded by rememberSaveable{mutableStateOf(old?.excludeMonthly?:false)}
     var ended by rememberSaveable{mutableStateOf(old?.ended?:false)}
     var review by remember{mutableStateOf<ActivityReview?>(null)}
@@ -184,7 +202,7 @@ import java.time.LocalDate
             YField(word("活动名称","シーン名"),name,{name=it})
             ActivityDate(word("开始日期","開始日"),start,{start=it});ActivityDate(word("结束日期","終了日"),end,{end=it})
             YField(word("总预算 / 可留空","総予算・空欄可"),amount,{amount=it},numeric=true)
-            s.categories.filter{(s.categoryEnabled(it.id)||it.id in categoryValues)&&it.kind==EntryKind.EXPENSE.name}.forEach{c->YField(c.name+word("预算 / 可留空","予算・空欄可"),categoryValues[c.id].orEmpty(),{categoryValues=categoryValues+(c.id to it)},numeric=true)}
+            ActivityCategoryBudgetEditor(s,categoryValues,{categoryValues=it},amount,pickerOpen,{pickerOpen=it},focusCategory,{focusCategory=it})
             YToggle(word("从月预算排除","月予算から除外"),excluded,{excluded=it})
             YToggle(word("结束活动并释放预留","終了して確保を解放"),ended,{if(old?.ended!=true)ended=it})
             YButton(word("预览影响","影響を確認"),{vm.execute{review=preview();refreshed=false}},primary=true,enabled=!busy)

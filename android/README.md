@@ -114,6 +114,28 @@ adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisua
 
 验证：`PhotoStorageTest` 覆盖尺寸/文件名/旧备份默认；`MediaStorageTest` 覆盖优化、EXIF/GPS、透明白底、原样字节、解码回退及读取/取消清理；`MediaFlowTest.chooserAlwaysWrapsGetContentAndParsesMultipleOrSingleUris` 检查 Intent，`photoDefaultToggleProgressAndBatchSummaryAcrossThemes` 检查设置默认、开关、进度及部分失败汇总；`BackupRoundTripTest` 增加照片偏好往返。仪器测试仅编译，尚未运行；UI 方法需在设备上用 `looks=all` + `visual=true` 运行并查看 `files/verification/media-import/` 截图。本轮不启动模拟器、不运行 connected 测试。2026-11-05 补充 `MediaFlowTest.recordDetailAddsFirstReceiptsWithGlobalPhotoSetting`（详情页选图/拍照、全局两种保存方式、一版小票、入口消失及重复补加被拒），与 `MediaStorageTest`、`MediaFlowTest` 其余方法一起以 `looks=all visual=true` 在模拟器运行通过，截图 `media-import/*-record-upload.png` 已查看。
 
+## 活动分类预算按需添加（2026-11-07）
+
+「活动与预算」的新建/编辑共用表单不再铺开全部分类。总预算下的「活动内分类预算」默认只显示说明与添加按钮；点「＋ 添加分类预算」原地展开选择面板，一级下挂二级，已添加项禁用。选中后收起面板、聚焦金额并滚到可见；行按一级及其二级排序，× 移除，清空金额保留行但保存时不写入。编辑已有活动仅带入已设额度，保留历史停用分类。预览影响→确认保存流程不变。
+
+合计按一级有金额就计一级，否则计其二级之和（0 也是已设置），父子同时添加显示包含关系。总预算为空时说明各分类额度独立生效；超出总预算用暖色提示，仍可保存。详情页复用 `BudgetLimitList` / `BudgetLimitRow`：点分类行进入对应金额框，添加入口直接展开选择面板；关闭活动功能后行保留为只读、不显示添加入口。杂志用编号/细线索引与合计算式，手账用勾选便签/胶带/波浪线，小物用托盘分组卡/标签/锯齿小票。
+
+稳定 testTag：`activity-category-section`、`activity-category-add`、`activity-category-picker`、`activity-category-picker-close`、`activity-category-option-<categoryId>`、`activity-category-row-<categoryId>`、`activity-category-amount-<categoryId>`、`activity-category-remove-<categoryId>`、`activity-category-summary`、`activity-category-detail-add`；详情行沿用 `budget-category-<categoryId>`，列表沿用 `budget-category-list`。
+
+验证：JVM `ActivityCategoryBudgetsTest.parentLimitIncludesChildrenOtherwiseChildrenAddUp`；仪器 `ActivityFlowTest#categoryBudgetsAddParentAndChildSaveOverTotalAndRemove` 覆盖父子添加、超额保存、清空金额不写入、移除删除、详情聚焦/展开与只读状态。沿用 `testLooks` / `shot`，传 `looks=all` + `visual=true` 输出 `files/phase-b-p11/<theme>-<language>-category-{empty,picker,editor,detail}.png`（三主题 × 中日文）。
+
+2026-11-07 验收：JVM 全量 157 项通过（1 项本地 CSV 样本测试既有跳过）；模拟器以 S24 Ultra 尺寸（1080×2340/density 450）运行新方法 `looks=all visual=true` 通过，三主题×中日文 24 张截图已查看；`ActivityFlowTest`（3 项）、`ActivityManagementStorageTest` 与 `ActivityTreatTest`（共 8 项）默认参数回归通过。
+
+设备上的验证入口（先安装本次 debug 应用与 androidTest APK）：
+
+```sh
+adb shell am instrument -w -e class 'com.yohaku.expensetracker.ActivityFlowTest#categoryBudgetsAddParentAndChildSaveOverTotalAndRemove' -e looks all -e visual true com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+截图在 `/sdcard/Android/data/com.yohaku.expensetracker.dev/files/phase-b-p11/`。
+
+云端办理检查：`activity.save` 的 `categoryBudgets` 仍是完整替换，继续使用 `ActivityInput`→`previewActivity`→`commitActivity`；`activity.end` 保留原分类额度，命令效果视图继续显示 `activityBudget` 金额变化。未修改数据库、仓库层、命令协议或月预算页。
+
 ## 周期账单一键确认与记账模板（2026-11-01 源码更新）
 
 - 周期规则可固定商户、备注和信用卡付款方式（一次付/ボーナス/分期+期数/リボ/按卡规则；「指定月一次付」需逐笔填付款月与费用，不能放进规则或模板）。不设付款方式时沿用该卡最近一次的选择。换账户会清掉不适用的付款方式。

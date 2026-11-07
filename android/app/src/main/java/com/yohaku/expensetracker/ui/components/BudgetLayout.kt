@@ -66,7 +66,7 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 /** Main figure is what is left when a limit exists, otherwise what was spent; the caption names both. */
-@Composable internal fun BudgetLimitRow(id:String,name:String,icon:String,child:Boolean,spent:Long,limit:Long?,spentText:String,limitText:String,remaining:String,onEdit:()->Unit,modifier:Modifier=Modifier) {
+@Composable internal fun BudgetLimitRow(id:String,name:String,icon:String,child:Boolean,spent:Long,limit:Long?,spentText:String,limitText:String,remaining:String,onEdit:(()->Unit)?,modifier:Modifier=Modifier) {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val objects=t.id=="objects"
@@ -79,7 +79,7 @@ import com.yohaku.expensetracker.ui.theme.*
         // Magazine rows are already separated by their progress track; a hairline under it would read as a second bar.
         else if(t.id=="magazine")Modifier.padding(vertical=18.dp)
         else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx())))}.padding(vertical=16.dp)
-    Column(modifier.testTag("budget-category-$id").clickable(onClick=onEdit).then(frame),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+    Column(modifier.testTag("budget-category-$id").then(if(onEdit!=null)Modifier.clickable(onClick=onEdit)else Modifier).then(frame),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         if(objects) {
             Box(Modifier.fillMaxWidth()) {
                 CategoryIconBadge(icon,CategoryBadge.SMALL,Modifier.align(Alignment.TopEnd).offset(x=1.dp,y=(-4).dp))
