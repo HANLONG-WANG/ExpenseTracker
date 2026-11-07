@@ -586,7 +586,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
             val next=eligible.first{it.id==id}
             onChange(if(a!=null&&a.currency!=next.currency)d.copy(accountId=id,originalCurrency=d.originalCurrency?:Currency.valueOf(a.currency),accountAmount="",baseAmount="",settlementConfirmed=false,manualRate="",rateSource="manual",referenceExpectedFromMinor=null,referenceExpectedToMinor=null,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList())
                 else d.copy(accountId=id))
-        })
+        },columns=2)
         else {YText(if(d.kind==EntryKind.INCOME)word("还没有到账账户","入金口座がありません") else word("还没有付款账户","支払口座がありません"),14);YButton(word("添加第一个账户","最初の口座を追加"),onAccount,primary=true)}
         if(d.kind==EntryKind.EXPENSE&&a?.type==AccountType.CREDIT.name)CardPaymentFields(d,onChange)
         if((s.features?.activityMode==true||d.activityId!=null)&&d.kind==EntryKind.EXPENSE) {

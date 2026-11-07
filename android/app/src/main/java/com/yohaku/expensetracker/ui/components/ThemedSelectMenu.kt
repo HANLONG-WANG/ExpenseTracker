@@ -19,8 +19,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.*
 import com.yohaku.expensetracker.ui.theme.*
 
-/** Final select-options CSS; the journal scrolls with its enclosing form. */
-@Composable internal fun <T> ThemedSelectMenu(label:String,selected:T,options:List<Pair<T,String>>,onSelect:(T)->Unit,modifier:Modifier=Modifier,displayLabel:String=label){
+/** Final select-options CSS; the journal scrolls with its enclosing form. `columns`>1 lays short options (e.g. accounts) out as a grid. */
+@Composable internal fun <T> ThemedSelectMenu(label:String,selected:T,options:List<Pair<T,String>>,onSelect:(T)->Unit,modifier:Modifier=Modifier,displayLabel:String=label,columns:Int=1){
     val haptics=LocalHaptics.current
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=RoundedCornerShape(if(objects)19.dp else 0.dp)
@@ -42,21 +42,34 @@ import com.yohaku.expensetracker.ui.theme.*
             }
             if(!objects)MenuRule(if(journal)t.line else t.ink,journal)
             if(objects)Spacer(Modifier.height(6.dp))
-            options.forEachIndexed{i,(id,name)->
+            @Composable fun option(i:Int,id:T,name:String,modifier:Modifier){
                 val chosen=id==selected
                 val itemShape=RoundedCornerShape(10.dp)
-                Box(Modifier.fillMaxWidth().testTag("select-option-$label-$i").selectable(chosen,role=Role.RadioButton,onClick={haptics.perform(Haptic.Select);onSelect(id)})){
+                Box(modifier.testTag("select-option-$label-$i").selectable(chosen,role=Role.RadioButton,onClick={haptics.perform(Haptic.Select);onSelect(id)})){
                     if(objects)Box(Modifier.matchParentSize().offset(y=2.dp).background(Color(0x0fd6b991),itemShape))
-                    Row(Modifier.fillMaxWidth().then(if(objects)Modifier.background(Color(0xfff2e7d4),itemShape) else Modifier).padding(horizontal=if(objects)10.dp else 0.dp,vertical=if(objects||journal)12.dp else 14.dp),horizontalArrangement=Arrangement.spacedBy(if(objects)0.dp else 10.dp),verticalAlignment=Alignment.CenterVertically){
+                    Row(Modifier.fillMaxSize().then(if(objects)Modifier.background(Color(0xfff2e7d4),itemShape) else Modifier).padding(horizontal=if(objects)10.dp else 0.dp,vertical=if(objects||journal)12.dp else 14.dp),horizontalArrangement=Arrangement.spacedBy(if(objects)0.dp else if(columns>1)8.dp else 10.dp),verticalAlignment=Alignment.CenterVertically){
                         if(!objects)YText(if(journal)if(chosen)"✓" else "□" else (i+1).toString().padStart(2,'0'),if(journal)18 else 12,if(journal)Modifier.width(with(LocalDensity.current){18.sp.toDp()}) else Modifier,color=if(journal)t.accent else t.muted,number=!journal,lineHeightMultiplier=if(journal)26f/18 else 14f/12,cssLineBox=true,fontStyle=if(journal)FontStyle.Normal else FontStyle.Italic)
                         Column(Modifier.weight(1f)){
                             YText(name,if(journal)14 else 12,color=if(chosen&&t.id=="magazine")t.accent else t.ink,lineHeightMultiplier=if(journal)20f/14 else 17f/12,cssLineBox=true)
                             if(chosen&&t.id=="magazine")Box(Modifier.padding(top=2.dp).fillMaxWidth().height(1.dp).background(t.accent))
                         }
-                        if(objects)Box(Modifier.size(15.dp).background(if(chosen)Color(0xffb37b50) else Color(0xfffff9ed),CircleShape).border(1.dp,Color(0xffcbb28e),CircleShape).then(if(chosen)Modifier.drawBehind{drawCircle(Color(0xfffff9ed),radius=size.minDimension/2-2.5.dp.toPx(),style=Stroke(3.dp.toPx()))} else Modifier))
+                        if(objects)Box(Modifier.padding(start=if(columns>1)6.dp else 0.dp).size(15.dp).background(if(chosen)Color(0xffb37b50) else Color(0xfffff9ed),CircleShape).border(1.dp,Color(0xffcbb28e),CircleShape).then(if(chosen)Modifier.drawBehind{drawCircle(Color(0xfffff9ed),radius=size.minDimension/2-2.5.dp.toPx(),style=Stroke(3.dp.toPx()))} else Modifier))
                     }
                 }
-                if(journal||!objects&&i!=options.lastIndex)MenuRule(t.line,journal)
+            }
+            val rows=options.withIndex().chunked(columns.coerceAtLeast(1))
+            rows.forEachIndexed{r,row->
+                if(columns<=1)row.single().let{(i,o)->option(i,o.first,o.second,Modifier.fillMaxWidth())}
+                // Grid cells share a row height; magazine/journal split cells with a column rule, objects keeps separate cards.
+                else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(if(objects)6.dp else 0.dp)){
+                    (0 until columns).forEach{c->
+                        val cell=row.getOrNull(c)
+                        if(c>0&&!objects&&cell!=null)ColumnRule(if(journal)t.line else t.ink,journal)
+                        val inset=Modifier.weight(1f).fillMaxHeight().then(if(objects)Modifier else Modifier.padding(start=if(c>0)10.dp else 0.dp,end=if(c<columns-1)10.dp else 0.dp))
+                        if(cell!=null)option(cell.index,cell.value.first,cell.value.second,inset) else Spacer(inset)
+                    }
+                }
+                if(journal||!objects&&r!=rows.lastIndex)MenuRule(t.line,journal)
                 if(objects)Spacer(Modifier.height(6.dp))
             }
         }
@@ -65,4 +78,8 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable private fun MenuRule(color:Color,dashed:Boolean){
     Canvas(Modifier.fillMaxWidth().height(1.dp)){drawLine(color,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx(),pathEffect=if(dashed)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}
+}
+
+@Composable private fun ColumnRule(color:Color,dashed:Boolean){
+    Canvas(Modifier.fillMaxHeight().padding(vertical=8.dp).width(1.dp)){drawLine(color,Offset(.5.dp.toPx(),0f),Offset(.5.dp.toPx(),size.height),1.dp.toPx(),pathEffect=if(dashed)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}
 }

@@ -21,7 +21,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YSelect(word("实际退款到账账户","実際の返金口座"),d.accountId,s.accounts.filter{it.active||it.id==d.accountId}.map{it.id as String? to it.name},{id->
             val next=s.accounts.first{it.id==id}
             onChange(d.copy(accountId=id,accountAmount=if(next.currency==account?.currency)d.accountAmount else "",baseAmount=if(next.currency==account?.currency)d.baseAmount else ""))
-        })
+        },columns=2)
         YField(word("账户实际退款 / 待到账可填预计","口座の実返金額・未入金なら見込み")+" · "+(account?.currency?:"—"),d.accountAmount,{onChange(d.copy(accountAmount=it))},numeric=true)
         YField(word("原消费月冲减金额","元の購入月から控除する額")+" · "+s.book.currency,
             if(account?.currency==s.book.currency)d.accountAmount else d.baseAmount,

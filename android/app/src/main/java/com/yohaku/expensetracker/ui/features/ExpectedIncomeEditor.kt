@@ -66,7 +66,7 @@ import kotlinx.serialization.encodeToString
         }else if(!arriving) {
             FinancialDraftNotice()
             YField(word("预计收入名称","収入予定名"),name,{name=it})
-            YSelect(word("到账账户","入金口座"),accountId,listOf(null to word("请选择","選択してください"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{accountId=it;accountAmount="";estimateJson=null})
+            YSelect(word("到账账户","入金口座"),accountId,listOf(null to word("请选择","選択してください"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{accountId=it;accountAmount="";estimateJson=null},columns=2)
             YSelect(word("预计币种","予定の通貨"),currencyCode,Currency.entries.map{it.name to it.name},{currencyCode=it;accountAmount="";estimateJson=null})
             YField(word("预计金额","予定金額")+" · "+currencyCode,amount,{amount=it;if(estimateJson!=null)accountAmount="";estimateJson=null},numeric=true)
             if(account!=null&&account.currency!=currencyCode) {

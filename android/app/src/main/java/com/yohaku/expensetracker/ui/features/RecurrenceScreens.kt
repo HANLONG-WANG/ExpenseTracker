@@ -114,7 +114,7 @@ import java.time.YearMonth
             YSelect(word("频率","頻度"),frequency,listOf(RecurrenceFrequency.MONTHLY,RecurrenceFrequency.WEEKLY,RecurrenceFrequency.YEARLY).map{it.name to frequencyName(it)},{frequency=it})
             YSelect(word("付款账户","支払口座"),accountId,accounts.map{it.id as String? to it.name},{id->
                 val next=accounts.first{it.id==id};if(next.currency!=account?.currency){amount="";base="";estimated=true};accountId=id;fixed=fixed.clearCardPayment()
-            })
+            },columns=2)
             YSelect(word("分类","カテゴリ"),categoryId,categories.map{it.id as String? to s.path(it.id)},{categoryId=it})
             EntryMerchantInput(s,fixed){fixed=it}
             YField(word("备注","メモ"),fixed.note,{fixed=fixed.copy(note=it)},Modifier.testTag("recurrence-note"),multiline=true)

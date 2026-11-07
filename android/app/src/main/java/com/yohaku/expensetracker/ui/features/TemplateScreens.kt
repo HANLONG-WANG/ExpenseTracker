@@ -94,7 +94,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YSelect(word("分类","カテゴリ"),d.categoryId,s.categories.filter{s.categoryEnabled(it.id)&&it.kind==d.kind.name}.map{it.id as String? to s.path(it.id)},{d=d.copy(categoryId=it)},Modifier.testTag("template-category"))
         YSelect(word("账户","口座"),d.accountId,s.entryAccounts(d.kind).map{it.id as String? to it.name},{id->
             val next=s.accounts.first{it.id==id};d=d.clearCardPayment().copy(accountId=id,amount=if(next.currency!=account?.currency)""else d.amount)
-        },Modifier.testTag("template-account"))
+        },Modifier.testTag("template-account"),columns=2)
         if(d.kind==EntryKind.EXPENSE&&account?.type==AccountType.CREDIT.name)FixedPaymentFields(d){d=it}
         YField(word("金额 / 每次输入可留空","金額・毎回入力なら空欄")+" · "+(account?.currency?:s.book.currency),d.amount,{d=d.copy(amount=it)},Modifier.testTag("template-amount"),numeric=true)
         EntryMerchantInput(s,d){d=it}

@@ -90,7 +90,7 @@ import java.time.LocalDate
     YField(word("已知合计","既知の合計"),p.total,{onChange(p.copy(total=it))},Modifier.testTag("$tag-total"),numeric=true)
     YField(word("其中本金 / 不明留空","うち元金・不明なら空欄"),p.principal,{onChange(p.copy(principal=it))},Modifier.testTag("$tag-principal"),numeric=true)
     YField(word("其中利息与费用 / 不明留空","うち利息・手数料・不明なら空欄"),p.fee,{onChange(p.copy(fee=it))},Modifier.testTag("$tag-fee"),numeric=true)
-    YSelect(word("付款账户 / 尚未确定可留空","引落口座・未定なら未選択"),p.paymentAccountId,listOf(null to word("未确定","未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{onChange(p.copy(paymentAccountId=it))},Modifier.testTag("$tag-bank"))
+    YSelect(word("付款账户 / 尚未确定可留空","引落口座・未定なら未選択"),p.paymentAccountId,listOf(null to word("未确定","未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{onChange(p.copy(paymentAccountId=it))},Modifier.testTag("$tag-bank"),columns=2)
 }
 
 @Composable private fun ManualFinancialPlanReviewContent(r:ManualFinancialPlanReview,vm:AppViewModel) {

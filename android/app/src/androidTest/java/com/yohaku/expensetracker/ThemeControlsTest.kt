@@ -208,7 +208,7 @@ class ThemeControlsTest {
         ui.setContent{YohakuTheme(theme.value,"zh"){
             if(brand.value)YStartup() else if(header.value)Column(Modifier.fillMaxSize().safeDrawingPadding()){YAppHeader("日常生活",{},{})} else Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){
                 YTitle("日期与账户","THE EVERYDAY CONTROLS")
-                YSelect("付款账户",selected.value,listOf("cash" to "现金","bank" to "银行账户"),{selected.value=it})
+                YSelect("付款账户",selected.value,listOf("cash" to "现金","bank" to "银行账户","card" to "信用卡 · 日常消费主卡（尾号 4821）","wechat" to "微信零钱","alipay" to "支付宝"),{selected.value=it},columns=2)
                 YDateFields(listOf("转出日期" to dates.value[0],"实际到账日期" to dates.value[1]),owner.value,{owner.value=it},{i,v->dates.value=dates.value.toMutableList().also{it[i]=v}})
                 YToggle("历史补录",false,{})
             }

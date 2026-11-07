@@ -103,7 +103,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
         }else YText(account.name+" · "+word("${d.rows.size} 个分配目标","${d.rows.size} 件の充当先"),14)
         YSelect(word("实际付款账户","実際の支払口座"),d.source,listOf(null to word("请选择","選択してください"))+funds.map{it.id as String? to (it.name+" · "+it.currency)},{
             update(d.copy(source=it,paid="",sourceFee="",sourceFeeBase="",linkedTransfer=null));if(s.accounts.firstOrNull{a->a.id==it}?.currency!=account.currency)details=true
-        })
+        },columns=2)
         YField(word("实际扣款总额","実出金総額")+" · "+sourceCurrency,d.paid,{
             update(d.withPaid(it,paidSuggestion,Currency.valueOf(sourceCurrency)))
             if(paidSuggestion?.differsFromPaid(it,Currency.valueOf(sourceCurrency))==true)details=true

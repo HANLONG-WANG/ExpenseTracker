@@ -104,8 +104,8 @@
 | TRANSFER-RATES-005 | `ui/features/TransferForm.kt:49` | 实际扣款总额 | `{if(knownPair)vm.changeTransferAmount(s.book.id,d.copy(amoun` | none | — | 系统输入法负责逐键反馈 |
 | TRANSFER-RATES-006 | `ui/features/TransferForm.kt:51` | 实际到账净额 | `{if(knownPair)vm.changeTransferAmount(s.book.id,d.copy(toAmo` | none | — | 系统输入法负责逐键反馈 |
 | TRANSFER-RATES-007 | `ui/features/TransferForm.kt:64` | 手填汇率 | `{change(d.copy(manualRate=it,rateSource="manual",rateDate=d.` | none | — | 系统输入法负责逐键反馈 |
-| TRANSFER-RATES-008 | `ui/features/TransferForm.kt:71` | 估算未确认的到账额 | `{estimate("TO")}` | Select | — | 填入估算/参考值 |
-| TRANSFER-RATES-009 | `ui/features/TransferForm.kt:72` | 反推未确认的转出额 | `{estimate("FROM")}` | Select | — | 填入估算/参考值 |
+| TRANSFER-RATES-008 | `ui/features/TransferForm.kt:71` | 估算到账额 | `{estimate("TO")}` | Select | — | 填入估算/参考值 |
+| TRANSFER-RATES-009 | `ui/features/TransferForm.kt:71` | 反推转出额 | `{estimate("FROM")}` | Select | — | 填入估算/参考值 |
 | TRANSFER-RATES-010 | `ui/features/TransferForm.kt:74` | 手续费 · 避免重复扣款 | `{feeOpen=!feeOpen}` | none | — | 展开/收起 |
 | TRANSFER-RATES-011 | `ui/features/TransferForm.kt:79` | 明确收取的手续费 / 可留空 | `{change(d.copy(feeAmount=it))}` | none | — | 系统输入法负责逐键反馈 |
 | TRANSFER-RATES-012 | `ui/features/TransferForm.kt:80` | 费用币种 | `{change(d.copy(feeCurrency=Currency.valueOf(it!!),feeAccount` | Select | — | 组件内置：选中菜单项 |
@@ -122,7 +122,7 @@
 | TRANSFER-RATES-023 | `ui/features/TransferForm.kt:104` | 保存这笔转账 | `{vm.saveEntry(s.book.id)}` | none | Saved | 记账/修改/转账真正落库时（AppViewModel.entrySaved） |
 | TRANSFER-RATES-024 | `ui/features/TransferForm.kt:105` | 取消修改并返回 | `onCancel` | none | — | 导航/打开/关闭 |
 | TRANSFER-RATES-025 | `ui/features/TransferPair.kt:67` | clickable | `onClick` | Compose | — | 从账户直接开始转账 |
-| TRANSFER-RATES-026 | `ui/features/TransferPair.kt:92` | clickable | `onClick` | Select | — | 填入估算/参考值 |
+| TRANSFER-RATES-026 | `ui/features/TransferPair.kt:101` | clickable | `onClick` | Select | — | 填入估算/参考值 |
 | TRANSFER-RATES-027 | `ui/features/ManualRateEditor.kt:25` | 换算资料 · 保留历史金额 | `onClose` | none | — | 关闭/返回不加触感 |
 | TRANSFER-RATES-028 | `ui/features/ManualRateEditor.kt:30` | 手动汇率 / 仅预填预计金额 | `{rate=it}` | none | — | 系统输入法负责逐键反馈 |
 | TRANSFER-RATES-029 | `ui/features/ManualRateEditor.kt:31` | 该笔本位币统计金额 | `{base=it}` | none | — | 系统输入法负责逐键反馈 |

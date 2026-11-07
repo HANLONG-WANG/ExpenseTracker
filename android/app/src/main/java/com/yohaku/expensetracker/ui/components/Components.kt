@@ -169,7 +169,7 @@ import java.time.YearMonth
             decorationBox={inner->Box{if(value.isEmpty())YText(displayPlaceholder,size,color=t.muted,lineHeightMultiplier=inputLine/size,cssLineBox=true);inner()}})
     }
 }
-@Composable fun <T> YSelect(label:String,selected:T,options:List<Pair<T,String>>,onSelect:(T)->Unit,modifier:Modifier=Modifier,displayLabel:String=label) {
+@Composable fun <T> YSelect(label:String,selected:T,options:List<Pair<T,String>>,onSelect:(T)->Unit,modifier:Modifier=Modifier,displayLabel:String=label,columns:Int=1) {
     val t=LocalYohaku.current
     var open by remember{mutableStateOf(false)}
     val objectTheme=t.id=="objects"
@@ -189,7 +189,7 @@ import java.time.YearMonth
             }
             if(!objectTheme)Box(Modifier.fillMaxWidth().height(1.dp).background(if(t.id=="journal")t.accent else t.ink))
         }
-        if(open)ThemedSelectMenu(label,selected,options,{id->onSelect(id);open=false},Modifier.bringIntoViewRequester(menuRequester),displayLabel=displayLabel)
+        if(open)ThemedSelectMenu(label,selected,options,{id->onSelect(id);open=false},Modifier.bringIntoViewRequester(menuRequester),displayLabel=displayLabel,columns=columns)
     }
 }
 /** Owner identifies the only calendar expanded in the enclosing form. */

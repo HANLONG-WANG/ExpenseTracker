@@ -67,11 +67,11 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
         YField(word("合同本金","契約元金")+" · "+account.currency,d.principal,{update(d.copy(principal=it))},numeric=true)
         YDateFields(listOf(word("借入日期","借入日") to d.date),dateOwner,{dateOwner=it},{_,v->update(d.copy(date=v))})
         if(!opening) {
-            YSelect(word("实际到账账户","実際の入金先口座"),d.funds,listOf(null to word("请选择","選択してください"))+funds.map{it.id as String? to (it.name+" · "+it.currency)},{update(d.copy(funds=it,received="",separatePayer=null,separate="",separateBase=""))})
+            YSelect(word("实际到账账户","実際の入金先口座"),d.funds,listOf(null to word("请选择","選択してください"))+funds.map{it.id as String? to (it.name+" · "+it.currency)},{update(d.copy(funds=it,received="",separatePayer=null,separate="",separateBase=""))},columns=2)
             YField(word("实际到账","実入金額")+" · "+currency,d.received,{update(d.copy(received=it))},numeric=true)
             YField(word("预扣费用 / 不明留空","天引手数料・不明なら空欄")+" · "+account.currency,d.withheld,{update(d.copy(withheld=it))},numeric=true)
             if(account.currency!=s.book.currency)YField(word("预扣费用统计金额","天引手数料の集計額")+" · "+s.book.currency,d.withheldBase,{update(d.copy(withheldBase=it))},numeric=true)
-            YSelect(word("另付费用账户","別払い手数料の口座"),d.separatePayer,listOf(null to word("同到账账户","入金先と同じ"))+funds.map{it.id as String? to it.name},{update(d.copy(separatePayer=it,separate="",separateBase=""))})
+            YSelect(word("另付费用账户","別払い手数料の口座"),d.separatePayer,listOf(null to word("同到账账户","入金先と同じ"))+funds.map{it.id as String? to it.name},{update(d.copy(separatePayer=it,separate="",separateBase=""))},columns=2)
             YField(word("另付费用 / 未知留空","別払い手数料・不明なら空欄")+" · "+feeCurrency,d.separate,{update(d.copy(separate=it))},numeric=true)
             if(feeCurrency!=s.book.currency)YField(word("另付费用统计金额","別払い手数料の集計額")+" · "+s.book.currency,d.separateBase,{update(d.copy(separateBase=it))},numeric=true)
             YField(word("备注","メモ"),d.note,{update(d.copy(note=it))})

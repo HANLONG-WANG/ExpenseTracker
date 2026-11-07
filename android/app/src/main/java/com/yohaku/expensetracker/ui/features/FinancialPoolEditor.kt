@@ -128,7 +128,7 @@ import java.time.LocalDate
             YText(word("账户期初：","口座期首：")+a.openingDate,12)
             YField(word("期初属于循环的本金 / 没有请填0","循環分の期首元金・なければ0"),opening,{opening=it},Modifier.testTag("pool-opening"),numeric=true)
             YSelect(word("新增本金起算日期","追加元金の開始日"),sourceDate,listOf(null to word("请选择","選択してください"),"TRANSACTION" to word("交易 / 借入发生日","取引・借入日"),"ACCOUNT_POSTING" to word("账户入账日","口座計上日")),{sourceDate=it})
-            YSelect(word("付款账户 / 可留空","引落口座・未定は空欄"),bank,listOf(null to word("未确定 / 按规则","未定・条件から取得"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{bank=it})
+            YSelect(word("付款账户 / 可留空","引落口座・未定は空欄"),bank,listOf(null to word("未确定 / 按规则","未定・条件から取得"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{bank=it},columns=2)
             YField(word("预测期数","予測回数"),count,{count=it},numeric=true)
             YField(word("起始账期序号","開始請求回数"),firstNumber,{firstNumber=it},numeric=true)
             YDateFields(listOf(word("首期计费开始","初回計算開始") to firstStart,word("首期计费结束","初回計算終了") to firstEnd,word("首期付款日","初回支払日") to firstPay),calendar?.takeIf{it<3},{calendar=it},{i,v->when(i){0->firstStart=v;1->firstEnd=v;else->firstPay=v}})

@@ -220,7 +220,7 @@ import java.time.LocalDate
         if(review==null) {
             if(!releasing) {
                 YField(word("预留名称","確保の名前"),name,{name=it});ActivityDate(word("使用月份日期","使用予定日"),date,{date=it})
-                YSelect(word("来源账户 / 可选","元の口座・任意"),accountId,listOf(null to word("未指定","未指定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{accountId=it;accountAmount=""})
+                YSelect(word("来源账户 / 可选","元の口座・任意"),accountId,listOf(null to word("未指定","未指定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{accountId=it;accountAmount=""},columns=2)
                 accountId?.let{id->YField(word("账户币种预留金额","口座通貨の確保額")+" · "+s.accounts.first{it.id==id}.currency,accountAmount,{accountAmount=it},numeric=true)}
                 YSelect(word("关联固定账单 / 可选","定期予定との関連・任意"),occurrenceId,listOf(null to word("无","なし"))+s.occurrences.filter{it.activityId==activityId&&(it.status=="PENDING"||it.id==old?.occurrenceId)}.map{it.id as String? to it.name+" · "+it.scheduledDate},{occurrenceId=it})
             }

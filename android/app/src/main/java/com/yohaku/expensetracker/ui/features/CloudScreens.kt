@@ -450,7 +450,7 @@ private fun CloudPhase.step()=when(this) {
     if(ready)YButton(word("选择账户与资料 ↗","口座と資料を選ぶ ↗"),{if(title.isBlank())title=defaultTitle;open=true},Modifier.fillMaxWidth().testTag("statement-cloud-start"),primary=true,enabled=!busy&&s.accounts.isNotEmpty())
     else YButton(word("连接云端分析台","クラウド分析デスクに接続"),{vm.navigate("cloud")},Modifier.fillMaxWidth().testTag("statement-cloud-connect"),primary=true)
     if(open)YSheet(word("交给云端转换流水","明細の変換を依頼"),{if(!busy)open=false}) {
-        YSelect(word("目标账户","対象口座"),account,s.accounts.map{it.id to "${it.name} · ${it.currency}"},{account=it})
+        YSelect(word("目标账户","対象口座"),account,s.accounts.map{it.id to "${it.name} · ${it.currency}"},{account=it},columns=2)
         YField(word("任务名称","タスク名"),title,{title=it.take(150)},Modifier.testTag("statement-cloud-title"))
         YField(word("资料来源与日期范围（可选）","資料の出典と期間（任意）"),note,{note=it},Modifier.testTag("statement-cloud-note"),multiline=true)
         CloudPickedFiles(files,{files=files-it})

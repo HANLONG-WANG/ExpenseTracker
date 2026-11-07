@@ -124,7 +124,7 @@ import java.time.LocalDate
         YText(word("流水不直接成为记账。选择类型，补充资料，主动保存后才产生正式事实；转账、还款和退款不直接当作收支。","明細は直接記録になりません。種類を選び内容を補い、保存して初めて記録になります。振替・返済・返金を支出・収入扱いしません。"),12)
         YSelect(word("补记类型","記録の種類"),kind,options,{if(kind!=it){kind=it;original=null;debtAccount=account.id.takeIf{debt}}},Modifier.testTag("statement-supplement-kind"))
         if(kind==EntryKind.REPAYMENT.name||kind==EntryKind.BORROWING.name) {
-            YSelect(word("债务账户","債務口座"),debtAccount,listOf(null to word("请选择","選択してください"))+s.accounts.filter{it.active&&AccountType.valueOf(it.type).debt&&(kind!=EntryKind.BORROWING.name||it.type==AccountType.LOAN.name)}.map{it.id as String? to it.name},{debtAccount=it})
+            YSelect(word("债务账户","債務口座"),debtAccount,listOf(null to word("请选择","選択してください"))+s.accounts.filter{it.active&&AccountType.valueOf(it.type).debt&&(kind!=EntryKind.BORROWING.name||it.type==AccountType.LOAN.name)}.map{it.id as String? to it.name},{debtAccount=it},columns=2)
             YText(word("进入正式金融表单。请按此流水核对实际付款账户、金额和日期；本金、费用与平台清偿须独立填写确认。","正式な金融フォームへ進みます。この明細で実支払口座・金額・日付を確認し、元金・手数料・返済先の確定を個別に入力してください。"),12)
             YButton(word("打开正式金融表单","正式な金融フォームを開く"),{onFinancial(kind!!,debtAccount!!)},Modifier.testTag("statement-start-supplement"),primary=true,enabled=debtAccount!=null)
         }else if(kind!=null) {

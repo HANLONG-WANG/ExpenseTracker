@@ -121,7 +121,7 @@ import java.time.LocalDate
             if(n==0)firstDate=v else if(n==1)firstEnd=v
             clearRows()
         })
-        YSelect(word("付款账户 / 按规则可留空","引落口座・条件から取得する場合は未選択"),bank,listOf(null to word("按规则 / 未确定","条件から取得・未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{bank=it})
+        YSelect(word("付款账户 / 按规则可留空","引落口座・条件から取得する場合は未選択"),bank,listOf(null to word("按规则 / 未确定","条件から取得・未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{bank=it},columns=2)
         YButton(word("按月生成候选日期","月ごとの候補日を作成"),{
             vm.execute {
                 val n=if(activeMode==FinanceMode.SINGLE)1 else count.toIntOrNull()?:error("请输入有效期数 / 有効な回数を入力してください")

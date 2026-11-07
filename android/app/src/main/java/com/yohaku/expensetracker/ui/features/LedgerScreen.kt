@@ -123,7 +123,7 @@ import java.time.YearMonth
         LedgerViewTabs(calendar){calendar=it;dateOwner=null}
         if(calendar)Column(Modifier.fillMaxWidth()){
             LedgerFilterDisclosure(filtersOpen,{filtersOpen=!filtersOpen},word("筛选账户与分类","口座・カテゴリを絞る")){
-                YSelect(word("账户","口座"),account,listOf(null to word("全部账户","すべての口座"))+s.accounts.map{it.id as String? to it.name},{account=it})
+                YSelect(word("账户","口座"),account,listOf(null to word("全部账户","すべての口座"))+s.accounts.map{it.id as String? to it.name},{account=it},columns=2)
                 YSelect(word("分类","カテゴリ"),category,listOf(null to word("全部分类","すべてのカテゴリ"))+s.categories.map{it.id as String? to s.path(it.id)},{category=it})
                 LedgerClearFilters{account=null;category=null}
             }
@@ -133,7 +133,7 @@ import java.time.YearMonth
             Box(Modifier.padding(top=2.dp)){YSelect(word("类型","種類"),type,listOf("ALL" to word("全部","すべて"),"EXPENSE" to word("支出","支出"),"INCOME" to word("收入","収入"),"TRANSFER" to word("转账 / 换汇","振替・両替"),"REFUND" to word("退款","返金")),{type=it})}
             // The list follows the disclosure without the page's section gap; its rows are lazy items below.
             Box(Modifier.fillMaxWidth().padding(top=1.dp)){LedgerFilterDisclosure(filtersOpen,{filtersOpen=!filtersOpen}){
-                YSelect(word("账户","口座"),account,listOf(null to word("全部账户","すべての口座"))+s.accounts.map{it.id as String? to it.name},{account=it})
+                YSelect(word("账户","口座"),account,listOf(null to word("全部账户","すべての口座"))+s.accounts.map{it.id as String? to it.name},{account=it},columns=2)
                 YSelect(word("分类","カテゴリ"),category,listOf(null to word("全部分类","すべてのカテゴリ"))+s.categories.map{it.id as String? to s.path(it.id)},{category=it})
                 YSelect(word("日期范围","日付範囲"),period,listOf("ALL" to word("全部日期","すべての日付"),"MONTH" to word("本月","今月"),"CUSTOM" to word("自定义区间","期間を指定")),{period=it;dateOwner=null})
                 if(period=="CUSTOM"){

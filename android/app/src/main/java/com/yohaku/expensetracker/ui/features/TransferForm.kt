@@ -37,12 +37,12 @@ import com.yohaku.expensetracker.ui.theme.*
                 feeBaseAmount=if(d.feePosition==TransferFeePosition.INCLUDED_FROM)""else d.feeBaseAmount,
                 toAccountId=if(id==d.toAccountId)null else d.toAccountId,toAmount=if(id==d.toAccountId)""else d.toAmount,toConfirmed=if(id==d.toAccountId)false else d.toConfirmed)
                 else d.copy(accountId=id,toAccountId=if(id==d.toAccountId)null else d.toAccountId,toAmount=if(id==d.toAccountId)""else d.toAmount,toConfirmed=if(id==d.toAccountId)false else d.toConfirmed))
-        })
+        },columns=2)
         YSelect(word("转入账户","入金口座"),d.toAccountId,targets.filter{it.id!=from?.id}.map{it.id as String? to it.name},{id->
             val account=eligible.first{it.id==id};val currencyChanged=account.currency!=to?.currency
             change(if(currencyChanged)d.copy(toAccountId=id,toAmount="",manualRate="",rateSource="manual",referenceExpectedFromMinor=null,referenceExpectedToMinor=null,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList(),toConfirmed=false,
                 feeCurrency=preservedFeeCurrency,feeAccountAmount=if(d.feePosition==TransferFeePosition.DEDUCTED_TO)""else d.feeAccountAmount,feeBaseAmount=if(d.feePosition==TransferFeePosition.DEDUCTED_TO)""else d.feeBaseAmount)else d.copy(toAccountId=id))
-        })
+        },columns=2)
         if(targets.isEmpty()||eligible.size<2)YButton(word("添加资金账户","資金口座を追加"),onAccount,primary=true)
         if(from?.type==AccountType.CREDIT.name){YText(word("从信用卡充值：计入该卡账单，不计消费","カードからチャージ：カードの請求に計上し、支出には含めません"),11,color=LocalYohaku.current.muted);CardPaymentFields(d,::change)}
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -68,8 +68,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 YText(word("由两端金额反算，可能含费用影响，不推断手续费。","両側の金額から算出。費用の影響を含む場合がありますが、手数料とは断定しません。"),10,color=LocalYohaku.current.muted)
             }
         }else YText(if(knownPair)word("同币种转账，不进行汇率换算。","同じ通貨の振替。レート換算は行いません。")else word("先选择两端账户，再确认币种与金额。","出金・入金口座を選び、通貨と金額を確認してください。"),11,color=LocalYohaku.current.muted)
-        TransferEstimateLink(word("估算未确认的到账额","未確認の入金額を見積もる"),{estimate("TO")},enabled=!busy&&!d.toConfirmed&&from!=null&&to!=null)
-        TransferEstimateLink(word("反推未确认的转出额","未確認の出金額を逆算"),{estimate("FROM")},enabled=!busy&&!d.fromConfirmed&&from!=null&&to!=null)
+        TransferEstimateActions({estimate("TO")},!busy&&!d.toConfirmed&&knownPair,{estimate("FROM")},!busy&&!d.fromConfirmed&&knownPair)
         var feeOpen by rememberSaveable(s.book.id,d.id){mutableStateOf(true)}
         YLink((if(feeOpen)"− "else "+ ")+word("手续费 · 避免重复扣款","手数料・二重控除しない"),{feeOpen=!feeOpen})
         if(feeOpen) {
@@ -80,7 +79,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 YSelect(word("费用币种","手数料通貨"),feeCurrency.name,Currency.entries.map{it.name as String? to it.name},{change(d.copy(feeCurrency=Currency.valueOf(it!!),feeAccountAmount="",feeBaseAmount=""))},Modifier.weight(1f))
             }
             YSelect(word("手续费如何扣收","手数料の扱い"),d.feePosition.name,TransferFeePosition.entries.map{it.name as String? to feePositionName(it)},{owner=null;change(d.copy(feePosition=TransferFeePosition.valueOf(it!!),feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))})
-            if(d.feePosition==TransferFeePosition.SEPARATE)YSelect(word("另扣手续费的账户","別途手数料の口座"),d.feeAccountId,s.accounts.filter{it.active}.map{it.id as String? to it.name},{change(d.copy(feeAccountId=it,feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))})
+            if(d.feePosition==TransferFeePosition.SEPARATE)YSelect(word("另扣手续费的账户","別途手数料の口座"),d.feeAccountId,s.accounts.filter{it.active}.map{it.id as String? to it.name},{change(d.copy(feeAccountId=it,feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))},columns=2)
             if(d.feeAmount.isNotBlank()&&payer!=null) {
                 if(feeCurrency.name!=payer.currency)YField(word("费用在账户中的金额","口座通貨での手数料額")+" · "+payer.currency,d.feeAccountAmount,{change(d.copy(feeAccountAmount=it))},numeric=true)
                 if(payer.currency!=s.book.currency)YField(word("手续费本位币统计金额","手数料の基準通貨集計額")+" · "+s.book.currency,d.feeBaseAmount,{change(d.copy(feeBaseAmount=it))},numeric=true)

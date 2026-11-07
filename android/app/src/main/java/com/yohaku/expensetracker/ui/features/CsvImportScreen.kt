@@ -103,11 +103,11 @@ import kotlinx.coroutines.flow.collect
 @Composable private fun CsvMappings(s:BookSnapshot,document:CsvDocument,settings:CsvSettings,onChange:(CsvSettings)->Unit,onNewAccount:()->Unit) {
     val accounts=s.accounts.filter{csvAccountAllowed(it,s.book)}
     val accountOptions=listOf("" to word("请选择账户","口座を選択"))+accounts.map{it.id to it.name}
-    YSelect(word("目标账户（未对应时使用）","移行先口座（未対応時に使用）"),settings.accountId,accountOptions,{onChange(settings.copy(accountId=it))})
+    YSelect(word("目标账户（未对应时使用）","移行先口座（未対応時に使用）"),settings.accountId,accountOptions,{onChange(settings.copy(accountId=it))},columns=2)
     s.accounts.filterNot{csvAccountAllowed(it,s.book)}.forEach{YText(it.name+" · "+if(!it.active)word("已停用，不可用","停止中のため利用不可")else word("币种 ${it.currency} 与本位币不同，不可用","通貨 ${it.currency} が基準通貨と異なるため利用不可"),11,color=LocalYohaku.current.muted)}
     YButton(word("新建账户","口座を新規作成"),onNewAccount)
     YText(word("收入只可迁入资金账户。日期不晚于所选账户期初日的记录标为已包含期初，不改变余额；其余记录会改变余额。","収入は資金口座のみ。選択した口座の期首日以前の記録は期首残高に含め、残高を変えません。それ以降の記録は残高を変えます。"),12)
-    settings.columns["account"]?.let{i->document.data.map{it.getOrElse(i){""}}.distinct().forEach{value->YSelect(word("账户值：","口座の値：")+value.ifBlank{word("空值","空欄")},settings.accounts[value].orEmpty(),listOf("" to word("使用目标账户","移行先口座を使う"))+accounts.map{it.id to it.name},{onChange(settings.copy(accounts=settings.accounts+(value to it)))})}}
+    settings.columns["account"]?.let{i->document.data.map{it.getOrElse(i){""}}.distinct().forEach{value->YSelect(word("账户值：","口座の値：")+value.ifBlank{word("空值","空欄")},settings.accounts[value].orEmpty(),listOf("" to word("使用目标账户","移行先口座を使う"))+accounts.map{it.id to it.name},{onChange(settings.copy(accounts=settings.accounts+(value to it)))},columns=2)}}
     val groups=CsvParser.values(document,settings).filter{it.kind in listOf("EXPENSE","INCOME")}.groupBy{it.kind!! to it.category}
     groups.forEach{(key,rows)->
         val (kind,value)=key

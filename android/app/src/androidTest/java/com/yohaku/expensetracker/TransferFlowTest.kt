@@ -91,7 +91,9 @@ class TransferFlowTest {
             field(text("实际扣款总额","実際の出金総額")+" · JPY","30000")
             ui.onNodeWithTag("field-"+text("实际到账净额","実際の入金純額")+" · CNY").performScrollTo().assertTextEquals("1500.00")
             field(text("明确收取的手续费 / 可留空","確定手数料・空欄可")+" · JPY","750")
-            tap(text("估算未确认的到账额","未確認の入金額を見積もる"))
+            target(ui.onNodeWithTag("transfer-estimate-actions"))
+            shot("$theme-$language-transfer-estimate",false)
+            target(ui.onNodeWithTag("transfer-estimate-to")).performClick()
             ui.waitUntil(10000){vm.entry.value?.toAmount=="1462.50"&&!vm.busy.value}
             val stateLabel=text("资金状态","資金の状態")
             ui.onNodeWithTag("select-trigger-$stateLabel").performScrollTo().performClick()
@@ -183,7 +185,7 @@ class TransferFlowTest {
             choose(text("转入账户","入金口座"),0)
             assertEquals(incoming,vm.entry.value!!.toAccountId);assertEquals("10000",vm.entry.value!!.amount)
             field(text("手填汇率","手入力レート")+" · 1 JPY = CNY","0.05")
-            tap(text("估算未确认的到账额","未確認の入金額を見積もる"))
+            target(ui.onNodeWithTag("transfer-estimate-to")).performClick()
             ui.waitUntil(10000){vm.entry.value?.toAmount=="500.00"&&!vm.busy.value}
             ui.runOnIdle{vm.leaveEntry(book,false,"ledger")}
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
@@ -207,7 +209,7 @@ class TransferFlowTest {
             ui.onNodeWithText(text("账户转账","口座振替")).assertExists()
             field(text("实际扣款总额","実際の出金総額")+" · JPY","10000")
             field(text("明确收取的手续费 / 可留空","確定手数料・空欄可")+" · JPY","600")
-            tap(text("估算未确认的到账额","未確認の入金額を見積もる"))
+            target(ui.onNodeWithTag("transfer-estimate-to")).performClick()
             ui.waitUntil(10000){vm.entry.value?.toAmount=="9400"&&!vm.busy.value}
             choose(text("资金状态","資金の状態"),0)
             date(0,"2026-09-30",true,language);date(1,"2026-10-02",false,language)
@@ -250,7 +252,7 @@ class TransferFlowTest {
             field(text("实际扣款总额","実際の出金総額")+" · JPY","10000")
             choose(text("手续费如何扣收","手数料の扱い"),1)
             field(text("明确收取的手续费 / 可留空","確定手数料・空欄可")+" · JPY","600")
-            tap(text("估算未确认的到账额","未確認の入金額を見積もる"))
+            target(ui.onNodeWithTag("transfer-estimate-to")).performClick()
             ui.waitUntil(10000){vm.entry.value?.toAmount=="9400"&&!vm.busy.value}
             choose(text("资金状态","資金の状態"),2)
             date(0,"2026-09-30",true,language);date(1,"2026-10-02",false,language)

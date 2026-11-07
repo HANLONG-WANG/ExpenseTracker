@@ -154,7 +154,7 @@ import java.time.*
                 finance.bills.filter{it.active&&it.date==mergeFeeDate&&(it.planId==destinationPool.id||destinationInput?.pool?.facts?.retained?.any{r->r.bill.id==it.id}==true)}.forEach{bill->YButton(word("核对原循环还款计划本期账单","元の循環返済プランの当期請求を確認")+" · "+bill.date,{if(onPoolBill!=null)onPoolBill(bill.id)else onClose()},Modifier.testTag("arrangement-merge-bill-${bill.id}"))}
                 YButton(word("查看 / 重算原循环还款计划，保留本次输入","元の循環返済プランを確認・再計算して入力を保持"),{if(onPoolReview!=null)onPoolReview(destinationPool.id)else onClose()},Modifier.testTag("arrangement-merge-open-pool"))
             }
-            if(destinationPool==null)YSelect(word("新付款账户","新しい引落口座"),bank,listOf(null to word("按规则 / 未确定","条件から取得・未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{bank=it})
+            if(destinationPool==null)YSelect(word("新付款账户","新しい引落口座"),bank,listOf(null to word("按规则 / 未确定","条件から取得・未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{bank=it},columns=2)
             YSelect(word("原方案剩余费用如何处理","元の予定の残手数料の扱い"),treatment,listOf(null to word("请选择明确条件","明確な条件を選択"),OriginalFeeTreatment.RETAIN.name to word("保留原费用","元の手数料を保持"),OriginalFeeTreatment.CANCELLED_BY_PLATFORM.name to word("平台取消原费用","返済先が元の手数料を取消")),{treatment=it})
             if(old.origin=="POOL") {
                 ThemeSection(word("从循环还款计划转出的部分","リボ・循環返済プランから移す部分"),"SELECT PRINCIPAL")

@@ -88,10 +88,42 @@ import com.yohaku.expensetracker.ui.theme.*
     YText(message,if(t.id=="journal")12 else 10,Modifier.fillMaxWidth().padding(vertical=6.dp).testTag("transfer-state-note").then(frame).padding(start=if(t.id=="magazine")19.dp else if(t.id=="journal")18.dp else 17.dp,end=if(t.id=="journal")18.dp else 17.dp,top=if(t.id=="journal")18.dp else 17.dp,bottom=if(t.id=="journal")18.dp else 17.dp),color=if(t.id=="objects")Color(0xff84916e)else t.muted,lineHeightMultiplier=2f,cssLineBox=true)
 }
 
-@Composable internal fun TransferEstimateLink(label:String,onClick:()->Unit,enabled:Boolean) {
+/** Two side-by-side estimate actions: fill the unconfirmed incoming amount, or back out the unconfirmed outgoing one. */
+@Composable internal fun TransferEstimateActions(onTo:()->Unit,toEnabled:Boolean,onFrom:()->Unit,fromEnabled:Boolean) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("transfer-estimate-actions"),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        TransferEstimateButton(false,word("估算到账额","入金額を見積もる"),word("由转出额推算","出金額から計算"),onTo,toEnabled,Modifier.weight(1f).fillMaxHeight().testTag("transfer-estimate-to"))
+        TransferEstimateButton(true,word("反推转出额","出金額を逆算"),word("由到账额反推","入金額から逆算"),onFrom,fromEnabled,Modifier.weight(1f).fillMaxHeight().testTag("transfer-estimate-from"))
+    }
+}
+@Composable private fun TransferEstimateButton(reverse:Boolean,label:String,caption:String,onClick:()->Unit,enabled:Boolean,modifier:Modifier) {
     val haptics=LocalHaptics.current
     val t=LocalYohaku.current
-    Box(Modifier.fillMaxWidth(),contentAlignment=Alignment.Center) {
-        androidx.compose.material3.Text(label,Modifier.heightIn(min=40.dp).clickable(enabled=enabled,onClick={haptics.perform(Haptic.Select);onClick()}).padding(top=2.dp,bottom=8.dp),color=t.accent.copy(alpha=if(enabled)1f else .45f),fontFamily=t.body,fontSize=11.sp,lineHeight=18.sp,textDecoration=androidx.compose.ui.text.style.TextDecoration.Underline)
+    val click=Modifier.alpha(if(enabled)1f else .45f).clickable(enabled=enabled,role=androidx.compose.ui.semantics.Role.Button,onClick={haptics.perform(Haptic.Select);onClick()})
+    when(t.id) {
+        // Magazine: ruled index box echoing the 01 / 02 pair header.
+        "magazine"->Column(modifier.then(click).border(1.dp,t.ink).padding(horizontal=12.dp,vertical=11.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+            YText(if(reverse)"02 → 01" else "01 → 02",8,color=t.muted,number=true)
+            Box(Modifier.fillMaxWidth().height(1.dp).background(t.ink))
+            YText(label,12,color=t.accent)
+            YText(caption,9,color=t.muted)
+        }
+        // Journal: taped paper slips, tilted in opposite directions.
+        "journal"->Box(modifier.padding(vertical=3.dp).rotate(if(reverse).8f else -.8f).then(click).background(Color(0xfffff8e7)).drawBehind{
+            drawRect(t.line,style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))
+        }) {
+            Box(Modifier.align(Alignment.TopCenter).offset(y=(-6).dp).size(34.dp,12.dp).rotate(if(reverse)-5f else 5f).background(Color(0x7dc6c3a5)))
+            Row(Modifier.padding(start=12.dp,end=10.dp,top=14.dp,bottom=12.dp),horizontalArrangement=Arrangement.spacedBy(7.dp),verticalAlignment=Alignment.CenterVertically) {
+                YText(if(reverse)"↜" else "↝",20,color=t.warm)
+                Column(Modifier.weight(1f)){YText(label,14,color=t.accent);YText(caption,11,Modifier.padding(top=2.dp),color=t.muted)}
+            }
+        }
+        // Objects: soft coin chips with a round arrow badge.
+        else->{
+            val shape=RoundedCornerShape(14.dp)
+            Row(modifier.then(click).background(Color(0xfff0e2ca),shape).border(1.dp,Color(0xffdcc5a3),shape).padding(horizontal=11.dp,vertical=12.dp),horizontalArrangement=Arrangement.spacedBy(9.dp),verticalAlignment=Alignment.CenterVertically) {
+                Box(Modifier.size(28.dp).background(Color(0xffe3c38d),RoundedCornerShape(50)).border(1.dp,Color(0xffcfa969),RoundedCornerShape(50)),contentAlignment=Alignment.Center){YText(if(reverse)"←" else "→",14,color=Color(0xff9a6c3c),number=true)}
+                Column(Modifier.weight(1f)){YText(label,12,color=t.accent);YText(caption,9,Modifier.padding(top=2.dp),color=Color(0xffac8960))}
+            }
+        }
     }
 }

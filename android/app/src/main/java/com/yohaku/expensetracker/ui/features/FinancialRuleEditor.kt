@@ -82,7 +82,7 @@ import java.time.LocalDate
             }
             RuleBoolean(draft,"closingIncluded",word("结账日当天属于本期","締日当日を当期に含む"),{k,v->change(k,v);trial=null})
             RuleText(draft,"monthOffset",word("还款月距结账月的月数（0为当月）","締月から支払月までの月数（0は当月）"),{k,v->change(k,v);trial=null},numeric=true)
-            YSelect(word("付款账户","引落口座"),draft["bank"],listOf("" to word("未填写","未入力"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id to (it.name+" · "+it.currency)},{change("bank",it);trial=null})
+            YSelect(word("付款账户","引落口座"),draft["bank"],listOf("" to word("未填写","未入力"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id to (it.name+" · "+it.currency)},{change("bank",it);trial=null},columns=2)
             YText(word("31日遇短月按月末。未配置营业日历时，本期实际扣款日期需手动确认。","31日がない月は月末です。営業日カレンダー未設定の場合、当期の引落日は手動確認してください。"),11,color=LocalYohaku.current.muted)
         }
         if(mode==FinanceMode.SINGLE)FinanceFormSection(word("奖金月付款（可选，最多两段）","ボーナス払い（任意・最大2区分）")) {
