@@ -40,7 +40,7 @@ android {
             ndk { abiFilters += "arm64-v8a" }
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets.getByName("androidTest").assets.srcDir("schemas")
     testOptions { unitTests.isReturnDefaultValues = true }

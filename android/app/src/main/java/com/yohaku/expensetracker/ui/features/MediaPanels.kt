@@ -104,11 +104,26 @@ internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,target:
         else if(kind=="record")vm.importRecordReceipts(context,book,target,listOf(uri(file))){file.delete()}
         else vm.importFiles(context,book,listOf(uri(file)),true,target){file.delete()}
     }
-    return {book,target->
+    fun clearPending() { pending?.substringAfterLast("\n")?.let{File(it).delete()};pending=null }
+    fun launchPending() {
+        val path=pending?.substringAfterLast("\n")?:return
+        try{launcher.launch(uri(File(path)))}
+        catch(_:ActivityNotFoundException){clearPending();vm.error.value="没有可用的相机应用 / 使えるカメラアプリがありません";vm.haptic(Haptic.Error)}
+    }
+    // Declaring CAMERA for the new scanner also makes ACTION_IMAGE_CAPTURE require its grant.
+    // Keep the system-camera route until stage 4; save the original target before permission UI.
+    val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->
+        if(granted)launchPending() else {
+            clearPending();vm.error.value="拍照需要相机权限；若无法再次询问，请在系统设置中允许 / 撮影にはカメラの許可が必要です。再確認されない場合はシステム設定で許可してください";vm.haptic(Haptic.Error)
+        }
+    }
+    return camera@{book,target->
+        if(pending!=null)return@camera
         val dir=File(context.cacheDir,"camera");dir.deleteRecursively();dir.mkdirs()
         val file=File(dir,"IMG_"+java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))+".jpg")
         pending=when(target){is ReceiptTarget.Draft->listOf(book,"draft",target.session,file.path);is ReceiptTarget.Record->listOf(book,"record",target.eventId,file.path)}.joinToString("\n")
-        try{launcher.launch(uri(file))}catch(_:ActivityNotFoundException){pending=null;vm.error.value="没有可用的相机应用 / 使えるカメラアプリがありません";vm.haptic(Haptic.Error)}
+        if(androidx.core.content.ContextCompat.checkSelfPermission(context,android.Manifest.permission.CAMERA)==android.content.pm.PackageManager.PERMISSION_GRANTED)launchPending()
+        else permission.launch(android.Manifest.permission.CAMERA)
     }
 }
 @Composable private fun MediaFileRow(repository:LedgerRepository,file:FileBlobEntity,onPreview:()->Unit,onRemove:(()->Unit)?=null) {

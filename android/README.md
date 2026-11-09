@@ -104,7 +104,9 @@ adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisua
 
 ## 照片与附件导入（2026-10-31 源码更新）
 
-表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`TakePicture` 调起系统默认相机，一次一张，写入 `cache/camera/IMG_yyyyMMdd_HHmmss.jpg`（FileProvider 授权，不声明 CAMERA 权限），之后按小票导入并删除临时文件。启动器挂在 `MainActivity`（`LocalReceiptCamera`），待处理的账本/表单会话/路径存于 saved state，拍照期间进程被回收也能导入已保存草稿。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），从相机或其他应用返回超过 5 秒也不会重建页面，记账弹层与滚动位置保持不变。云端分析台的选择器不变。
+表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`TakePicture` 调起系统默认相机，一次一张，写入 `cache/camera/IMG_yyyyMMdd_HHmmss.jpg`（FileProvider 授权；应用已声明 `CAMERA` 权限供独立的应用内相机页使用，因此现有系统相机入口也先请求该权限），之后按小票导入并删除临时文件。启动器挂在 `MainActivity`（`LocalReceiptCamera`），待处理的账本/表单会话/路径存于 saved state，拍照期间进程被回收也能导入已保存草稿。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），从相机或其他应用返回超过 5 秒也不会重建页面，记账弹层与滚动位置保持不变。云端分析台的选择器不变。
+
+应用内扫描阶段 2 已提供独立的 `ScanCameraFlow`（尚未替换上述入口）：CameraX 预览/轮廓、补光、自动拍摄与自动处理开关；偏好进入完整备份，旧备份默认自动拍摄关、自动处理开。照片以带 EXIF 方向的 JPEG 暂存到 `cache/receipt-capture/`，成功交接后由后续确认流程清理；返回时清理未交接照片。接口、参数、真机流水线决策与设备验证命令见 [扫描模块说明](tools/receipt-scanner/README.md#阶段-2独立相机页)。`ScanCameraFlowTest` 的静态合成帧视觉方法支持 `looks=all visual=true`，输出 `files/verification/receipt-camera/{theme}-{language}-{hint,progress}.png`；本轮仪器与视觉测试由用户运行，尚未目视验收。
 
 导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存；在记录详情页为没有小票的记录补加小票时直接使用全局设置。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
 

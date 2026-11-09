@@ -16,7 +16,9 @@ import kotlinx.serialization.Serializable
     val setupDraft:SetupDraft?=null,
     val photoSaveOriginal:Boolean=false,
     val commandEffectReceipts:Set<String> = emptySet(),
-    val hapticsEnabled:Boolean=true
+    val hapticsEnabled:Boolean=true,
+    val scanAutoCapture:Boolean=false,
+    val scanAutoProcess:Boolean=true
 ) {
     fun validate(){reminderSettings.values.forEach{it.validate()}}
 }

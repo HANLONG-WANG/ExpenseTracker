@@ -19,6 +19,14 @@ class PhotoStorageTest {
         assertEquals("receipt.page.jpg",jpegFileName("receipt.page.png"))
         assertEquals("receipt.jpg",jpegFileName("receipt"))
     }
+    @Test fun scannerPreferencesHaveBackwardCompatibleDefaultsAndRoundTrip() {
+        val defaults=BackupArchive.json.decodeFromString<BackupPreferences>("{}")
+        assertFalse(defaults.scanAutoCapture)
+        assertTrue(defaults.scanAutoProcess)
+        val changed=defaults.copy(scanAutoCapture=true,scanAutoProcess=false)
+        assertEquals(changed,BackupArchive.json.decodeFromString<BackupPreferences>(
+            BackupArchive.json.encodeToString(BackupPreferences.serializer(),changed)))
+    }
     @Test fun oldBackupDefaultsToSpaceSaving() {
         assertFalse(BackupArchive.json.decodeFromString<BackupPreferences>("{}").photoSaveOriginal)
         assertTrue(BackupArchive.json.decodeFromString<BackupPreferences>("{\"photoSaveOriginal\":true}").photoSaveOriginal)

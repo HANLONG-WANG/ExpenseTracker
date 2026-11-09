@@ -71,7 +71,7 @@ ui/features/scan/                （新页面）
   - 拍照处理：GPU → CPU；
   - 加载失败或执行异常时自动降级并记录日志，不静默改变精度等级。
 - **HTP 预热：** 应用启动或更新后，在后台（WorkManager，低优先级）编译 HTP encoder 并写入 context 缓存。缓存键 = 模型哈希 + ORT/QNN 版本 + 设备 `Build.FINGERPRINT`；不匹配或加载失败时删除并重新编译。编译完成前预览用 GPU。
-- **预览流水线化：** 下一帧的 encoder 与当前帧的 decoder/几何并行，以拉开与 5 次/秒目标线的余量；同时保留轮廓的时间平滑。
+- **预览调度（2026-11-09 阶段 2 追加决策）：** 依据 ReceiptBench 第三轮 S24 Ultra 真机数据，模型后的 mask 后处理 + 几何约 25 ms / 180 ms（14%），低于 30% 门槛，因此不做流水线化，保持引擎单工作线程并增加轮廓时间平滑。无需启动模拟器测速；完整数据见 `android/tools/receipt-scanner/README.md`。
 
 ## 四、阶段划分
 
@@ -156,7 +156,7 @@ ui/features/scan/                （新页面）
 
 - `docs/product-design.md` 第 113 行附近：「调起系统默认相机」；
 - `docs/implementation-spec.md` 第 186–189 行；
-- `android/README.md` 第 107 行（`TakePicture`、「不声明 CAMERA 权限」将失效），并补充：模型与第三方许可（EdgeSAM：NTU S-Lab License 1.0，仅非商用；SyntheticDoc：MIT；ONNX Runtime：MIT；QNN runtime：Qualcomm 许可；OpenCV：Apache-2.0）、APK 体积、HTP 预热与缓存说明、测试说明；
+- `android/README.md` 的拍照段落（阶段 2 已修正 CAMERA 声明/申请；阶段 4 后再替换 `TakePicture` 描述），并补充：模型与第三方许可（EdgeSAM：NTU S-Lab License 1.0，仅非商用；SyntheticDoc：MIT；ONNX Runtime：MIT；QNN runtime：Qualcomm 许可；OpenCV：Apache-2.0）、APK 体积、HTP 预热与缓存说明、测试说明；
 - 云端协议文档中若有描述「系统相机」的文字一并更新（当前检索到的描述均为中性的「拍照」）。
 
 ### 阶段 7　真机验收（用户）
@@ -183,7 +183,7 @@ ui/features/scan/                （新页面）
 |---|---|
 | APK 体积大增（模型约 70 MB + QNN 运行库约 180 MB + OpenCV 约 33 MB；当前约 90 MB） | 用户已表示不设上限；可选裁掉用不到的 HTP 版本（V68/V69/DSP），见 7.3 |
 | 系统更新后 HTP 缓存失效或驱动不兼容 | 缓存键含 `Build.FINGERPRINT`；失败自动重编译，期间预览用 GPU |
-| 预览帧率余量小 | 流水线化；必要时降低平滑开销 |
+| 预览帧率余量小 | 真机复测各阶段；CPU 后处理达到 30% 门槛后再评估流水线化 |
 | 非高通设备 | 自动回退 CPU，功能可用但慢（拍照约 1.1 s，预览约 2 次/秒） |
 | 纸张严重扭转（如 r21） | 单张照片的物理局限；靠提示与调整轮廓/重拍 |
 

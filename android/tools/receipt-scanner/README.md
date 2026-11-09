@@ -1,4 +1,4 @@
-# 小票扫描处理引擎（阶段 1）
+# 小票扫描处理引擎与独立相机页（阶段 1–2）
 
 实现位于 `app/src/main/java/com/yohaku/expensetracker/receipt/scan/`。这是无 UI 的同步处理引擎；现有系统相机、附件入库和云端办理入口未改。所有构造、调用和关闭在同一个后台工作线程上执行。
 
@@ -24,7 +24,7 @@
 - 无合格候选返回 `ScanDetection.NotDetected` / `ScanProcessResult.NotDetected`；几何、模型、解码等真正错误仍抛出，不隐藏为「未检测到」。`ScanContour.centered()` 可供后续调整页初始化。
 - `process` 在同一次解码中执行 detect + render；未编辑的 `Found` 保存原分割 mask 与 source geometry。单独 `render(photo, found)` 只运行 SyntheticDoc。只有 `render(photo, contour)` 将编辑轮廓回填为 mask 后重跑几何和展平，不运行 EdgeSAM。
 - 轮廓使用 not-a-knot 三次样条连接五个控制点，能再现参考的三次边缘；上下端线连接左右端点，`withEnd` 可整体移动端线。越界或自交编辑会被拒绝。端线可见性由编辑数据传给展平器。
-- 本阶段单工作线程，不含相机帧调度、时间平滑、自动拍摄判断或预览流水线并行。预览提供面积、重心、模型分数、拟合残差/离群率、端线可见性/宽松闭合标记、各阶段耗时，供后续相机层制定策略。
+- 引擎保持单工作线程；阶段 2 的 `ui/features/scan/` 负责相机帧调度、时间平滑与自动拍摄判断，没有预览流水线并行。预览提供面积、重心、模型分数、拟合残差/离群率、端线可见性/宽松闭合标记、各阶段耗时。
 - 移除了测速工具的 journal、模型精度诊断和导出。保留 D7a 数值运算顺序与 native Mat 的及时释放；ORT 环境是进程共享对象，会话随 scanner 关闭。
 
 ## EP、缓存和预热
@@ -104,3 +104,97 @@ GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
 仪器测试只在沙箱中编译，执行与 CPU 端到端验收待用户运行；QNN、缓存加载与实际加速仍须 arm64 真机验证。不得把 Python 成功或编译成功记成 Android 端到端通过。
 
 2026-11-09 沙箱验证：`ScannerNumericsTest` 5/5 通过；`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleRelease` 串行成功。release APK 249,612,540 字节（249.61 MB / 238.05 MiB）；debug APK 331,250,756 字节（331.25 MB / 315.91 MiB）。没有运行模拟器仪器测试或 QNN 真机测试。
+
+
+## 阶段 2：独立相机页
+
+入口是 `ScanCameraFlow(ScanCameraRequest(target), preferences, onBack, onCaptured)`。沿用 `FinancialFlow` 的全屏 Compose Dialog：拥有独立窗口和返回处理，隐藏系统栏（可边缘滑出），保留调用页面；不向 `AppViewModel` 的页面返回栈写入无人消费的拍照路由。调用方关闭时移除该 composable；阶段 4 再把 `ReceiptTarget.Draft/Record` 映射到稳定的 target。现有拍照按钮仍调用系统相机，没有接入此页。
+
+- `ScanCameraScreen.kt`：权限首次申请、拒绝重试/永久拒绝跳系统设置、全屏页面、生命周期和主题令牌；取景框、提示、快门分成独立 composable，阶段 5 再做专属设计。无后置相机/相机或分析失败有独立说明和重试。
+- `ScanCameraSource.kt`：CameraX Preview + RGBA_8888 ImageAnalysis（KEEP_ONLY_LATEST、4:3、请求 960×720）+ ImageCapture（MAXIMIZE_QUALITY、4:3、最高可用分辨率，允许高分辨率模式），共享 PreviewView ViewPort。实际流尺寸由 CameraX 根据设备组合能力协商。裁剪 RGBA、转正 BGR、`ImageProxyTransformFactory` + `CoordinateTransform` + FILL_CENTER 映射和像素中心 +0.5 沿用真机验证方法。
+- `ScanCapturePolicy.kt`：纯 JVM 的平滑、提示、自动拍摄判定。`ScanFrameProcessor` 在一个专属分析线程创建、使用和关闭原有 `ReceiptScanner`；阶段 1 API/引擎未改。
+- `ScanMotionMonitor.kt`：加速度计去重力后与陀螺仪共同判断手机静止；有哪个用哪个，都没有时只看画面。后台暂停传感器并清空进度，返回后不沿用旧帧。
+- `ScanCaptureSession.kt`：原始 JPEG 写入 `cache/receipt-capture/<uuid>/original.jpg`。采用 **CameraX 写入 EXIF 方向**，不额外重新编码；`targetRotation` 在快门时刷新，阶段 1 引擎解码应用 EXIF。成功时先释放相机，再调用 `onCaptured(File, autoProcess)`；此后文件所有权交给阶段 3，确认/放弃后删除文件及其父目录。返回、拍照失败、晚到的拍照回调会清理本次未交接目录。进程恢复及启动时清理由阶段 3/4 接续。
+- 两个 DataStore 偏好：`scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true；进入完整备份，旧备份缺字段采用上述默认。自动处理仅控制出口布尔值，相机页不执行 detect/render/process。云端命令暂不发布这两个偏好。
+- Debug 角落显示分析帧率与当前结果的 `actualEps`；Logcat `ScanCamera` 输出各阶段耗时、平滑耗时和到达分析器至叠加的延迟。release 不显示/输出这些调试信息。
+
+声明 CAMERA 后，即使调用系统相机也需要该权限，否则 ACTION_IMAGE_CAPTURE 会抛 SecurityException（[Android API](https://developer.android.com/reference/android/provider/MediaStore#ACTION_IMAGE_CAPTURE)）。因此 `rememberReceiptCamera` 只补了权限申请与拒绝后的清理，继续使用 TakePicture 和原来的目标恢复/导入逻辑；`MediaFlowTest` 的系统相机替身同时处理权限回调。Manifest 的 camera、autofocus 均 required=false，不排除无相机设备。
+
+### 自动拍摄与提示参数
+
+参数集中在 `ScanThresholds`；位置和位移按转正后的帧宽高归一化，不随 UI 像素变化。
+
+| 条件 | 当前值 |
+|---|---|
+| 连续合格时间 | 800 ms；帧间隔超过 1500 ms 重置 |
+| 轮廓稳定 | 未平滑轮廓对应点的最大归一化位移 < 0.012 |
+| 平滑 | EMA α=0.45；位移 >0.09 或无轮廓/长时间断帧直接重置 |
+| 面积 | 0.16–0.78 |
+| 中心偏离 | x ≤0.16、y ≤0.19 |
+| 可靠性 | modelScore ≥0.80、拟合残差/短边 ≤0.018、离群率 ≤0.25、不使用宽松闭合 |
+| 手机静止 | 陀螺仪 ≤0.12 rad/s、去重力加速度 ≤0.35 m/s²，运动后等待 400 ms |
+
+检测失败提示「未找到小票」；中心不合格/面积过大提示「把小票放在中间」；面积过小提示「靠近一些」；轮廓不稳/可靠性不足提示「拿稳」；正常无提示。自动拍摄需要所有条件同时满足，进度中断即清零，手动拍照随时可用，每次相机会话最多自动触发一次；拍摄失败后可手动重试。
+
+### 不做流水线化的依据
+
+按用户 2026-11-09 追加指示，采用已有 **S24 Ultra 真机**数据，不启动模拟器测速：
+
+- 第一轮 CPU_4、960×720：RGBA 1.5 ms、预处理 8.0、encoder 528、decoder 61、mask 后处理 3.9、geometry 20.9。各阶段中位数之和约 623.3 ms，模型后的 CPU 阶段约 24.8 ms（约 4.0%，这里只以中位数之和估算）。
+- 第三轮 ENC_HTPFP16 + DEC_CPU：5.4–5.6 fps（约 180 ms/帧），encoder ≈16 ms、decoder ≈38 ms，mask 后处理 + geometry ≈25 ms，约 **14%**。
+
+低于本阶段 30% 门槛，保留单工作线程，不拆分引擎、不加入第二条流水线。以上是用户提供的 ReceiptBench 数据，非本次新增测量；相机层新增的平滑耗时会在 debug 日志中报告。
+
+### 阶段 2 验证
+
+JVM：`ScanCapturePolicyTest`（稳定/不稳定/运动/关开关/断帧重置/不重复触发、提示、平滑），`PhotoStorageTest`（旧备份默认与序列化往返），回归 `ScannerNumericsTest`。
+
+```sh
+# android/ 下执行，所有 Gradle 调用串行。
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:testDebugUnitTest \
+  --tests 'com.yohaku.expensetracker.ui.features.scan.ScanCapturePolicyTest' \
+  --tests 'com.yohaku.expensetracker.PhotoStorageTest' \
+  --tests 'com.yohaku.expensetracker.receipt.scan.ScannerNumericsTest'
+
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:assembleDebug :app:compileDebugAndroidTestKotlin :app:assembleRelease
+```
+
+2026-11-09 沙箱验证：上述 JVM 13/13 通过；`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleRelease` 串行构建成功。阶段 1 引擎接口与实现未修改。
+
+设备测试由用户运行；本轮不启动模拟器，不把编译通过写成仪器或视觉验收通过：
+
+```sh
+# 默认流程、完整备份往返、旧系统相机兼容回归。
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.ScanCameraFlowTest,com.yohaku.expensetracker.BackupRoundTripTest,com.yohaku.expensetracker.MediaFlowTest#cameraCapturesOneReceiptThroughImportAndRemovesTemporaryFile,com.yohaku.expensetracker.MediaFlowTest#recordDetailAddsFirstReceiptsWithGlobalPhotoSetting
+
+# S24 Ultra 基准布局，视觉类方法输出三主题 × 中日文 × 提示/进度共 12 张。
+adb shell wm size 1080x2340
+adb shell wm density 450
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.ScanCameraFlowTest#staticReceiptShowsContourHintsAndAutomaticProgressAcrossLooks \
+  -Pandroid.testInstrumentationRunnerArguments.looks=all \
+  -Pandroid.testInstrumentationRunnerArguments.visual=true
+# 查看后恢复 android/README.md 的原设备配置：
+adb shell wm size 1170x2532
+adb shell wm density 480
+```
+
+截图目录：应用私有 `files/verification/receipt-camera/`，文件名 `{theme}-{language}-{hint,progress}.png`，支持现有 `captureSuffix` 参数。`ScanCameraFlowTest` 使用测试 APK 的 `receipt-scanner/flat.jpg`，真实运行 `ReceiptScanner.preview` 后绘制静态预览；快门可立即返回这张图或延迟回调。覆盖开页轮廓/提示、两个开关持久化和重开、手动出口的 true/false、自动出口仅一次、权限拒绝/永久拒绝、无相机、返回按钮/系统 Back 释放资源及晚到照片清理。权限路径用可注入权限状态，不操作设备的真实系统授权。真实 CameraX/传感器、EXIF 与硬件方向仍需设备验收。
+
+### 阶段 4 云端偏好连带位置（本阶段不改命令层）
+
+- `data/repository/AppPreferences.kt`：`commandValue` / `commandValues` / `applyCommandPreference` 的原子写入、冲突检测、效果凭据。
+- `data/command/FollowupCommandAdapters.kt`：偏好 capability、输入 schema、校验/预览、adapter 注册；`CommandBusinessNames.kt` 的中日名称。
+- `ui/features/command/CommandFollowupViews.kt`、`CommandEffectViews.kt`、`MonthlyScreens.kt`：偏好名称、前后值和月评展示。
+- `data/command/CommandRegistry.kt`（能力汇总）及 JVM `data/command/CommandCapabilitiesTest.kt`（schema/capabilities 生成与核验）；仪器 `CommandWorkflowExecutionTest`、`CommandFlowTest` 的偏好执行/撤销/恢复与展示覆盖沿用 `photoOriginal` 和 `haptics` 的路径。
+- `docs/formats/yohaku-command-protocol-v1.md`、`command-plan.v1.schema.json`、`examples/capabilities.valid.json`，以及 `docs/android-cloud-handoff-package/formats/` 对应副本及包内命令数量说明；通过既有生成流程更新，不手工改 schema 大段内容。
+- `entry.prepareDraft` 的 `RECEIPT_CAMERA` 续办入口与 `MediaPanels.kt` 的 `rememberReceiptCamera`、`ReceiptTarget`：阶段 4 接入本页后核对目标恢复和续办。

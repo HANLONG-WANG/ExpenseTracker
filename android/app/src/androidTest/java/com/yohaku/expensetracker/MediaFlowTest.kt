@@ -48,6 +48,10 @@ class MediaFlowTest {
     private val cameraOwner=object:androidx.activity.result.ActivityResultRegistryOwner {
         override val activityResultRegistry=object:androidx.activity.result.ActivityResultRegistry() {
             override fun <I,O> onLaunch(requestCode:Int,contract:androidx.activity.result.contract.ActivityResultContract<I,O>,input:I,options:androidx.core.app.ActivityOptionsCompat?) {
+                if(contract is androidx.activity.result.contract.ActivityResultContracts.RequestPermission) {
+                    assertEquals(android.Manifest.permission.CAMERA,input)
+                    dispatchResult(requestCode,true);return
+                }
                 val photo=cameraPhoto;if(photo!=null)instrumentation.targetContext.contentResolver.openOutputStream(input as android.net.Uri)!!.use{it.write(photo)}
                 dispatchResult(requestCode,photo!=null)
             }

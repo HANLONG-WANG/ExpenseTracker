@@ -24,6 +24,12 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
     private val photoOriginalKey=booleanPreferencesKey("photo_save_original")
     val photoSaveOriginal=storage.data.map{it[photoOriginalKey]?:false}.distinctUntilChanged()
     suspend fun setPhotoSaveOriginal(value:Boolean){storage.edit{it[photoOriginalKey]=value}}
+    private val scanAutoCaptureKey=booleanPreferencesKey("scan_auto_capture")
+    val scanAutoCapture=storage.data.map{it[scanAutoCaptureKey]?:false}.distinctUntilChanged()
+    suspend fun setScanAutoCapture(value:Boolean){storage.edit{it[scanAutoCaptureKey]=value}}
+    private val scanAutoProcessKey=booleanPreferencesKey("scan_auto_process")
+    val scanAutoProcess=storage.data.map{it[scanAutoProcessKey]?:true}.distinctUntilChanged()
+    suspend fun setScanAutoProcess(value:Boolean){storage.edit{it[scanAutoProcessKey]=value}}
     private val rateCache = stringPreferencesKey("reference_rates_v2_ecb")
     private val automaticRates = booleanPreferencesKey("automatic_reference_rates")
     override val automaticReferenceRates=storage.data.map{it[automaticRates]?:true}
@@ -117,7 +123,8 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
             p[rateCache]?.let{json.decodeFromString<ReferenceRateCache>(it)}?:ReferenceRateCache(),
             p[reminderSettingsKey]?.let{json.decodeFromString(it)}?:emptyMap(),
             p[reminderDeliveryKey]?.let{json.decodeFromString(it)}?:com.yohaku.expensetracker.domain.reminders.ReminderDeliveryState(),
-            p[locationBooksKey]?:emptySet(),p[active],p[setup]?.let{json.decodeFromString<SetupDraft>(it)},p[photoOriginalKey]?:false,p[commandReceipts]?:emptySet(),hapticsEnabled=p[hapticsKey]?:true
+            p[locationBooksKey]?:emptySet(),p[active],p[setup]?.let{json.decodeFromString<SetupDraft>(it)},p[photoOriginalKey]?:false,p[commandReceipts]?:emptySet(),hapticsEnabled=p[hapticsKey]?:true,
+            scanAutoCapture=p[scanAutoCaptureKey]?:false,scanAutoProcess=p[scanAutoProcessKey]?:true
         )
     }
     suspend fun restoreBackup(value:com.yohaku.expensetracker.data.backup.BackupPreferences) {
@@ -128,6 +135,8 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
             p[automaticRates]=value.automaticReferenceRates
             p[photoOriginalKey]=value.photoSaveOriginal
             p[hapticsKey]=value.hapticsEnabled
+            p[scanAutoCaptureKey]=value.scanAutoCapture
+            p[scanAutoProcessKey]=value.scanAutoProcess
             p[rateCache]=json.encodeToString(value.referenceRates)
             p[reminderSettingsKey]=json.encodeToString(value.reminderSettings)
             p[reminderDeliveryKey]=json.encodeToString(value.reminderDelivery)
