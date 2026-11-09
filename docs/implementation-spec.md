@@ -184,7 +184,12 @@
 - 数据存在应用私有的本地Room/SQLite库；一次保存的账目、资金变动、费用和关联在同一事务内完成，失败不留下半筆。
 - 核对外部流水、小票商品与正式账目是不同数据表/对象；核对资料永远不能因导入变成正式记录。
 - 表单附件与小票选择入口使用 `ACTION_GET_CONTENT` + `CATEGORY_OPENABLE` + `EXTRA_ALLOW_MULTIPLE=true`，分别为 `*/*` / `image/*`，每次经 `Intent.createChooser` 打开应用选择窗口；解析 clipData 或单个 data，立即复制临时授权 URI。小票拍照由 Activity 级 `LocalReceiptCamera` 打开 `ScanFlow` 应用内相机，权限与不可用状态由相机页处理。待处理账本、`ReceiptTarget.Draft(session, replaceFileId?)` / `Record(eventId)`、来源路径、主题语言和表单保存选项保存在 saved state；扫描页同时恢复临时照片和确认/调整状态，重建后结果仍交给原媒体会话或记录。结果经 FileProvider 的 `receipt-capture/` 路径交给 `importFiles` / `importRecordReceipts`，导入后清理输出目录；FileProvider 继续服务附件、导出和扫描输出。云端分析台选择器保持不变。
-- `scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true，持久化并进入完整备份。自动处理关闭时相机原图直出（`processed=false`），处理结果（`processed=true`）与原图都照常按「原样保存」开关入库；「处理这张」以 `EXISTING_IMAGE` 借用图片，始终进入确认/调整页。结果在同一导入事务内暂存为新文件，并在草稿 `receiptFileIds` 原位置替换旧 ID；入库失败保留旧图，旧文件沿用现有暂存/引用清理规则，编辑已存记录保存时生成新小票修订。扫描状态并入 busy，期间不可变更其他媒体或提交表单。
+- `receipt/scan/` 提供 `ReceiptScanner.preview/detect/render/process`、`ScannerModels`、分割/几何/展平与 `ScanContour`；`ui/features/scan/` 的 `ScanFlow` 串起 `ScanCameraFlow` 和 `ScanReviewScreen`。CameraX Preview、RGBA ImageAnalysis（KEEP_ONLY_LATEST）与 ImageCapture 共用 ViewPort；后台单线程分析与时间平滑，不流水线并行。自动拍摄要求可靠轮廓、位置/面积、画面稳定和手机静止持续约 800ms；每相机会话最多自动触发一次，手动快门仍可用。
+- 确认页处理在后台线程执行；无候选直接进入默认居中轮廓调整，真实模型/文件错误显示重试。左右各五点及上下端线在转正显示坐标中编辑，重新处理逆变换回 EXIF 归一化原图，只重跑几何与 SyntheticDoc，不重跑 EdgeSAM；自动结果独立保留以精确恢复。位图/模型不进入 saved state，路径/轮廓/当前模式可恢复，缺失结果按保存状态重新计算。
+- `ScanTemporaryFiles` 管理 `cache/receipt-capture/<uuid>/`：相机原 JPEG、借用图片副本及处理结果归属会话；确认将选定文件移交新的输出目录并删除原会话，取消/重拍清理会话，导入结束（含失败）清理输出。应用启动清理超过 24 小时未更新的残留，保留近期可恢复会话。已有图片的源文件不被覆盖或删除。
+- EP：预览 encoder 为 QNN HTP FP16 → QNN GPU → CPU，拍照 encoder/SyntheticDoc 为 GPU → CPU，decoder 固定 CPU；CPU 六线程，不使用 XNNPACK。HTP 不用于精确输出。应用启动安排 WorkManager 唯一 KEEP 任务，延迟 15 秒、电量不低、后台优先级；串行预热缺失/失效的 HTP encoder、GPU encoder/SyntheticDoc。前台只加载就绪缓存，不等编译，GPU 也未就绪时用 CPU；预热结束后下次预览可尝试 HTP。
+- 模型由 assets 校验 SHA256/长度后复制到 `filesDir/receipt-scanner/models/`；context 位于 `noBackupFilesDir/receipt-scanner/contexts/`，按模型/EP 分开，键包含模型哈希、ORT/QNN 版本、设备指纹、ABI、EP/HTP 配置、固定提示维度及实现版本。`ready.json` 原子发布，旧键/残缺缓存重编译，加载/执行失败删除缓存、记录日志并降级；模型和缓存不进入完整备份。参数与哈希见 [扫描模块说明](../android/tools/receipt-scanner/README.md)。
+- `scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true，跨账本持久化并进入完整备份；旧备份缺字段时使用上述默认。自动处理关闭时相机原图直出（`processed=false`），处理结果（`processed=true`）与原图都照常按「原样保存」开关入库；「处理这张」以 `EXISTING_IMAGE` 借用图片，始终进入确认/调整页。结果在同一导入事务内暂存为新文件，并在草稿 `receiptFileIds` 原位置替换旧 ID；入库失败保留旧图，旧文件沿用现有暂存/引用清理规则，编辑已存记录保存时生成新小票修订。扫描状态并入 busy，期间不可变更其他媒体或提交表单。
 - 导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存；在记录详情页为没有小票的记录补加小票时直接使用全局设置。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
 - 在 `mediaWrites` 锁内流式写临时文件并计算源字节大小/SHA，保持严格小于100,000,000字节；ImageDecoder 在头部回调使用 `setTargetSize` 直接解到目标尺寸、软件分配器和 sRGB。编码输出重新计算实际 size/checksum，再由每文件独立事务写 blob/草稿引用；失败清理临时和未提交文件，取消正常传播。无去重、历史重写或数据库迁移。
 - 记录详情页补小票：仅在记录未删除且当前没有小票图片时显示选图（`image/*` 多选）和拍照入口，不显示保存方式开关而直接读全局设置。`importRecordReceipts` 在 `mediaWrites` 锁内逐张写文件（每张独立失败），再在一个事务内写入成功文件的 blob 和小票新修订，事务前后都确认仍无小票图片；事务失败时删除已写文件。不新增事件修订。
@@ -212,7 +217,7 @@
 
 ### 3.3 云端办理（command-plan v1）
 
-阶段1–8已验收。当前注册表90个v1命令（含全账本共用的 preferences.haptics、preferences.scanAutoCapture 与 preferences.scanAutoProcess；扫描阶段 4 设备验收待运行）；完整写入路径及命令/永久边界/内部编排归属见[覆盖审计](plans/cloud-command-coverage.md)，阶段记录仅保留实施与验收历史。
+阶段1–8已验收。当前注册表90个v1命令（含全账本共用的 preferences.haptics、preferences.scanAutoCapture 与 preferences.scanAutoProcess；扫描阶段 1–6 完成，待阶段 7 用户真机验收）；完整写入路径及命令/永久边界/内部编排归属见[覆盖审计](plans/cloud-command-coverage.md)，阶段记录仅保留实施与验收历史。
 
 #### 任务、上传与结果
 

@@ -1,6 +1,8 @@
 # 应用内小票扫描（拍照 · 实时轮廓 · 裁剪去弯曲）开发计划
 
-**状态：2026-11-09 用户已批准计划并确认第七节决策（见 7.5），开始实施。**
+**状态：2026-11-10 阶段 1–6 完成，待阶段 7 用户真机验收。**
+
+2026-11-09 用户批准计划并确认第七节决策（见 7.5）；阶段 1–5 已完成并提交。以下保留原计划与历史决策，实际实现差异用「实施注」标明。
 
 文中路径未特别注明时：页面在 `android/app/src/main/java/com/yohaku/expensetracker/ui/features/`，数据层在 `.../data/repository/`。
 
@@ -14,6 +16,7 @@
 2. 拍照后自动找到小票、转正、裁剪并展平卷曲（只做几何处理，不做对比度/阴影/二值化增强）；
 3. 用户可在确认页调整轮廓后重新处理；
 4. 只保存处理后的图片，原始照片不保存；之后照常走现有小票入库流程。
+   **实施注：** 此条对应自动处理开启；按追加决策关闭自动处理时，原 JPEG 跳过确认页并按现有保存方式入库。处理时原照片仍在扫描缓存临时保留至确认/放弃。
 
 此外（用户 2026-11-09 追加）：
 
@@ -65,12 +68,15 @@ ui/features/scan/                （新页面）
   ScanReviewScreen   处理结果确认 + 轮廓调整
 ```
 
+**实施注：** 上图是计划命名；实际对外为 `preview/detect/render/process`，编辑重处理使用 `render(photo, contour)`，没有单独的 `reprocess` 方法。UI 由 `ScanFlow`、`ScanCameraFlow` 与 `ScanReviewScreen` 串联，详见 [最终模块说明](../../android/tools/receipt-scanner/README.md)。
+
 - 代码从 `ReceiptBench` 的 `pipeline/`（Java）移植为 Kotlin，**数值行为保持不变**；Python 参考仍是正确性基准。
 - **EP 分配与回退：**
   - 预览 encoder：HTP → GPU → CPU；
   - 拍照处理：GPU → CPU；
   - 加载失败或执行异常时自动降级并记录日志，不静默改变精度等级。
 - **HTP 预热：** 应用启动或更新后，在后台（WorkManager，低优先级）编译 HTP encoder 并写入 context 缓存。缓存键 = 模型哈希 + ORT/QNN 版本 + 设备 `Build.FINGERPRINT`；不匹配或加载失败时删除并重新编译。编译完成前预览用 GPU。
+- **预热实施注：** 最终还预热 GPU encoder/SyntheticDoc；唯一 KEEP 任务延迟 15 秒且要求电量不低。前台只加载就绪缓存，不等待编译，GPU 未好时也可回退 CPU。完整缓存键另含 ABI、EP、HTP 配置、固定提示维度及实现版本，context 位于 `noBackupFilesDir/receipt-scanner/contexts/`。HTP 固定沿用 S24 Ultra 的 v75 配置，其他设备靠 EP 回退，不代表已验证所有 HTP 版本。
 - **预览调度（2026-11-09 阶段 2 追加决策）：** 依据 ReceiptBench 第三轮 S24 Ultra 真机数据，模型后的 mask 后处理 + 几何约 25 ms / 180 ms（14%），低于 30% 门槛，因此不做流水线化，保持引擎单工作线程并增加轮廓时间平滑。无需启动模拟器测速；完整数据见 `android/tools/receipt-scanner/README.md`。
 
 ## 四、阶段划分
@@ -82,7 +88,7 @@ ui/features/scan/                （新页面）
 - **依赖：**
   - release 用 `onnxruntime-android-qnn:1.29.0`（含 QNN 运行库）；debug 用同版本的 `onnxruntime-android:1.29.0`（含 x86_64，供模拟器测试）；
   - 加入 OpenCV 5.0.0、CameraX 1.6.2；
-  - release 打开 `jniLibs.useLegacyPackaging`，Manifest 声明 `uses-native-library`（libcdsprpc.so、libOpenCL.so，required=false）。
+  - release 打开 `jniLibs.useLegacyPackaging`（实施注：实际为 debug/release 共用 packaging 配置），Manifest 声明 `uses-native-library`（libcdsprpc.so、libOpenCL.so，required=false）。
 - **模型：** 三个 ONNX（约 70 MB）放入 assets（存放方式见 7.1），首次使用时复制到私有目录。
 - **处理引擎：** 实现第三节的 `receipt/scan/` 包，包括 EP 选择、回退、context 缓存与后台预热。
 - **正确性：**
@@ -98,6 +104,7 @@ ui/features/scan/                （新页面）
 
 - 新增相机权限（`CAMERA`）及拒绝/永久拒绝的引导（跳转系统设置）。
 - CameraX：Preview + ImageAnalysis（RGBA，KEEP_ONLY_LATEST，约 960×720）+ ImageCapture（最高质量，约 12 MP）。
+  **实施注：** 实际请求 4:3、MAXIMIZE_QUALITY 与最高可用分辨率，允许高分辨率模式；流尺寸由设备与 CameraX 组合能力协商，不固定 12 MP。
 - **轮廓叠加：** 沿用测速 App 已验证的坐标变换。
 - **提示文案**（依据 mask 面积、位置、帧间稳定性判断）：把小票放在中间 / 靠近一些 / 拿稳 / 未找到小票。
 - **其他控件：** 闪光灯（补光）开关、快门、返回。
@@ -128,7 +135,7 @@ ui/features/scan/                （新页面）
 
 ### 阶段 4　接入现有入库流程，替换系统相机
 
-2026-11-09：本阶段代码、协议/能力产物及测试已接入；仪器运行和三主题×中日文小票图片条目视验收待用户执行，命令见 `android/tools/receipt-scanner/README.md` 的阶段 4。
+2026-11-09 完成代码、协议/能力产物及测试接入；阶段 1–5 已完成提交。最终测试入口统一见 [Android README](../../android/README.md#小票扫描验证)，阶段 7 真机验收另行进行。
 
 - `rememberReceiptCamera`（`MediaPanels.kt`）改为打开新相机页。`ReceiptTarget.Draft` / `ReceiptTarget.Record` 两种目标、进程重建后结果仍落到原目标的约定保持不变。
 - 处理结果（JPEG）交给现有 `importFiles` / `importRecordReceipts`：
@@ -145,6 +152,8 @@ ui/features/scan/                （新页面）
 
 ### 阶段 5　三主题设计与视觉验证
 
+**定稿记录（2026-11-10）：用户选择设计 A，B 未采用。** 最终三主题分别为杂志编辑校样框、手账胶带照片与朱红笔迹、小物圆角相机窗口；确认/调整及权限/失败状态均使用本主题设计。A 定稿后再做两处小改：自动拍摄进度线加粗（杂志 4dp、手账 3dp、小物 6dp）；快门旁状态文字改为「拍后自动裁剪展平 / 拍后原图直出」，日文「撮影後に自動補正 / 撮影後そのまま」。以下初步方向保留为历史计划，最终行为以当前代码与产品设计为准。
+
 - **先出设计稿再实现：** Codex 为三套主题各做一版相机页与确认/调整页的设计（截图），用户确认后再定稿实现。
 - 设计必须满足 AGENTS.md：每套主题有专属元素，三套差异明显；同一主题内与现有页面一致。初步方向（待设计稿细化）：
   - **Magazine：** 编辑排版风格的取景框与刊头式标签；
@@ -154,7 +163,9 @@ ui/features/scan/                （新页面）
 
 ### 阶段 6　文档与收尾
 
-需要更新的文档：
+**2026-11-10 已完成：** 六份模型/运行库许可原文随 assets 分发，README 提供索引，沿用现有无应用内许可页的方式；核对了 APK 中实际许可内容和打包路径，无需新增 packaging 排除。产品/实现/Android/扫描工具文档已统一最终行为、设计 A、EP/预热/缓存、临时文件、备份及测试方式；云端协议与交接包按当前命令名和原图直出/显式处理语义核对。debug/release 串行构建通过，release 实测体积见 [Android README](../../android/README.md#小票扫描依赖与运行)。本阶段不改功能、不启动模拟器、不运行仪器或视觉测试、不提交 git。
+
+原计划的文档清单（已逐项完成）：
 
 - `docs/product-design.md` 的拍照与已有图片处理说明已在阶段 4 同步；
 - `docs/implementation-spec.md` 的扫描入库与目标恢复说明已在阶段 4 同步；
@@ -201,7 +212,7 @@ ui/features/scan/                （新页面）
 
 ### 7.2 从相册选择的小票图片是否也走处理
 
-默认不处理（保持现状）。如果需要，可在导入后提供「处理这张」入口，复用阶段 3 的确认/调整页。
+原提案默认不处理（保持现状），可在导入后提供「处理这张」入口。**7.5 已决定提供该入口，阶段 4 已实现；相册导入本身仍不自动处理。**
 
 ### 7.3 是否裁剪 QNN 运行库
 
@@ -209,7 +220,7 @@ ui/features/scan/                （新页面）
 
 ### 7.4 是否自动拍摄
 
-默认不做（只有快门）。也可以加「画面稳定且轮廓可靠时自动拍摄」开关。
+原提案默认不做（只有快门），可选「画面稳定且轮廓可靠时自动拍摄」开关。**已由 7.5 决定采用，实际开关默认关闭。**
 
 ### 7.5 用户决定（2026-11-09）
 

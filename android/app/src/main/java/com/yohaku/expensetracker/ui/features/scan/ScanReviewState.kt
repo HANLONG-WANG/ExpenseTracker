@@ -16,8 +16,8 @@ import kotlin.math.*
 
 enum class ScanPhotoSource { CAMERA, EXISTING_IMAGE }
 
-/** With no photo, opens the camera. A supplied CAMERA photo must be in the stage-2 scan
- * cache directory and transfers ownership;
+/** With no photo, opens the camera. A supplied CAMERA photo must be in a cache/receipt-capture/<uuid>/
+ * session directory and transfers ownership;
  * EXISTING_IMAGE is copied to scan cache and the caller's original is never modified.
  * Keep request/target stable across recreation; remove ScanFlow after either callback.
  */

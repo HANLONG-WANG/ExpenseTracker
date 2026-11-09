@@ -106,9 +106,11 @@ adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisua
 
 表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`LocalReceiptCamera` 在 `MainActivity` 级打开 `ScanFlow` 应用内扫描相机，权限申请、拒绝与无相机状态由相机页处理，一次一张。默认拍照后进入确认/调整页，输出交给现有小票导入再清理扫描临时目录。待处理账本、草稿媒体会话或记录 ID、已有图片路径及表单保存选项存于 saved state；拍照/确认期间进程被回收，恢复后仍入库原目标。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），记账弹层与滚动位置保持不变。云端分析台选择器不变。
 
-相机页“自动拍摄”默认关，“自动处理”默认开，偏好跨账本共享并进入完整备份。关闭自动处理后原图直出、跳过确认页，仍按“原样保存（不压缩）”开关优化或保留字节；处理后的图片也按同一开关作为新照片入库。表单小票缩略图下的“处理这张”与排序按钮分行，始终打开已有图片确认/调整（即使自动处理关闭），确认后在同一媒体会话的原位置替换为新文件。已保存图片字节不改写，编辑保存按既有规则产生新小票修订；取消或入库失败保留旧图，旧文件沿用暂存/引用清理。扫描/处理与导入期间禁用其他媒体变更。云端 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 使用必填 `enabled`，支持原值比较、原子效果凭据、撤销及恢复；`entry.prepareDraft(media=RECEIPT_CAMERA)` 续办仍在表单点“拍照”打开此流程。阶段 4 的设备与三主题×中日文截图命令见 [扫描模块说明](tools/receipt-scanner/README.md#阶段-4接入入库与云端偏好)。
+相机页“自动拍摄”默认关，“自动处理”默认开，偏好跨账本共享并进入完整备份。关闭自动处理后原图直出、跳过确认页，仍按“原样保存（不压缩）”开关优化或保留字节；处理后的图片也按同一开关作为新照片入库。表单小票缩略图下的“处理这张”与排序按钮分行，始终打开已有图片确认/调整（即使自动处理关闭），确认后在同一媒体会话的原位置替换为新文件。已保存图片字节不改写，编辑保存按既有规则产生新小票修订；取消或入库失败保留旧图，旧文件沿用暂存/引用清理。扫描/处理与导入期间禁用其他媒体变更。云端 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 使用必填 `enabled`，支持原值比较、原子效果凭据、撤销及恢复；`entry.prepareDraft(media=RECEIPT_CAMERA)` 续办仍在表单点“拍照”打开此流程。扫描相关测试与截图命令见下方 [小票扫描验证](#小票扫描验证)。
 
-应用内扫描阶段 1–3 已提供独立的 `ScanFlow`（尚未替换上述入口）：CameraX 预览/轮廓、补光、自动拍摄与自动处理开关，以及确认/轮廓调整/放大镜。已有图片可作为借用输入，相机关闭自动处理时原 JPEG 直出并标记未处理。偏好进入完整备份，旧备份默认自动拍摄关、自动处理开。临时文件统一位于 `cache/receipt-capture/`，确认/取消清理原图，启动清理超过 24 小时的残留；确认/调整状态可重建恢复。接口与完整命令见 [扫描模块说明](tools/receipt-scanner/README.md#阶段-3确认与轮廓调整)。`ScanCameraFlowTest` 和 `ScanReviewFlowTest` 支持 `looks=all visual=true`，截图分别在 `files/verification/receipt-camera/`、`files/verification/receipt-review/`；本轮仪器与视觉测试由用户运行，尚未目视验收。
+应用内扫描已完成阶段 1–6，待阶段 7 用户真机验收。CameraX 提供实时轮廓、补光和快门；自动拍摄要求轮廓可靠、画面及手机稳定约 0.8 秒，进度沿取景框边缘显示。确认页可使用、重拍、调整轮廓（左右各五点、上下端线、拖动放大镜）、重新处理与恢复自动结果；未检测到时直接进入手动调整，真实错误可重试。仅做几何处理，不做 OCR/图像增强；相册导入不自动扫描。原图和结果暂存于 `cache/receipt-capture/<uuid>/`，确认移交输出后清理原会话，取消/重拍清理会话，导入结束清理输出；启动清理超过 24 小时的残留，近期确认/调整状态可恢复。
+
+三主题采用用户选定的设计 A：杂志编辑校样框、手账胶带照片与朱红笔迹、小物圆角相机窗口，确认/调整、权限与错误状态均保持本主题设计。定稿后自动拍摄进度线加粗，快门旁状态为「拍后自动裁剪展平 / 拍后原图直出」（日文「撮影後に自動補正 / 撮影後そのまま」）；开关及云端命令仍称自动拍摄、自动处理。接口、缓存与坐标细节见 [扫描模块说明](tools/receipt-scanner/README.md)。
 
 导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存；在记录详情页为没有小票的记录补加小票时直接使用全局设置。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
 
@@ -151,15 +153,113 @@ Room 33→34：`recurrences` 增加 `merchant`/`note`（NOT NULL DEFAULT ''）�
 
 必要验证：`EntryPresetsTest`（预览草稿、模板草稿/校验/失效、分类合并迁移）；`BudgetRecurrenceFlowTest.oneTapConfirmationPreservesDraftAndTemplatesOpenAtAmount`（一键确认、资料变化重算、草稿保留、模板聚焦与记账，截图 `phase-b-p10/*-recurring-one-tap`、`*-home-templates`、`*-template-*`）；旧确认流程的测试改走「修改后再记」；`DatabaseUpgradeTest` 覆盖33→34。
 
+## 小票扫描依赖与运行
+
+当前源码的扫描阶段 1–6 已完成，待阶段 7 用户真机验收；文首 `artifacts/` 链接是既有交付包，本次构建不覆盖它们。新构建输出为 `app/build/outputs/apk/release/app-release.apk`。正式包仅 arm64-v8a，debug 保留全部架构供 x86_64 模拟器测试。
+
+- debug：`onnxruntime-android:1.29.0`；release：`onnxruntime-android-qnn:1.29.0` + QNN runtime 2.42.0，保留全部 QNN 运行库。共用 OpenCV 5.0.0、CameraX 1.6.2。三份浮点 ONNX（约 66.4 MiB）直接随 assets 分发，不在线下载，ONNX 不压缩；JNI 使用 `useLegacyPackaging=true`，Manifest 声明可选 `libcdsprpc.so` / `libOpenCL.so`。相机声明 `CAMERA` 权限，camera/autofocus feature 为 required=false，无相机设备可安装。
+- 正式 APK 实测：249,991,090 字节（249.99 MB / 238.41 MiB）（2026-11-10，阶段 6，`:app:assembleRelease`，包含新增许可）；扫描加入前约 89.5 MB。版本仍为 0.5.0/code5，此处为当前源码构建体积。
+- 预览 encoder：HTP FP16 → GPU → CPU；拍照 encoder/SyntheticDoc：GPU → CPU；decoder 固定 CPU。HTP 只用于预览，不用于精确输出。CPU 六线程，无 XNNPACK。
+- 启动提交 WorkManager 唯一 `receipt-scanner-model-warmup`（KEEP、非 expedited、延迟 15 秒、电量不低、后台优先级）；仅对缺失/失效的 HTP encoder、GPU encoder/SyntheticDoc context 串行预热，不加载 decoder。前台不等待编译，GPU 缓存也未就绪时可用 CPU，预热完成后下一次预览可尝试 HTP。
+- 模型校验 SHA256/长度后复制到 `filesDir/receipt-scanner/models/`；context 在 `noBackupFilesDir/receipt-scanner/contexts/`，每模型/EP 独立。键含模型 SHA256、ORT/QNN 版本、`Build.FINGERPRINT`、ABI、EP、HTP 配置、固定提示维度及实现版本；外部二进制与 context 一起管理，最后原子发布 `ready.json`。旧键/残缺缓存删除重建，加载/运行失败记录日志、删除缓存、安排预热并降级。模型与缓存不进入完整备份，两个扫描偏好进入备份。
+
+### 第三方许可与模型来源
+
+沿用字体/Tabler 的处理方式：许可原文随 APK 打包到 `assets/licenses/`，由本文列出索引；当前应用没有独立的许可/致谢页面或运行时许可清单。以下六份文件保留用户提供的原始字节；CameraX/AndroidX 延续既有依赖许可处理，不另加条目。
+
+| 组件与来源 | 随包许可原文 |
+|---|---|
+| EdgeSAM 3× encoder/decoder，官方发布 ONNX，沿用 ReceiptScanEval 已验证副本 | [NTU S-Lab License 1.0](app/src/main/assets/licenses/EdgeSAM-S-Lab-License.txt)，**仅非商用**；用户已确认本应用不商用 |
+| SyntheticDoc 31×45，ReceiptScanEval 的 `original_31x45.ckpt` 经 `eval/syntheticdoc.py` 导出 backward map（opset 17） | [MIT](app/src/main/assets/licenses/SyntheticDoc-MIT.txt) |
+| ONNX Runtime 1.29.0 | [MIT](app/src/main/assets/licenses/ONNXRuntime-MIT.txt) |
+| OpenCV 5.0.0 | [Apache-2.0](app/src/main/assets/licenses/OpenCV-Apache-2.0.txt) |
+| QNN runtime 2.42.0 | [Qualcomm AI Stack License](app/src/main/assets/licenses/QNN-Runtime-LICENSE.txt)（该版本 AAR 的 LICENSE.pdf 转文本）及 [原样 NOTICE](app/src/main/assets/licenses/QNN-Runtime-NOTICE.txt) |
+
+模型下载来源、SHA256 和合成测试数据再生成方法见 [扫描工具 README](tools/receipt-scanner/README.md#模型位置与来源)。许可文件以组件名前缀区分，`assets/licenses/` 与依赖 JAR 的 `META-INF` 资源路径不同；保留既有 Gradle packaging 配置，不为新增许可添加 exclude/pickFirst。阶段 6 的 debug/release 构建均通过，六份许可与提供的原文及 APK 内文件逐字节一致，APK 内无重复条目。
+
+### 小票扫描验证
+
+以下命令在 `android/` 下运行，Gradle 串行，不能同时开多个 Gradle 进程。日常只跑相关 JVM 与默认仪器数据/流程，UI 修改才加 `looks=all`、`visual=true` 并查看截图；完整外观矩阵、系统/性能专项遵循本文原有门控。阶段 6 仅文档/许可收尾，不启动模拟器；本节设备命令供后续复验使用。
+
+| 类（省略 `com.yohaku.expensetracker.`） | 目的 |
+|---|---|
+| JVM `receipt.scan.ScannerNumericsTest`、`receipt.scan.ScanContourEditorTest`、`ui.features.scan.ScanCapturePolicyTest` | 数值金标准、轮廓/坐标/文件交接、平滑/提示/自动拍摄 |
+| JVM `PhotoStorageTest`、`data.repository.CommandScanPreferencesTest`、`data.command.CommandCapabilitiesTest` | 旧备份默认、偏好原子应用/撤销、能力/schema 一致性 |
+| 仪器 `receipt.scan.ReceiptScannerTest` | 合成图完整引擎、CPU 回退、EXIF、Python 金标准 |
+| 仪器 `ScanCameraFlowTest`、`ScanReviewFlowTest`、`MediaFlowTest` | 静态相机、确认/调整/恢复、原目标入库及原位置替换；也包含视觉方法 |
+| 仪器 `BackupRoundTripTest`、`CommandWorkflowExecutionTest` 指定方法 | 扫描偏好备份、命令执行/撤销/冲突/中断恢复 |
+
+```sh
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:testDebugUnitTest \
+  --tests 'com.yohaku.expensetracker.receipt.scan.*' \
+  --tests 'com.yohaku.expensetracker.ui.features.scan.ScanCapturePolicyTest' \
+  --tests 'com.yohaku.expensetracker.PhotoStorageTest' \
+  --tests 'com.yohaku.expensetracker.data.repository.CommandScanPreferencesTest' \
+  --tests 'com.yohaku.expensetracker.data.command.CommandCapabilitiesTest'
+
+# 默认流程；不启用 system/perf，不代表真实相机或 QNN 验收。
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.receipt.scan.ReceiptScannerTest,com.yohaku.expensetracker.ScanCameraFlowTest,com.yohaku.expensetracker.ScanReviewFlowTest,com.yohaku.expensetracker.MediaFlowTest,com.yohaku.expensetracker.BackupRoundTripTest,com.yohaku.expensetracker.CommandWorkflowExecutionTest#allPreferencesSwitchAfterCommitAndRestoreWithConflict,com.yohaku.expensetracker.CommandWorkflowExecutionTest#interruptedPreferenceWriteResumesWithoutOverwritingLaterUserChange
+```
+
+能力产物只有在命令定义修改时通过 `CommandCapabilitiesTest` 加 `-Dyohaku.updateCapabilities=true` 生成；日常核验不加。阶段 6 未修改命令定义/schema/capabilities。
+
+视觉截图先串行构建、安装两个 APK，再用 `am instrument`，避免 `connectedDebugAndroidTest` 结束卸载应用后丢失私有截图。设备需已启动；本阶段不执行这些设备命令：
+
+```sh
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:assembleDebug :app:assembleDebugAndroidTest
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+# S24 Ultra：约 384×832dp。
+adb shell wm size 1080x2340
+adb shell wm density 450
+adb shell settings put system font_scale 1.0
+adb shell am instrument -w \
+  -e class com.yohaku.expensetracker.ScanCameraFlowTest,com.yohaku.expensetracker.ScanReviewFlowTest,com.yohaku.expensetracker.MediaFlowTest#receiptProcessingActionsAcrossLooks \
+  -e looks all -e visual true -e captureSuffix -s24 \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+
+# 320dp 窄屏 / fontScale 1.3，用相同测试检查开关换行和确认/调整操作可达。
+adb shell wm size 960x2078
+adb shell wm density 480
+adb shell settings put system font_scale 1.3
+adb shell am instrument -w \
+  -e class com.yohaku.expensetracker.ScanCameraFlowTest,com.yohaku.expensetracker.ScanReviewFlowTest,com.yohaku.expensetracker.MediaFlowTest#receiptProcessingActionsAcrossLooks \
+  -e looks all -e visual true -e captureSuffix -narrow \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+
+# 导出后查看；包含本次 S24/窄屏目录及图片条文件。
+mkdir -p /tmp/yohaku-receipt-scanner
+adb exec-out run-as com.yohaku.expensetracker.dev tar -C files/verification -cf - receipt-camera-s24 receipt-review-s24 receipt-camera-narrow receipt-review-narrow receipt-media | tar -xf - -C /tmp/yohaku-receipt-scanner
+
+# 恢复专用模拟器原配置（390dp，原稿几何断言仅在此标准配置生效）。
+adb shell wm size 1170x2532
+adb shell wm density 480
+adb shell settings put system font_scale 1.0
+```
+
+`captureSuffix` 是原样追加的字符串（建议带 `-`），相机/确认页追加到**目录名**，图片条追加到**文件名**，不能按同一规则找图：
+
+- `files/verification/receipt-camera{captureSuffix}/{theme}-{language}-{state}.png`：取景、提示、进度及权限/无相机状态。
+- `files/verification/receipt-review{captureSuffix}/{theme}-{language}-{state}.png`：结果、调整/放大镜、未检测到、处理中、处理失败。
+- `files/verification/receipt-media/{theme}-{language}-actions{captureSuffix}.png`：处理、删除、排序入口。
+
+相机核心视觉方法为 `staticReceiptShowsContourHintsAndAutomaticProgressAcrossLooks` 和 `permissionDenialPermanentDenialAndNoCameraShowActionableUi`；确认页为 `reviewAdjustmentMagnifierAndNoDetectionAcrossLooks` 和 `processingAndFailurePresentationAcrossLooks`。模拟器走 CPU，静态帧与权限注入不替代阶段 7 的 CameraX、传感器、QNN/HTP 缓存和真机小票验收。
+
 ## 新商户记账位置与地图选点（2026-11-01 源码更新）
 
 - 账本开启定位时，今天新建的支出若商户填的是还没保存过的名字，保存时把那次定位（坐标、精度）存在这笔记录上；不自动建商户。选了已保存商户、补录、编辑旧记录都不存。改日期离开今天会丢掉暂存的定位；只打开记账页不输入，离开不提示未保存。
 - 商户页「记录中出现过的原名」点进去（或手动新建同名商户）时出现「记账时的位置」：同名记录的位置相距100米内合并为一条，显示次数，默认名「MM/dd 记账处」、半径100米，可去掉、改名或在地图上调整。保存时商户和保留的地点一次写入；新建商户后这些记录上的位置全部删除。
 - 地点编辑改为地图选点：MapLibre Android 13.7.1（OpenGL 版）+ OpenFreeMap Liberty 底图，不用密钥；请求带 `Yohaku/<版本> (Android; com.yohaku.expensetracker)` 标识，保留 OSM/OpenFreeMap 署名（ⓘ）。地图中央固定图钉，圈出匹配半径，下方显示坐标；「回到当前位置」不依赖地图。新地点打开时先定位当前位置，失败则显示日本全境。地图需要网络，加载失败会提示。旧的只有名称的地点仍可显示。
 - 三主题各自重绘底图颜色（地名/店名只显示当地写法，隐藏道路编号）：杂志是灰绿印刷底图、细线十字和方块图钉；手账是米色纸、胶带、红色虚线圈和红叉；小物是圆角窗口、柔和彩色和水滴图钉。
-- 正式包只打 arm64-v8a（`release { ndk { abiFilters += "arm64-v8a" } }`），32 位和 x86 手机不能安装；debug 包保留全部架构供 x86_64 模拟器测试。加入小票扫描处理引擎、三份浮点 ONNX、OpenCV 与完整 QNN 运行库后，正式包由约 89.5 MB 增至 249.61 MB（249,612,540 字节，238.05 MiB）（实测，2026-11-09）。
-- 小票扫描处理引擎及独立扫描流程已实现，现有拍照入口仍不变。debug 使用 `onnxruntime-android:1.29.0`（含 x86_64），release 使用 `onnxruntime-android-qnn:1.29.0`（arm64 + QNN）；CameraX 1.6.2 用于独立扫描相机页面。模型位于 `app/src/main/assets/receipt-scanner/`，ONNX assets 不压缩，JNI 使用 legacy packaging 并声明可选 `libcdsprpc.so` / `libOpenCL.so`。
-- 应用启动提交延迟的 WorkManager 唯一预热任务（KEEP）：仅编译缺失/失效的预览 HTP encoder、拍照 GPU encoder/SyntheticDoc context，缓存放 `noBackupFilesDir`；预热未就绪时引擎自然降级 GPU/CPU，不等待编译。预览 decoder 和拍照 decoder 固定 CPU。模型来源/哈希、API、缓存键与合成测试数据重生成方法见 [处理引擎说明](tools/receipt-scanner/README.md)。
+- 正式包只打 arm64-v8a，debug 保留全部架构；扫描依赖、正式包体积及预热说明见 [小票扫描依赖与运行](#小票扫描依赖与运行)。
 
 Room 34→35：新表 `event_places`（bookId,eventId 主键，外键 events 级联删除），随完整备份迁移；永久清理记录时一并删除。
 
