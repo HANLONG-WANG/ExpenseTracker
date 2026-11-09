@@ -224,7 +224,7 @@ class ScanCameraFlowTest {
 }
 
 /** Test-only static ImageView, with the exact file also returned by the replaceable shutter. */
-private class StaticReceiptSource(
+internal class StaticReceiptSource(
     context: Context, private val jpeg: ByteArray, private val infer: Boolean, private val deferCapture: Boolean,
 ) : ScanCameraSource {
     override val view = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setImageBitmap(BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)) }

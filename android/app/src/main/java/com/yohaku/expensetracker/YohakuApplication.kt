@@ -24,6 +24,7 @@ class YohakuApplication:android.app.Application() {
         desktop.start()
         com.yohaku.expensetracker.platform.LocalMaintenanceWorker.schedule(this)
         com.yohaku.expensetracker.receipt.scan.ScannerWarmupWorker.schedule(this)
+        applicationScope.launch { com.yohaku.expensetracker.receipt.scan.ScanTemporaryFiles.cleanExpired(cacheDir) }
         applicationScope.launch { try { cloud.resumePending() } catch(e:Exception) { android.util.Log.e("YohakuCloud","Cloud resume skipped",e) } }
     }
     override fun onConfigurationChanged(config:android.content.res.Configuration) {

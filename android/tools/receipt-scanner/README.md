@@ -1,6 +1,6 @@
-# 小票扫描处理引擎与独立相机页（阶段 1–2）
+# 小票扫描处理引擎与独立扫描流程（阶段 1–3）
 
-实现位于 `app/src/main/java/com/yohaku/expensetracker/receipt/scan/`。这是无 UI 的同步处理引擎；现有系统相机、附件入库和云端办理入口未改。所有构造、调用和关闭在同一个后台工作线程上执行。
+实现位于 `app/src/main/java/com/yohaku/expensetracker/receipt/scan/`。其中处理引擎不依赖 UI；`ui/features/scan/` 提供相机→确认→调整的独立流程。现有系统相机、附件入库和云端办理入口尚未接入。引擎的构造、调用和关闭在同一个后台工作线程上执行。
 
 ## API 与参考实现对应
 
@@ -21,7 +21,7 @@
 
 - OpenCV `IMREAD_COLOR` 解码应用 EXIF 的全部 8 种方向（包括镜像），不沿用评估程序的 `IMREAD_IGNORE_ORIENTATION`。轮廓、mask 和预览坐标始终以**方向已归一化的图片**为准。预览输入为调用方持有的、已转正的 BGR `CV_8UC3` Mat。
 - JPEG 输出质量为 **95**（评估 Java/Python 为 90）。仪器测试仍以 Python JPEG90 金标准和原 `compare_device.py` 阈值比较，不放宽误差。
-- 无合格候选返回 `ScanDetection.NotDetected` / `ScanProcessResult.NotDetected`；几何、模型、解码等真正错误仍抛出，不隐藏为「未检测到」。`ScanContour.centered()` 可供后续调整页初始化。
+- 无合格候选返回 `ScanDetection.NotDetected` / `ScanProcessResult.NotDetected`；几何、模型、解码等真正错误仍抛出，不隐藏为「未检测到」。确认页用 `ScanContour.centered()` 初始化未检测到时的调整轮廓。
 - `process` 在同一次解码中执行 detect + render；未编辑的 `Found` 保存原分割 mask 与 source geometry。单独 `render(photo, found)` 只运行 SyntheticDoc。只有 `render(photo, contour)` 将编辑轮廓回填为 mask 后重跑几何和展平，不运行 EdgeSAM。
 - 轮廓使用 not-a-knot 三次样条连接五个控制点，能再现参考的三次边缘；上下端线连接左右端点，`withEnd` 可整体移动端线。越界或自交编辑会被拒绝。端线可见性由编辑数据传给展平器。
 - 引擎保持单工作线程；阶段 2 的 `ui/features/scan/` 负责相机帧调度、时间平滑与自动拍摄判断，没有预览流水线并行。预览提供面积、重心、模型分数、拟合残差/离群率、端线可见性/宽松闭合标记、各阶段耗时。
@@ -114,7 +114,7 @@ GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
 - `ScanCameraSource.kt`：CameraX Preview + RGBA_8888 ImageAnalysis（KEEP_ONLY_LATEST、4:3、请求 960×720）+ ImageCapture（MAXIMIZE_QUALITY、4:3、最高可用分辨率，允许高分辨率模式），共享 PreviewView ViewPort。实际流尺寸由 CameraX 根据设备组合能力协商。裁剪 RGBA、转正 BGR、`ImageProxyTransformFactory` + `CoordinateTransform` + FILL_CENTER 映射和像素中心 +0.5 沿用真机验证方法。
 - `ScanCapturePolicy.kt`：纯 JVM 的平滑、提示、自动拍摄判定。`ScanFrameProcessor` 在一个专属分析线程创建、使用和关闭原有 `ReceiptScanner`；阶段 1 API/引擎未改。
 - `ScanMotionMonitor.kt`：加速度计去重力后与陀螺仪共同判断手机静止；有哪个用哪个，都没有时只看画面。后台暂停传感器并清空进度，返回后不沿用旧帧。
-- `ScanCaptureSession.kt`：原始 JPEG 写入 `cache/receipt-capture/<uuid>/original.jpg`。采用 **CameraX 写入 EXIF 方向**，不额外重新编码；`targetRotation` 在快门时刷新，阶段 1 引擎解码应用 EXIF。成功时先释放相机，再调用 `onCaptured(File, autoProcess)`；此后文件所有权交给阶段 3，确认/放弃后删除文件及其父目录。返回、拍照失败、晚到的拍照回调会清理本次未交接目录。进程恢复及启动时清理由阶段 3/4 接续。
+- `ScanCaptureSession.kt`：原始 JPEG 写入 `cache/receipt-capture/<uuid>/original.jpg`。采用 **CameraX 写入 EXIF 方向**，不额外重新编码；`targetRotation` 在快门时刷新，阶段 1 引擎解码应用 EXIF。成功时先释放相机，再调用 `onCaptured(File, autoProcess)`；此后文件所有权交给阶段 3，确认/放弃后删除文件及其父目录。返回、拍照失败、晚到的拍照回调会清理本次未交接目录。阶段 3 的 `ScanFlow` 接续确认/调整状态恢复，`ScanTemporaryFiles` 统一目录生成、写入、输出交接、删除及启动时的过期清理。
 - 两个 DataStore 偏好：`scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true；进入完整备份，旧备份缺字段采用上述默认。自动处理仅控制出口布尔值，相机页不执行 detect/render/process。云端命令暂不发布这两个偏好。
 - Debug 角落显示分析帧率与当前结果的 `actualEps`；Logcat `ScanCamera` 输出各阶段耗时、平滑耗时和到达分析器至叠加的延迟。release 不显示/输出这些调试信息。
 
@@ -198,3 +198,91 @@ adb shell wm density 480
 - `data/command/CommandRegistry.kt`（能力汇总）及 JVM `data/command/CommandCapabilitiesTest.kt`（schema/capabilities 生成与核验）；仪器 `CommandWorkflowExecutionTest`、`CommandFlowTest` 的偏好执行/撤销/恢复与展示覆盖沿用 `photoOriginal` 和 `haptics` 的路径。
 - `docs/formats/yohaku-command-protocol-v1.md`、`command-plan.v1.schema.json`、`examples/capabilities.valid.json`，以及 `docs/android-cloud-handoff-package/formats/` 对应副本及包内命令数量说明；通过既有生成流程更新，不手工改 schema 大段内容。
 - `entry.prepareDraft` 的 `RECEIPT_CAMERA` 续办入口与 `MediaPanels.kt` 的 `rememberReceiptCamera`、`ReceiptTarget`：阶段 4 接入本页后核对目标恢复和续办。
+
+
+## 阶段 3：确认与轮廓调整
+
+### 入口与文件归属
+
+```kotlin
+ScanFlow(
+    request = ScanFlowRequest(target = "draft-id"), // 不传照片：打开相机
+    preferences = preferences,
+    onDone = { result: ScanFlowResult -> /* 消费 result.file，然后删除该文件及父目录 */ },
+    onCancel = { /* 关闭流程 */ },
+)
+// 已有图片（借用，永不覆盖/删除）：
+ScanFlowRequest(target = "draft-id", photo = existingFile, source = ScanPhotoSource.EXISTING_IMAGE)
+// 阶段 2 返回的照片（转移所有权，必须在 cache/receipt-capture/<uuid>/）：
+ScanFlowRequest(target = "draft-id", photo = capturedFile, source = ScanPhotoSource.CAMERA)
+```
+
+`ScanFlowResult(file: File, processed: Boolean, target: String)`：`processed=true` 是用户确认的处理后 JPEG；相机 `autoProcess=false` 直接移交原 JPEG 字节，`processed=false`，不进入处理或调整。调用方保持 request/target 稳定并在回调后移除 composable；阶段 4 负责将 Draft/Record 目标持久化并接入入库。
+
+- 相机来源可重拍；已有图片来源显示取消。关闭按钮、系统 Back、取消流程都会明确调用 `onCancel`；重拍只回相机，不调用终态回调。
+- 原图、自动结果和编辑结果统一暂存在 `cache/receipt-capture/<uuid>/`。已有图片先在后台复制，借用的源文件不受影响；相机照片直接接管阶段 2 的目录。确认时将选中的 JPEG 移交到同根目录下新的输出目录，再删除本次原图及其他结果；原图直出也不额外编码。取消/重拍删除整个会话目录。
+- `ScanTemporaryFiles` 统一相机和确认页的临时文件逻辑。`YohakuApplication` 启动时在后台清理超过 24 小时未更新的扫描目录（包括未消费的输出）；当前结果用临时文件写入后改名，取消后后台处理不能重新创建已删除目录。调用方应在导入后及时删除输出目录。
+- 处理页在专用单线程后台执行 `ReceiptScanner.process`；重新处理仅调用 `render(photo, contour)`。真正的模型/文件/几何错误显示可重试状态，不伪装成未检测到。`NotDetected` 直接显示默认居中轮廓和「没找到小票，请拖动边框」。
+
+### 坐标、拖动与出画判定
+
+`ScanEditFrame` 将 EXIF 归一化的原照片按检测轮廓纵轴转正，照片仅为显示而旋转，不覆盖原始文件。左右边与上/下端的操作都使用这套固定的显示坐标；重新处理时把轮廓逆变换回原图坐标再交给引擎，保留原来的单次 remap。未检测到时仅应用 EXIF 方向，使用 `ScanContour.centered()`。
+
+- 左右各 5 个控制点，上下端线的两端就是对应边的首/末点。沿用引擎 not-a-knot 三次样条；UI 和 mask 使用同一插值，未改 D7a 数值行为。
+- 拖动目标先限制到原照片有效范围（不是旋转后外接矩形的空白角）。左右边保持至少 1 像素间距；插值后的每一边自上而下有序；上端的最大 y 小于下端的最小 y，间隔至少 1 像素；另由 `ScanContour` 的多边形校验拒绝边线自交。越过约束时沿拖动方向二分截到最后有效位置，不抛给用户。
+- 手指旁显示 2.8 倍局部放大镜及准星；优先放上方，靠上边时放下方，并限制在视口内。照片适配显示，无双指缩放。
+- `ScanContourEditor.END_EDGE_FRACTION = 0.01`：手动编辑后，将端线两端逆变换到 EXIF 原图，任一端点到任一原图边缘的距离 **≤原图短边的 1%**，该端即为出画（虚线）。两端都超过阈值才为 `inFrame=true`。这与引擎的语义一致：false 表示小票从图像边缘继续延伸，而非可见的真实纸张端部；自动结果原有判定保持不变，用户编辑后使用上述阈值。
+- 自动 JPEG 独立保留，「恢复自动结果」取回原始精确结果，不拿五点近似代替分割 mask。编辑取消回到上次结果；未检测到且还没有结果时，取消调整会取消整个流程。
+
+### 恢复与 UI 替换点
+
+以 target/照片路径/来源名称作为跨进程稳定的组合键，通过 `rememberSaveable` + kotlinx.serialization JSON 保存照片路径、固定转正变换、自动轮廓、已应用轮廓及文件名、当前编辑轮廓、结果/调整模式、初始化/未检测到标志，以及流程的导入路径/原图直出/已结束标志。`ScanContour`、`ScanPoint`、`ScanEndLine` 可序列化。Activity 或进程重建后从缓存重新解码显示；已应用结果文件丢失时由保存的轮廓重新 render，自动结果缓存丢失时重新 process。位图、模型会话和拖动中的放大镜不保存。
+
+`ScanReviewScreen` / `ScanReviewActions` / `ScanResultImage` 负责页面和操作；`ScanContourCanvas` 中边曲线、端线、控制点、放大镜各有独立绘制函数。本阶段使用现有主题令牌与组件、中日 `word(zh, ja)`，专属三主题设计留待阶段 5。当前表单与记录页入口、云端 `entry.prepareDraft(media=RECEIPT_CAMERA)` 仍不变；没有发布新的云端命令或能力。
+
+### 阶段 3 验证
+
+JVM `ScanContourEditorTest` 覆盖越界/左右/顺序/端线约束、原图边缘出画阈值、平滑插值、序列化与转正坐标往返、过期清理与输出交接；回归 `ScannerNumericsTest` 和 `ScanCapturePolicyTest`。所有 Gradle 调用串行，在 `android/` 执行：
+
+```sh
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:testDebugUnitTest \
+  --tests 'com.yohaku.expensetracker.receipt.scan.ScanContourEditorTest' \
+  --tests 'com.yohaku.expensetracker.receipt.scan.ScannerNumericsTest' \
+  --tests 'com.yohaku.expensetracker.ui.features.scan.ScanCapturePolicyTest'
+
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:assembleDebug :app:compileDebugAndroidTestKotlin :app:assembleRelease
+```
+
+仪器与视觉由用户在模拟器执行；没有启动模拟器，尚未完成设备运行与目视验收：
+
+```sh
+# 流程 + 既有相机/引擎回归（真实合成小票，不需要系统相机权限）：
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.ScanReviewFlowTest,com.yohaku.expensetracker.ScanCameraFlowTest,com.yohaku.expensetracker.receipt.scan.ReceiptScannerTest
+
+# S24 Ultra 布局基准，三主题 × 中日文 × {结果、调整含放大镜、未检测到}，共 18 张：
+adb shell wm size 1080x2340
+adb shell wm density 450
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.ScanReviewFlowTest#reviewAdjustmentMagnifierAndNoDetectionAcrossLooks \
+  -Pandroid.testInstrumentationRunnerArguments.looks=all \
+  -Pandroid.testInstrumentationRunnerArguments.visual=true
+# 截图在应用私有 files/verification/receipt-review/，例如导出到本机：
+mkdir -p /tmp/yohaku-receipt-review
+adb exec-out run-as com.yohaku.expensetracker.dev tar -C files/verification/receipt-review -cf - . | tar -xf - -C /tmp/yohaku-receipt-review
+# 查看后恢复 android/README.md 记录的模拟器配置：
+adb shell wm size 1170x2532
+adb shell wm density 480
+```
+
+`ScanReviewFlowTest` 使用 `flat.jpg` / `no-receipt.png` 真实运行引擎，覆盖已有图片→使用、相机→重拍、原图直出、拖动→重处理输出不同→取消调整/精确恢复自动结果、无票直接调整、取消清理和真实 `ActivityScenario.recreate()` 保留编辑轮廓。测试通过与触摸相同的 `MoveScanHandle` 动作驱动控制点，放大镜截图保持拖动状态。`ScanFlowTestActivity` 只存在于 debug，无 launcher，不进入 release。截图支持现有 `captureSuffix` 参数。
+
+2026-11-09 沙箱验证：相关 JVM **14/14** 通过（`ScanContourEditorTest` 5、`ScannerNumericsTest` 5、`ScanCapturePolicyTest` 4）；`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleRelease` 串行通过。仪器执行与 384×832dp 截图目视验收待用户运行。`ReceiptScanner.process/detect/render` 和 `ScanCameraFlow` 的公开接口未变；`ScanContour` 增加序列化及供编辑约束使用的未钳制插值选项，默认插值与处理数值保持原行为。

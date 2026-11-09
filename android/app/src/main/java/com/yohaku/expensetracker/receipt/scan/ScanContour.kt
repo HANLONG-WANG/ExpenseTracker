@@ -1,11 +1,15 @@
 package com.yohaku.expensetracker.receipt.scan
 
+import kotlinx.serialization.Serializable
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import kotlin.math.*
 
-/** Coordinates always refer to the EXIF-upright image, before D7a's principal-axis rotation. */
+/** Engine coordinates refer to the EXIF-upright image, before D7a's principal-axis rotation.
+ * The editor uses ScanEditFrame and maps its display contour back before rendering. */
+@Serializable
 data class ScanPoint(val x: Double, val y: Double)
+@Serializable
 data class ScanEndLine(val left: ScanPoint, val right: ScanPoint, val inFrame: Boolean)
 data class ScanMask(val width: Int, val height: Int, val pixels: ByteArray) {
     init { require(width > 0 && height > 0 && pixels.size == width * height) }
@@ -16,6 +20,7 @@ data class ScanMask(val width: Int, val height: Int, val pixels: ByteArray) {
  * Use copy(left=..., right=...) to move side handles and withEnd() to move an end line.
  * Invalid (out-of-image or self-intersecting) edits are rejected rather than silently repaired.
  */
+@Serializable
 data class ScanContour(
     val width: Int, val height: Int,
     val left: List<ScanPoint>, val right: List<ScanPoint>,
@@ -39,13 +44,14 @@ data class ScanContour(
             topInFrame = if (isTop) line.inFrame else topInFrame, bottomInFrame = if (!isTop) line.inFrame else bottomInFrame)
     }
     /** Smooth interpolating cubic, not-a-knot endpoints: reproduces D7a's cubic sides exactly. */
-    fun outline(samplesPerSide: Int = 64): List<ScanPoint> {
+    fun outline(samplesPerSide: Int = 64, clampToImage: Boolean = true): List<ScanPoint> {
         require(samplesPerSide >= 5)
         fun side(points: List<ScanPoint>): List<ScanPoint> {
             val xs = Cubic(points.map { it.x }.toDoubleArray()); val ys = Cubic(points.map { it.y }.toDoubleArray())
             return List(samplesPerSide) { i ->
                 val t = 4.0 * i / (samplesPerSide - 1)
-                ScanPoint(xs.at(t).coerceIn(0.0, width - 1.0), ys.at(t).coerceIn(0.0, height - 1.0))
+                if (clampToImage) ScanPoint(xs.at(t).coerceIn(0.0, width - 1.0), ys.at(t).coerceIn(0.0, height - 1.0))
+                else ScanPoint(xs.at(t), ys.at(t))
             }
         }
         return side(left) + side(right).reversed()
