@@ -8,6 +8,7 @@ import android.widget.ImageView
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
@@ -85,7 +86,11 @@ class ScanCameraFlowTest {
         assertTrue(source.inferred!!.outline.size > 4)
         assertEquals(setOf("CPU"), source.inferred!!.actualEps.values.toSet())
         for ((t, l) in testLooks(this)) {
-            ui.runOnIdle { theme = t; language = l; source.emit(ScanHint.STEADY) }
+            ui.runOnIdle { theme = t; language = l; source.emit(ScanHint.NONE) }
+            ui.onNodeWithTag("scan-viewfinder").assertIsDisplayed().assertHeightIsAtLeast(200.dp)
+            ui.onNodeWithTag("scan-shutter").assertIsDisplayed()
+            shot("$t-$l-viewfinder")
+            ui.runOnIdle { source.emit(ScanHint.STEADY) }
             ui.onNodeWithTag("scan-hint").assertTextEquals(if (l == "ja") "動かさずにお待ちください" else "拿稳")
             ui.onNodeWithTag("scan-outline").assertContentDescriptionEquals("contour:${source.inferred!!.outline.size}")
             shot("$t-$l-hint")
@@ -138,23 +143,38 @@ class ScanCameraFlowTest {
 
     @Test fun permissionDenialPermanentDenialAndNoCameraShowActionableUi() {
         var permission by mutableStateOf(CameraPermission.DENIED)
+        var theme by mutableStateOf("journal")
+        var language by mutableStateOf("ja")
         ui.setContent {
-            YohakuTheme("journal", "ja") {
+            YohakuTheme(theme, language) {
                 ScanCameraHost(ScanCameraRequest("permission-test"), prefs, {}, { _, _ -> fail("Unexpected capture") },
                     sourceFactory = { source(it) }, permissionOverride = permission, motionFactory = still)
             }
         }
-        ui.onNodeWithTag("scan-permission").assertIsDisplayed()
-        ui.onNodeWithTag("scan-request-permission").assertIsDisplayed()
+        for ((t, l) in testLooks(this)) {
+            ui.runOnIdle { theme = t; language = l; permission = CameraPermission.DENIED }
+            ui.onNodeWithTag("scan-permission").assertIsDisplayed()
+            ui.onNodeWithTag("scan-request-permission").assertIsDisplayed()
+            shot("$t-$l-permission-denied")
+            ui.runOnIdle { permission = CameraPermission.PERMANENTLY_DENIED }
+            ui.onNodeWithTag("scan-open-settings").assertIsDisplayed()
+            shot("$t-$l-permission-settings")
+        }
         assertTrue(sources.isEmpty())
         ui.runOnIdle { permission = CameraPermission.PERMANENTLY_DENIED }
         ui.onNodeWithTag("scan-open-settings").assertIsDisplayed()
         ui.onNodeWithTag("scan-request-permission").assertDoesNotExist()
-        ui.runOnIdle { permission = CameraPermission.GRANTED }
+        ui.runOnIdle { permission = CameraPermission.GRANTED; language = "ja" }
         waitForSource()
         ui.runOnIdle { sources.single().listener!!.failed(CameraIssue.NO_CAMERA) }
         ui.onNodeWithTag("scan-camera-error").assertTextContains("背面カメラ", substring = true)
         ui.onNodeWithTag("scan-shutter").assertIsNotEnabled()
+        for ((t, l) in testLooks(this)) {
+            ui.runOnIdle { theme = t; language = l; sources.single().listener!!.failed(CameraIssue.NO_CAMERA) }
+            shot("$t-$l-no-camera")
+            ui.runOnIdle { sources.single().listener!!.failed(CameraIssue.FAILED) }
+            shot("$t-$l-camera-error")
+        }
     }
 
     @Test fun backReleasesSourceAndDeletesPendingAndLateCaptureFiles() {

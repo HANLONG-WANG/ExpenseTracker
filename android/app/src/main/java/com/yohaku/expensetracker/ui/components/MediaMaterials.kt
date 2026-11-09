@@ -84,7 +84,11 @@ private fun Modifier.dashed(color:Color)=drawBehind{drawRect(color,style=Stroke(
         onProcess?.let{process->
             Box(Modifier.width(72.dp).heightIn(min=36.dp).testTag("media-receipt-process-$id")
                 .alpha(if(enabled)1f else .35f)
-                .border(1.dp,t.line,RoundedCornerShape(if(t.id=="objects")9.dp else 0.dp))
+                .then(when(t.id){
+                    "journal"->Modifier.background(t.surface).dashed(t.warm)
+                    "objects"->Modifier.background(t.soft,RoundedCornerShape(9.dp)).border(1.dp,t.line,RoundedCornerShape(9.dp))
+                    else->Modifier.drawBehind{drawLine(t.ink,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}
+                })
                 .clickable(enabled=enabled,role=Role.Button,onClick=process).padding(horizontal=3.dp,vertical=7.dp),contentAlignment=Alignment.Center) {
                 YText(word("处理这张","補正する"),10,color=t.accent)
             }

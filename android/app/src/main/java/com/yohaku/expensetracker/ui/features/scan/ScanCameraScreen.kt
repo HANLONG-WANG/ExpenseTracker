@@ -13,13 +13,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.*
+import androidx.compose.ui.geometry.*
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -109,26 +110,22 @@ private fun Context.activity(): Activity = when (this) {
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     val currentPermission = permissionOverride ?: permission
-    val t = LocalYohaku.current
-    Column(Modifier.fillMaxSize().background(t.bg).safeDrawingPadding().testTag("scan-camera")) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            YButton(word("返回", "戻る"), onBack, Modifier.testTag("scan-back"))
-            Spacer(Modifier.width(16.dp))
-            YText(word("扫描小票", "レシートを撮影"), 20, Modifier.weight(1f))
-        }
+    Column(Modifier.fillMaxSize().scanPaper().safeDrawingPadding().padding(horizontal = 16.dp).testTag("scan-camera")) {
+        ScanHeading(word("扫描小票", "レシートを撮影"), "01", word("返回", "戻る"), "scan-back", onBack)
+        Spacer(Modifier.height(12.dp))
         if (!hasCamera) {
-            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                YText(word("此设备没有可用的后置相机", "この端末には使用できる背面カメラがありません"), 18, Modifier.testTag("scan-camera-error"))
+            ScanFrame(Modifier.weight(1f).fillMaxWidth().padding(bottom = 16.dp)) {
+                ScanStatus(word("此设备没有可用的后置相机", "この端末には使用できる背面カメラがありません"), Modifier.testTag("scan-camera-error"))
             }
         } else if (currentPermission != CameraPermission.GRANTED) {
-            Column(Modifier.fillMaxSize().padding(24.dp).testTag("scan-permission"), verticalArrangement = Arrangement.Center) {
-                YText(word("允许使用相机，即可扫描小票。", "カメラを許可すると、レシートを撮影できます。"), 18)
-                Spacer(Modifier.height(20.dp))
-                if (currentPermission == CameraPermission.PERMANENTLY_DENIED) {
-                    YButton(word("前往系统设置", "設定を開く"), {
-                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
-                    }, Modifier.testTag("scan-open-settings"), primary = true)
-                } else YButton(word("允许相机 / 重试", "カメラを許可 / 再試行"), ::askPermission, Modifier.testTag("scan-request-permission"), primary = true)
+            ScanFrame(Modifier.weight(1f).fillMaxWidth().padding(bottom = 16.dp)) {
+                ScanStatus(word("允许使用相机，即可扫描小票。", "カメラを許可すると、レシートを撮影できます。"), Modifier.testTag("scan-permission"), action = {
+                    if (currentPermission == CameraPermission.PERMANENTLY_DENIED) {
+                        YButton(word("前往系统设置", "設定を開く"), {
+                            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                        }, Modifier.testTag("scan-open-settings"), primary = true)
+                    } else YButton(word("允许相机 / 重试", "カメラを許可 / 再試行"), ::askPermission, Modifier.testTag("scan-request-permission"), primary = true)
+                })
             }
         } else {
             var attempt by remember { mutableIntStateOf(0) }
@@ -203,36 +200,51 @@ private fun Context.activity(): Activity = when (this) {
         })
         onDispose { owner.lifecycle.removeObserver(observer); motion.close(); session.close() }
     }
-    Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+    ScanFrame(Modifier.weight(1f).fillMaxWidth(), progress) {
         if (cameraIssue == null) {
-            // A fixed 3:4 view gives all three CameraX use cases the same 4:3 portrait ViewPort.
-            Box(Modifier.aspectRatio(3f / 4f, matchHeightConstraintsFirst = true).clipToBounds().testTag("scan-viewfinder")) {
-                AndroidView(factory = { source.view }, modifier = Modifier.fillMaxSize())
-                ScanContourOverlay(cameraFrame, progress, Modifier.fillMaxSize())
-                if (BuildConfig.DEBUG) YText(
-                    "%.1f fps\n%s".format(cameraFrame?.fps ?: 0.0, cameraFrame?.actualEps?.entries?.joinToString("\n") { "${it.key}: ${it.value}" } ?: "EP …"),
-                    10, Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = .65f)).padding(8.dp).testTag("scan-debug"), color = Color.White,
-                )
-                val hint = cameraFrame?.hint
-                if (hint != null && hint != ScanHint.NONE) ScanHintLabel(hint, Modifier.align(Alignment.BottomCenter).padding(12.dp))
+            // Fit BOTH constraints: preserve CameraX's portrait 4:3 viewport on narrow/large-font screens.
+            BoxWithConstraints(Modifier.fillMaxSize().background(t.ink), contentAlignment = Alignment.Center) {
+                val width = minOf(maxWidth, maxHeight * .75f)
+                Box(Modifier.width(width).height(width * 4f / 3f).clipToBounds().testTag("scan-viewfinder")) {
+                    AndroidView(factory = { source.view }, modifier = Modifier.fillMaxSize())
+                    ScanContourOverlay(cameraFrame, Modifier.fillMaxSize())
+                    if (BuildConfig.DEBUG) YText(
+                        "%.1f fps\n%s".format(cameraFrame?.fps ?: 0.0, cameraFrame?.actualEps?.entries?.joinToString("\n") { "${it.key}: ${it.value}" } ?: "EP …"),
+                        10, Modifier.align(Alignment.TopStart).background(t.ink.copy(alpha = .85f)).padding(8.dp).testTag("scan-debug"), color = t.surface,
+                    )
+                }
             }
-        } else Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            YText(if (cameraIssue == CameraIssue.NO_CAMERA) word("此设备没有可用的后置相机", "この端末には使用できる背面カメラがありません") else word("相机或轮廓分析失败，请重试", "カメラまたは輪郭の解析に失敗しました。再試行してください"), 16, Modifier.testTag("scan-camera-error"), color = Color.White)
-            YButton(word("重试", "再試行"), retry, primary = true)
-        }
+        } else ScanStatus(
+            if (cameraIssue == CameraIssue.NO_CAMERA) word("此设备没有可用的后置相机", "この端末には使用できる背面カメラがありません")
+            else word("相机或轮廓分析失败，请重试", "カメラまたは輪郭の解析に失敗しました。再試行してください"),
+            Modifier.testTag("scan-camera-error"), action = { YButton(word("重试", "再試行"), retry, primary = true) })
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            Box(Modifier.weight(1f).testTag("scan-auto-capture")) { YToggle(word("自动拍摄", "自動撮影"), autoCapture, { scope.launch { preferences.setScanAutoCapture(it) } }) }
-            Box(Modifier.weight(1f).testTag("scan-auto-process")) { YToggle(word("自动处理", "自動補正"), autoProcess ?: true, { scope.launch { preferences.setScanAutoProcess(it) } }) }
+    val hint = cameraFrame?.hint ?: ScanHint.CENTER
+    // Caption occupies paper below the image, including automatic capture feedback.
+    if (cameraIssue == null) Box(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        if (hint != ScanHint.NONE) ScanHintLabel(hint, Modifier.fillMaxWidth())
+        else ScanCaption(if (progress > 0f) word("保持稳定 · 即将拍摄", "そのままで・まもなく撮影") else word("小票已入镜 · 可以拍摄", "レシートを捉えました・撮影できます"), Modifier.fillMaxWidth())
+    }
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        // Stack toggles only when large type actually needs it; keep the normal preview generous.
+        BoxWithConstraints {
+            val stacked = maxWidth < 310.dp && LocalDensity.current.fontScale > 1.15f
+            val capture: @Composable (Modifier) -> Unit = { modifier ->
+                Box(modifier.testTag("scan-auto-capture")) { YToggle(word("自动拍摄", "自動撮影"), autoCapture, { scope.launch { preferences.setScanAutoCapture(it) } }) }
+            }
+            val process: @Composable (Modifier) -> Unit = { modifier ->
+                Box(modifier.testTag("scan-auto-process")) { YToggle(word("自动处理", "自動補正"), autoProcess ?: true, { scope.launch { preferences.setScanAutoProcess(it) } }) }
+            }
+            if (stacked) Column { capture(Modifier); process(Modifier) }
+            else Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { capture(Modifier.weight(1f)); process(Modifier.weight(1f)) }
         }
-        if (captureError) YText(word("拍摄失败，可再次按快门", "撮影に失敗しました。もう一度撮影してください"), 13, Modifier.testTag("scan-capture-error"), color = t.warm)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        if (captureError) ScanCaption(word("拍摄失败，可再次按快门", "撮影に失敗しました。もう一度撮影してください"), Modifier.testTag("scan-capture-error"), attention = true)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             YButton(if (torch) word("补光：开", "ライト：オン") else word("补光：关", "ライト：オフ"), { torch = !torch; source.torch(torch) }, Modifier.weight(1f).testTag("scan-torch"), enabled = torchAvailable && ready && !busy)
-            Spacer(Modifier.width(16.dp))
             ScanShutter(ready && active && !busy && autoProcess != null, busy, ::shoot)
-            Spacer(Modifier.width(16.dp))
-            Spacer(Modifier.weight(1f))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                YText(if (autoProcess == false) word("拍后原图直出", "撮影後そのまま") else word("拍后自动裁剪展平", "撮影後に自動補正"), 10, color = t.muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
         }
     }
 }
@@ -240,13 +252,18 @@ private fun Context.activity(): Activity = when (this) {
 @Composable private fun ScanShutter(enabled: Boolean, busy: Boolean, shoot: () -> Unit) {
     val t = LocalYohaku.current
     val label = if (busy) word("拍摄中", "撮影中") else word("拍照", "撮影")
-    Box(Modifier.size(72.dp).border(2.dp, t.accent, CircleShape).padding(6.dp).background(t.accent.copy(alpha = if (enabled) 1f else .4f), CircleShape)
-        .testTag("scan-shutter").clickable(enabled = enabled, role = Role.Button, onClick = shoot), contentAlignment = Alignment.Center) {
-        YText(label, 13, color = t.surface)
+    val shape = when (t.id) { "magazine" -> RoundedCornerShape(0.dp); "journal" -> RoundedCornerShape(44, 49, 45, 48); else -> RoundedCornerShape(24.dp) }
+    Box(Modifier.size(72.dp).testTag("scan-shutter").alpha(if (enabled) 1f else .45f)
+        .clickable(enabled = enabled, role = Role.Button, onClick = shoot), contentAlignment = Alignment.Center) {
+        if (t.id == "objects") Box(Modifier.matchParentSize().offset(y = 4.dp).background(t.line, shape))
+        Box(Modifier.matchParentSize().border(if (t.id == "journal") 1.dp else 2.dp, if (t.id == "journal") t.warm else t.accent, shape)
+            .padding(if (t.id == "objects") 5.dp else 7.dp).background(if (t.id == "journal") t.surface else t.accent, shape), contentAlignment = Alignment.Center) {
+            YText(label, 13, color = if (t.id == "journal") t.accent else t.surface)
+        }
     }
 }
 
-@Composable internal fun ScanContourOverlay(frame: ScanCameraFrame?, progress: Float, modifier: Modifier = Modifier) {
+@Composable internal fun ScanContourOverlay(frame: ScanCameraFrame?, modifier: Modifier = Modifier) {
     val t = LocalYohaku.current
     Canvas(modifier.testTag("scan-outline").semantics { contentDescription = "contour:${frame?.outline?.size ?: 0}" }) {
         frame?.outline?.takeIf { it.isNotEmpty() }?.let { points ->
@@ -254,14 +271,21 @@ private fun Context.activity(): Activity = when (this) {
                 moveTo((points.first().x * size.width).toFloat(), (points.first().y * size.height).toFloat())
                 points.drop(1).forEach { lineTo((it.x * size.width).toFloat(), (it.y * size.height).toFloat()) }; close()
             }
-            drawPath(path, Color.White.copy(alpha = .85f), style = Stroke(5.dp.toPx()))
-            drawPath(path, t.accent, style = Stroke(2.dp.toPx()))
+            drawPath(path, t.surface.copy(alpha = .85f), style = Stroke((if (t.id == "objects") 6 else 4).dp.toPx()))
+            drawPath(path, if (t.id == "journal") t.warm else if (t.id == "magazine") t.ink else t.accent, style = Stroke(
+                (if (t.id == "objects") 3.5f else 1.5f).dp.toPx(), join = StrokeJoin.Round,
+                pathEffect = if (t.id == "journal") PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx())) else null))
         }
-    }
-    if (progress > 0f) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(60.dp).background(Color.Black.copy(alpha = .45f), CircleShape).padding(5.dp).testTag("scan-auto-progress")
-            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f) }) {
-            drawArc(Color.White, -90f, 360f * progress, false, style = Stroke(4.dp.toPx()))
+        // Registration marks describe the capture area; they stay near the image corners.
+        val inset = 12.dp.toPx(); val arm = 16.dp.toPx()
+        for (x in listOf(inset, size.width - inset)) for (y in listOf(inset, size.height - inset)) {
+            val dx = if (x < center.x) arm else -arm; val dy = if (y < center.y) arm else -arm
+            val color = t.surface.copy(alpha = .8f)
+            if (t.id == "objects") drawCircle(color, 2.5.dp.toPx(), Offset(x, y))
+            else {
+                drawLine(color, Offset(x, y + dy), Offset(x, y), 1.dp.toPx())
+                drawLine(color, Offset(x, y), Offset(x + dx, y), 1.dp.toPx())
+            }
         }
     }
 }
@@ -274,5 +298,5 @@ private fun Context.activity(): Activity = when (this) {
         ScanHint.NOT_FOUND -> word("未找到小票", "レシートが見つかりません")
         ScanHint.NONE -> ""
     }
-    YText(label, 15, modifier.background(Color.Black.copy(alpha = .72f)).padding(horizontal = 14.dp, vertical = 10.dp).testTag("scan-hint"), color = Color.White)
+    ScanCaption(label, modifier.testTag("scan-hint"), attention = hint == ScanHint.NOT_FOUND)
 }

@@ -33,7 +33,7 @@ internal val ScanMagnifierVisible = SemanticsPropertyKey<Boolean>("ScanMagnifier
     val changed by rememberUpdatedState(onChange)
     var active by remember { mutableIntStateOf(-1) }
     var dragPosition by remember { mutableStateOf(Offset.Zero) }
-    val description = word("拖动左右边框上的圆点调整小票轮廓", "左右の枠の丸い点をドラッグして輪郭を調整")
+    val description = word("拖动左右边框上的控制点调整小票轮廓", "左右の枠の点をドラッグして輪郭を調整")
     fun move(id: Int, x: Float, y: Float, dragging: Boolean): Boolean {
         if (id !in 0..9) return false
         val next = ScanContourEditor.move(current, frame, id < 5, id % 5, ScanPoint(x.toDouble(), y.toDouble()))
@@ -70,41 +70,72 @@ internal val ScanMagnifierVisible = SemanticsPropertyKey<Boolean>("ScanMagnifier
         drawImage(image, dstOffset = IntOffset(offset.x.roundToInt(), offset.y.roundToInt()),
             dstSize = IntSize((frame.width * scale).roundToInt(), (frame.height * scale).roundToInt()), filterQuality = FilterQuality.High)
         val outline = contour.outline()
-        val path = Path().apply { outline.forEachIndexed { i, p -> val q = project(p); if (i == 0) moveTo(q.x, q.y) else lineTo(q.x, q.y) }; close() }
-        drawPath(path, t.accent.copy(alpha = .09f))
+        // Keep receipt lettering clear: no translucent fill inside the editable area.
         // Curves and ends are separate rendering functions so themes can replace each independently.
-        scanSide(outline.take(64).map(::project), t.accent)
-        scanSide(outline.drop(64).map(::project), t.accent)
-        scanEnd(project(contour.top.left), project(contour.top.right), contour.topInFrame, t.accent)
-        scanEnd(project(contour.bottom.left), project(contour.bottom.right), contour.bottomInFrame, t.accent)
-        (contour.left + contour.right).forEachIndexed { i, p -> scanHandle(project(p), i == active, t.accent, t.surface) }
+        scanSide(outline.take(64).map(::project), t)
+        scanSide(outline.drop(64).map(::project), t)
+        scanEnd(project(contour.top.left), project(contour.top.right), contour.topInFrame, t)
+        scanEnd(project(contour.bottom.left), project(contour.bottom.right), contour.bottomInFrame, t)
+        (contour.left + contour.right).forEachIndexed { i, p -> scanHandle(project(p), i == active, t) }
         if (active >= 0) scanMagnifier(image, project((contour.left + contour.right)[active]), offset,
-            Size(frame.width * scale, frame.height * scale), t.accent, t.surface)
+            Size(frame.width * scale, frame.height * scale), t)
     }
 }
 
-private fun DrawScope.scanSide(points: List<Offset>, color: Color) {
+private val ThemeStyle.scanInk: Color get() = when (id) { "journal" -> warm; "magazine" -> ink; else -> accent }
+private fun DrawScope.scanSide(points: List<Offset>, t: ThemeStyle) {
     val path = Path().apply { points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) } }
-    drawPath(path, Color.White.copy(alpha = .8f), style = Stroke(4.dp.toPx()))
-    drawPath(path, color, style = Stroke(2.dp.toPx()))
+    val width = if (t.id == "objects") 3.5f else 1.5f
+    drawPath(path, t.surface.copy(alpha = .9f), style = Stroke((width + 2).dp.toPx()))
+    drawPath(path, t.scanInk, style = Stroke(width.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+    if (t.id == "journal") translate(left = 2.dp.toPx()) {
+        drawPath(path, t.warm.copy(alpha = .35f), style = Stroke(.7.dp.toPx()))
+    }
 }
-private fun DrawScope.scanEnd(a: Offset, b: Offset, inFrame: Boolean, color: Color) {
-    drawLine(Color.White.copy(alpha = .8f), a, b, 4.dp.toPx())
-    drawLine(color, a, b, 2.dp.toPx(), pathEffect = if (inFrame) null else PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))
+private fun DrawScope.scanEnd(a: Offset, b: Offset, inFrame: Boolean, t: ThemeStyle) {
+    drawLine(t.surface.copy(alpha = .9f), a, b, 5.dp.toPx())
+    drawLine(t.scanInk, a, b, (if (t.id == "objects") 3 else 1).dp.toPx(), cap = StrokeCap.Round,
+        pathEffect = if (inFrame && t.id != "journal") null else PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))
 }
-private fun DrawScope.scanHandle(point: Offset, active: Boolean, color: Color, surface: Color) {
-    drawCircle(surface, (if (active) 9 else 7).dp.toPx(), point)
-    drawCircle(color, (if (active) 9 else 7).dp.toPx(), point, style = Stroke(2.dp.toPx()))
-    drawCircle(color, 2.dp.toPx(), point)
+private fun DrawScope.scanHandle(point: Offset, active: Boolean, t: ThemeStyle) {
+    val radius = (if (active) 9 else 7).dp.toPx()
+    when (t.id) {
+        "magazine" -> {
+            val half = Offset(radius * .8f, radius * .8f); val size = Size(half.x * 2, half.y * 2)
+            drawRect(t.surface, point - half, size)
+            drawRect(t.ink, point - half, size, style = Stroke(1.5.dp.toPx()))
+            if (active) drawRect(t.ink, point - half * .45f, size * .45f)
+        }
+        "journal" -> {
+            drawCircle(t.surface, radius, point)
+            drawOval(t.warm, point - Offset(radius, radius * .85f), Size(radius * 2, radius * 1.7f), style = Stroke(1.5.dp.toPx()))
+            drawLine(t.warm, point - Offset(3.dp.toPx(), 0f), point + Offset(3.dp.toPx(), 0f), 1.dp.toPx())
+            if (active) drawCircle(t.warm, radius + 3.dp.toPx(), point, style = Stroke(.8.dp.toPx()))
+        }
+        else -> {
+            drawCircle(t.ink.copy(alpha = .2f), radius, point + Offset(0f, 2.dp.toPx()))
+            drawCircle(t.surface, radius, point)
+            drawCircle(t.accent, radius, point, style = Stroke(2.5.dp.toPx()))
+            drawCircle(t.soft, radius * .45f, point - Offset(0f, 1.dp.toPx()))
+        }
+    }
 }
-private fun DrawScope.scanMagnifier(image: ImageBitmap, point: Offset, imageOrigin: Offset, imageSize: Size, color: Color, surface: Color) {
+private fun DrawScope.scanMagnifier(image: ImageBitmap, point: Offset, imageOrigin: Offset, imageSize: Size, t: ThemeStyle) {
+    val color = t.scanInk; val surface = t.surface
     val radius = min(48.dp.toPx(), min(size.width, size.height) / 4)
     // Prefer above the finger; near the top move below. Clamp horizontally inside the viewport.
     val center = Offset(point.x.coerceIn(radius + 4, size.width - radius - 4),
         if (point.y - 76.dp.toPx() >= radius) point.y - 76.dp.toPx() else min(size.height - radius - 4, point.y + 76.dp.toPx()))
-    val circle = Path().apply { addOval(androidx.compose.ui.geometry.Rect(center - Offset(radius, radius), Size(radius * 2, radius * 2))) }
-    drawCircle(surface, radius + 3.dp.toPx(), center)
-    clipPath(circle) {
+    val rect = androidx.compose.ui.geometry.Rect(center - Offset(radius, radius), Size(radius * 2, radius * 2))
+    val lens = Path().apply {
+        when (t.id) {
+            "magazine" -> addRect(rect)
+            "objects" -> addRoundRect(androidx.compose.ui.geometry.RoundRect(rect, androidx.compose.ui.geometry.CornerRadius(20.dp.toPx())))
+            else -> addOval(rect)
+        }
+    }
+    drawPath(lens, surface, style = Stroke(7.dp.toPx()))
+    clipPath(lens) {
         drawRect(surface)
         val zoom = 2.8f
         val origin = center + (imageOrigin - point) * zoom
@@ -114,5 +145,7 @@ private fun DrawScope.scanMagnifier(image: ImageBitmap, point: Offset, imageOrig
         drawLine(color, center - Offset(0f, 12.dp.toPx()), center + Offset(0f, 12.dp.toPx()), 1.dp.toPx())
         drawCircle(color, 4.dp.toPx(), center, style = Stroke(1.5.dp.toPx()))
     }
-    drawCircle(color, radius, center, style = Stroke(2.dp.toPx()))
+    drawPath(lens, color, style = Stroke((if (t.id == "objects") 3 else 1).dp.toPx()))
+    if (t.id == "journal") drawArc(color.copy(alpha = .5f), -60f, 250f, false,
+        rect.topLeft - Offset(3.dp.toPx(), 3.dp.toPx()), Size(rect.width + 6.dp.toPx(), rect.height + 6.dp.toPx()), style = Stroke(1.dp.toPx()))
 }

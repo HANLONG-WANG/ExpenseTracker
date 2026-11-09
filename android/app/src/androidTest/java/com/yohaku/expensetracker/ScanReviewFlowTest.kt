@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.platform.app.InstrumentationRegistry
@@ -193,6 +194,35 @@ class ScanReviewFlowTest {
         }
         ui.onNodeWithTag("scan-cancel-edit").performClick()
         ui.waitUntil { cancelled == 2 }
+    }
+
+    @Test fun processingAndFailurePresentationAcrossLooks() {
+        var failed by mutableStateOf(false)
+        ui.runOnIdle {
+            ScanFlowTestActivity.content = {
+                YohakuTheme(theme, language) {
+                    ScanReviewPage(ScanReviewState(File(root, "original.jpg").path), images = null,
+                        busy = !failed, failed = failed, source = ScanPhotoSource.CAMERA,
+                        onUse = {}, onLeave = {}, onCancel = {}, onChange = {}, onEdit = {},
+                        onRender = {}, onRestore = {}, onRetry = {}, onCancelEdit = {})
+                }
+            }
+        }
+        ui.mainClock.autoAdvance = false
+        for ((t, l) in testLooks(this)) {
+            ui.runOnIdle { theme = t; language = l; failed = false }
+            ui.mainClock.advanceTimeBy(160)
+            ui.onNodeWithTag("scan-review-processing").assertIsDisplayed()
+                .assertTextContains(if (l == "ja") "補正中" else "正在处理", substring = true)
+            ui.onNodeWithTag("scan-use").assertIsNotEnabled()
+            ui.onNodeWithTag("scan-result-frame").assertHeightIsAtLeast(200.dp)
+            shot("$t-$l-processing")
+            ui.runOnIdle { failed = true }
+            ui.mainClock.advanceTimeByFrame()
+            ui.onNodeWithTag("scan-review-retry").assertIsDisplayed()
+            shot("$t-$l-processing-error")
+        }
+        ui.mainClock.autoAdvance = true
     }
 
     private fun shot(name: String) {
