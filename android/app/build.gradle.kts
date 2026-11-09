@@ -44,7 +44,12 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets.getByName("androidTest").assets.srcDir("schemas")
     testOptions { unitTests.isReturnDefaultValues = true }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // QNN HTP loads its Hexagon skel libraries from the extracted native library directory.
+        jniLibs.useLegacyPackaging = true
+    }
+    androidResources { noCompress += "onnx" }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
@@ -70,6 +75,13 @@ dependencies {
     implementation(libs.datastore)
     implementation(libs.work)
     implementation(libs.maplibre)
+    debugImplementation(libs.onnxruntime.cpu)
+    releaseImplementation(libs.onnxruntime.qnn)
+    implementation(libs.opencv)
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.serialization)
     implementation("androidx.core:core-ktx:1.18.0")

@@ -1,0 +1,352 @@
+{
+  "generator": "android/tools/receipt-scanner/generate.py",
+  "models": {
+    "edge_sam_3x_encoder.onnx": "719a498cf5b3fe9be9f01ee513e13d3915f9028aa4f23dfd30eaaa0a17143159",
+    "edge_sam_3x_decoder.onnx": "83a2174d54571596913dcb7455d021e713623c3dca30a31c8c41ab98c9fb0863",
+    "syntheticdoc_31x45.onnx": "c70caa2c08ef54c1c8329d283b3c25143449522b89560c3afaf495748a5bdb7a"
+  },
+  "versions": {
+    "opencv": "5.0.0",
+    "numpy": "2.5.4",
+    "pillow": "13.0.0",
+    "onnxruntime": "1.31.1"
+  },
+  "limits": {
+    "mask_iou_min": 0.995,
+    "aligned_mae_max_255": 8.0,
+    "angle_difference_max_deg": 0.1,
+    "geometry_coordinate_difference_max_px": 3.0,
+    "alignment_translation_max_px": 8.0,
+    "total_p90_max_ms": 1500.0,
+    "preview_fps_min": 5.0
+  },
+  "geometry_fields": [
+    "input_axis_degrees",
+    "rotation_affine",
+    "rotation_canvas_wh",
+    "rotated_crop_bbox",
+    "crop_to_original_affine",
+    "ribbon_left_poly",
+    "ribbon_right_poly",
+    "ribbon_y_mid",
+    "ribbon_y_half",
+    "ribbon_y_range",
+    "ribbon_top_line",
+    "ribbon_bottom_line",
+    "source_top_in_frame",
+    "source_bottom_in_frame",
+    "width",
+    "height"
+  ],
+  "cases": [
+    {
+      "name": "flat",
+      "source_wh": [
+        1300,
+        2000
+      ],
+      "output_wh": [
+        723,
+        2000
+      ],
+      "segmentation": {
+        "model_score": 0.9970360994338989,
+        "score_kind": "stability (>1 / >-1)",
+        "inference_ms": 293.7892009795178,
+        "encoder_ms": 262.00444900314324,
+        "decoder_ms": 31.784751976374537,
+        "selected_candidate": 2,
+        "candidate_scores": [
+          0.9959321618080139,
+          0.9889242649078369,
+          0.9970360994338989,
+          0.5687151551246643
+        ],
+        "raw_mask_shape": [
+          1,
+          4,
+          256,
+          256
+        ],
+        "candidate_areas": [
+          0.34078501506024095,
+          0.3384318524096386,
+          0.34097326807228917,
+          0.34763271837349397
+        ],
+        "candidate_contains_prompts": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "candidate_eligible": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "selection_eligible": true
+      },
+      "truth_iou": 0.9887822258354659,
+      "contour_iou": 0.9951744663964398,
+      "top_in_frame": true,
+      "bottom_in_frame": true
+    },
+    {
+      "name": "perspective",
+      "source_wh": [
+        1300,
+        2000
+      ],
+      "output_wh": [
+        776,
+        2000
+      ],
+      "segmentation": {
+        "model_score": 0.995506763458252,
+        "score_kind": "stability (>1 / >-1)",
+        "inference_ms": 283.8947370182723,
+        "encoder_ms": 253.87455002055503,
+        "decoder_ms": 30.020186997717246,
+        "selected_candidate": 2,
+        "candidate_scores": [
+          0.9948358535766602,
+          0.9642539024353027,
+          0.995506763458252,
+          0.4147713780403137
+        ],
+        "raw_mask_shape": [
+          1,
+          4,
+          256,
+          256
+        ],
+        "candidate_areas": [
+          0.31821818524096385,
+          0.31546498493975905,
+          0.3188300075301205,
+          0.38424792921686746
+        ],
+        "candidate_contains_prompts": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "candidate_eligible": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "selection_eligible": true
+      },
+      "truth_iou": 0.988281235936583,
+      "contour_iou": 0.9959484270292426,
+      "top_in_frame": true,
+      "bottom_in_frame": true
+    },
+    {
+      "name": "curled",
+      "source_wh": [
+        1300,
+        2000
+      ],
+      "output_wh": [
+        750,
+        2000
+      ],
+      "segmentation": {
+        "model_score": 0.9966070652008057,
+        "score_kind": "stability (>1 / >-1)",
+        "inference_ms": 265.23545701638795,
+        "encoder_ms": 236.2360940023791,
+        "decoder_ms": 28.99936301400885,
+        "selected_candidate": 2,
+        "candidate_scores": [
+          0.9960167407989502,
+          0.9884703755378723,
+          0.9966070652008057,
+          0.421485960483551
+        ],
+        "raw_mask_shape": [
+          1,
+          4,
+          256,
+          256
+        ],
+        "candidate_areas": [
+          0.3596809111445783,
+          0.3579160391566265,
+          0.3600809487951807,
+          0.6195171310240963
+        ],
+        "candidate_contains_prompts": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "candidate_eligible": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "selection_eligible": true
+      },
+      "truth_iou": 0.9891938898810978,
+      "contour_iou": 0.9835136445232806,
+      "top_in_frame": true,
+      "bottom_in_frame": true
+    },
+    {
+      "name": "bottom-cut",
+      "source_wh": [
+        1300,
+        2000
+      ],
+      "output_wh": [
+        681,
+        2000
+      ],
+      "segmentation": {
+        "model_score": 0.9967982769012451,
+        "score_kind": "stability (>1 / >-1)",
+        "inference_ms": 270.08483398822136,
+        "encoder_ms": 238.08889498468488,
+        "decoder_ms": 31.995939003536478,
+        "selected_candidate": 2,
+        "candidate_scores": [
+          0.9959809184074402,
+          0.9857071042060852,
+          0.9967982769012451,
+          0.4911337196826935
+        ],
+        "raw_mask_shape": [
+          1,
+          4,
+          256,
+          256
+        ],
+        "candidate_areas": [
+          0.3739646084337349,
+          0.3718938253012048,
+          0.3743175828313253,
+          0.495128953313253
+        ],
+        "candidate_contains_prompts": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "candidate_eligible": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "selection_eligible": true
+      },
+      "truth_iou": 0.9899598373016564,
+      "contour_iou": 0.9957835239286567,
+      "top_in_frame": true,
+      "bottom_in_frame": false
+    },
+    {
+      "name": "curled-bottom-cut",
+      "source_wh": [
+        1300,
+        2000
+      ],
+      "output_wh": [
+        819,
+        2024
+      ],
+      "segmentation": {
+        "model_score": 0.9953299164772034,
+        "score_kind": "stability (>1 / >-1)",
+        "inference_ms": 266.0313359810971,
+        "encoder_ms": 236.77358499844559,
+        "decoder_ms": 29.257750982651487,
+        "selected_candidate": 2,
+        "candidate_scores": [
+          0.9949403405189514,
+          0.983588457107544,
+          0.9953299164772034,
+          0.773811399936676
+        ],
+        "raw_mask_shape": [
+          1,
+          4,
+          256,
+          256
+        ],
+        "candidate_areas": [
+          0.4268166415662651,
+          0.42326336596385544,
+          0.4274049322289157,
+          0.4287697665662651
+        ],
+        "candidate_contains_prompts": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "candidate_eligible": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "selection_eligible": true
+      },
+      "truth_iou": 0.9868728721529563,
+      "contour_iou": 0.9860899741796946,
+      "top_in_frame": true,
+      "bottom_in_frame": false
+    }
+  ],
+  "no_receipt": {
+    "model_score": 0.9516330361366272,
+    "score_kind": "stability (>1 / >-1)",
+    "inference_ms": 279.1700710076839,
+    "encoder_ms": 245.36604198510759,
+    "decoder_ms": 33.80402902257629,
+    "selected_candidate": 0,
+    "candidate_scores": [
+      0.9516330361366272,
+      0.4933170974254608,
+      0.9370241761207581,
+      0.934064507484436
+    ],
+    "raw_mask_shape": [
+      1,
+      4,
+      256,
+      256
+    ],
+    "candidate_areas": [
+      0.9895833333333334,
+      0.9051513671875,
+      0.98956298828125,
+      0.9896036783854166
+    ],
+    "candidate_contains_prompts": [
+      true,
+      true,
+      true,
+      true
+    ],
+    "candidate_eligible": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "selection_eligible": false
+  }
+}

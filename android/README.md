@@ -153,7 +153,9 @@ Room 33→34：`recurrences` 增加 `merchant`/`note`（NOT NULL DEFAULT ''）�
 - 商户页「记录中出现过的原名」点进去（或手动新建同名商户）时出现「记账时的位置」：同名记录的位置相距100米内合并为一条，显示次数，默认名「MM/dd 记账处」、半径100米，可去掉、改名或在地图上调整。保存时商户和保留的地点一次写入；新建商户后这些记录上的位置全部删除。
 - 地点编辑改为地图选点：MapLibre Android 13.7.1（OpenGL 版）+ OpenFreeMap Liberty 底图，不用密钥；请求带 `Yohaku/<版本> (Android; com.yohaku.expensetracker)` 标识，保留 OSM/OpenFreeMap 署名（ⓘ）。地图中央固定图钉，圈出匹配半径，下方显示坐标；「回到当前位置」不依赖地图。新地点打开时先定位当前位置，失败则显示日本全境。地图需要网络，加载失败会提示。旧的只有名称的地点仍可显示。
 - 三主题各自重绘底图颜色（地名/店名只显示当地写法，隐藏道路编号）：杂志是灰绿印刷底图、细线十字和方块图钉；手账是米色纸、胶带、红色虚线圈和红叉；小物是圆角窗口、柔和彩色和水滴图钉。
-- 正式包只打 arm64-v8a（`release { ndk { abiFilters += "arm64-v8a" } }`），32 位和 x86 手机不能安装；debug 包保留全部架构供 x86_64 模拟器测试。加入 MapLibre 后正式包约 76 MB → 89.5 MB。
+- 正式包只打 arm64-v8a（`release { ndk { abiFilters += "arm64-v8a" } }`），32 位和 x86 手机不能安装；debug 包保留全部架构供 x86_64 模拟器测试。加入小票扫描处理引擎、三份浮点 ONNX、OpenCV 与完整 QNN 运行库后，正式包由约 89.5 MB 增至 249.61 MB（249,612,540 字节，238.05 MiB）（实测，2026-11-09）。
+- 小票扫描阶段 1 仅加入无 UI 处理引擎，现有拍照入口不变。debug 使用 `onnxruntime-android:1.29.0`（含 x86_64），release 使用 `onnxruntime-android-qnn:1.29.0`（arm64 + QNN）；CameraX 1.6.2 已添加，尚未接入相机页面。模型位于 `app/src/main/assets/receipt-scanner/`，ONNX assets 不压缩，JNI 使用 legacy packaging 并声明可选 `libcdsprpc.so` / `libOpenCL.so`。
+- 应用启动提交延迟的 WorkManager 唯一预热任务（KEEP）：仅编译缺失/失效的预览 HTP encoder、拍照 GPU encoder/SyntheticDoc context，缓存放 `noBackupFilesDir`；预热未就绪时引擎自然降级 GPU/CPU，不等待编译。预览 decoder 和拍照 decoder 固定 CPU。模型来源/哈希、API、缓存键与合成测试数据重生成方法见 [处理引擎说明](tools/receipt-scanner/README.md)。
 
 Room 34→35：新表 `event_places`（bookId,eventId 主键，外键 events 级联删除），随完整备份迁移；永久清理记录时一并删除。
 

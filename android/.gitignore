@@ -9,3 +9,4 @@ verification/runtime/
 *.p12
 *.pfx
 store-password
+.gradle-home/

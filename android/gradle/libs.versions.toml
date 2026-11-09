@@ -10,6 +10,9 @@ datastore = "1.2.1"
 serialization = "1.10.0"
 work = "2.12.0"
 maplibre = "13.7.1"
+onnxruntime = "1.29.0"
+opencv = "5.0.0"
+camerax = "1.6.2"
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
@@ -27,3 +30,11 @@ serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", v
 
 work = { module = "androidx.work:work-runtime", version.ref = "work" }
 maplibre = { module = "org.maplibre.gl:android-sdk-opengl", version.ref = "maplibre" }
+# Debug keeps the CPU-only build (it ships x86_64 for the emulator); release uses the QNN build (arm64 + Qualcomm NPU/GPU runtime). Keep both on one version so the Java API matches.
+onnxruntime-cpu = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntime" }
+onnxruntime-qnn = { module = "com.microsoft.onnxruntime:onnxruntime-android-qnn", version.ref = "onnxruntime" }
+opencv = { module = "org.opencv:opencv", version.ref = "opencv" }
+camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
