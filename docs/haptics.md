@@ -138,7 +138,7 @@
 
 - 对外接口：`HapticOutput.play(theme,haptic,scale)`、`Haptics.perform(haptic,scale=1f,theme=当前主题)`、`LocalHaptics`；`NativeApp` 最后一个参数为 `haptics:HapticOutput=rememberSystemHapticOutput()`，测试传入 `RecordingHapticOutput`。业务结果用 `vm.haptic(...)`；不持有 `vm` 的页面通过 `NativeApp` 提供的 `LocalResultHaptic` 发送。`BackupViewModel`、`CsvImportViewModel` 各自用 Channel 发出结果，由页面转交。
 - 设置开关位于“外观、语言与触感 / 外観・言語・触覚”，标签字号与同组设置行一致；关闭动作静音，打开写入生效后播放一次 `ToggleOn`。偏好随备份导出／恢复，旧备份缺字段默认开启。
-- 云端：新增 `preferences.haptics`（`{"enabled":true}`，全账本共用，post-commit 原值校验，可撤销），注册表 88 个命令，见[覆盖审计](plans/cloud-command-coverage.md)。
+- 云端：新增 `preferences.haptics`（`{"enabled":true}`，全账本共用，post-commit 原值校验，可撤销），当前注册表 90 个命令（含两个扫描偏好），见[覆盖审计](plans/cloud-command-coverage.md)。
 
 ## 8. 决定与待决定
 

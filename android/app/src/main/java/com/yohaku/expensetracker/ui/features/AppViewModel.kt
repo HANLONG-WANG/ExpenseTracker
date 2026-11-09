@@ -48,7 +48,9 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     val entryReview=MutableStateFlow<LedgerChangeReview?>(null)
     val reviewRefreshed=MutableStateFlow(false)
     val entryReturnRoute=MutableStateFlow("home")
-    val busy=MutableStateFlow(false)
+    private val writing=MutableStateFlow(false)
+    internal val mediaScanning=MutableStateFlow(false)
+    val busy=combine(writing,mediaScanning){write,scan->write||scan}.stateIn(viewModelScope,SharingStarted.Eagerly,false)
     val hapticsEnabled=preferences.hapticsEnabled.map<Boolean,Boolean?>{it}.stateIn(viewModelScope,SharingStarted.Eagerly,null)
     fun setHapticsEnabled(value:Boolean)=execute{preferences.setHapticsEnabled(value)}
     private val hapticEvents=MutableSharedFlow<Haptic>(extraBufferCapacity=8)
@@ -114,11 +116,11 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     init { execute { repository.purgeExpired();repository.collectUnusedMedia();preferences.pruneBookPreferences(repository.books.first().map{it.id}.toSet()) } }
     fun execute(onSuccess:()->Unit={},onComplete:()->Unit={},action:suspend()->Unit) { viewModelScope.launch {
         writes.withLock {
-            busy.value=true
+            writing.value=true
             try { withContext(Dispatchers.IO){action()};onSuccess() }
             catch(e:CancellationException){throw e}
             catch(e:Exception){error.value=e.message ?: "操作失败 / 操作できませんでした";haptic(Haptic.Error)}
-            finally {busy.value=false;onComplete()}
+            finally {writing.value=false;onComplete()}
         }
     } }
     fun createBook(name:String,currency:Currency,theme:String,language:String)=execute {
@@ -350,20 +352,20 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         persistDraft(snapshot.book.id)
     }
     /** [session] is passed explicitly when a camera result arrives after process recreation; the stored draft keeps the same session. */
-    fun importFiles(context:android.content.Context,bookId:String,uris:List<android.net.Uri>,receipt:Boolean,session:String?=entry.value?.mediaSession,onFinish:()->Unit={}) {
+    fun importFiles(context:android.content.Context,bookId:String,uris:List<android.net.Uri>,receipt:Boolean,session:String?=entry.value?.mediaSession,replaceReceiptId:String?=null,preserveOriginalOverride:Boolean?=null,onFinish:()->Unit={}) {
         if(uris.isEmpty()||session==null){onFinish();return}
-        val selected=mediaImportOption.value?.takeIf{it.session==session}?.preserveOriginal?:photoSaveOriginal.value
+        val selected=preserveOriginalOverride?:mediaImportOption.value?.takeIf{it.session==session}?.preserveOriginal?:photoSaveOriginal.value
         execute {
-            val preserveOriginal=selected?:preferences.photoSaveOriginal.first()
             var success=0;var fallback=0;var failed=0;var firstFailure:String?=null
             try {
+                val preserveOriginal=selected?:preferences.photoSaveOriginal.first()
                 uris.forEachIndexed{index,uri->
                     currentCoroutineContext().ensureActive();mediaImportProgress.value=MediaImportProgress(session,index+1,uris.size)
                     try {
-                        val result=repository.importUri(context,bookId,session,uri,receipt,preserveOriginal);val imported=result.blob
+                        val result=repository.importUri(context,bookId,session,uri,receipt,preserveOriginal,replaceReceiptId);val imported=result.blob
                         success++;if(result.optimizationFailed)fallback++
                         withContext(Dispatchers.Main){entry.value?.takeIf{it.mediaSession==session}?.let{current->
-                            entry.value=if(receipt)current.copy(receiptFileIds=(current.receiptFileIds+imported.id).distinct())else current.copy(attachmentIds=(current.attachmentIds+imported.id).distinct())
+                            entry.value=if(receipt)current.copy(receiptFileIds=if(replaceReceiptId==null)(current.receiptFileIds+imported.id).distinct()else current.receiptFileIds.map{if(it==replaceReceiptId)imported.id else it})else current.copy(attachmentIds=(current.attachmentIds+imported.id).distinct())
                         }}
                     }catch(e:CancellationException){throw e}catch(e:Exception){failed++;if(firstFailure==null)firstFailure=e.message?:"无法导入文件 / ファイルを取り込めません"}
                 }

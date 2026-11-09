@@ -87,6 +87,8 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
         "activeBook"->p[active]?.let(::JsonPrimitive)?:JsonNull
         "automaticRates"->JsonPrimitive(p[automaticRates]?:true)
         "photoOriginal"->JsonPrimitive(p[photoOriginalKey]?:false)
+        "scanAutoCapture"->JsonPrimitive(p[scanAutoCaptureKey]?:false)
+        "scanAutoProcess"->JsonPrimitive(p[scanAutoProcessKey]?:true)
         "haptics"->JsonPrimitive(p[hapticsKey]?:true)
         "location"->JsonPrimitive(bookId in (p[locationBooksKey]?:emptySet()))
         "reminders"->json.encodeToJsonElement(p[reminderSettingsKey]?.let{json.decodeFromString<Map<String,com.yohaku.expensetracker.domain.reminders.ReminderPreferences>>(it)}?.get(bookId)?:com.yohaku.expensetracker.domain.reminders.ReminderPreferences())
@@ -94,7 +96,7 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
     }
     suspend fun commandValues(bookId:String):Map<String,JsonElement> {
         val p=storage.data.first()
-        return listOf("activeBook","automaticRates","photoOriginal","haptics","location","reminders").associateWith{commandValue(p,bookId,it)}
+        return listOf("activeBook","automaticRates","photoOriginal","scanAutoCapture","scanAutoProcess","haptics","location","reminders").associateWith{commandValue(p,bookId,it)}
     }
     suspend fun commandPreferenceApplied(effectId:String)=effectId in (storage.data.first()[commandReceipts]?:emptySet())
     suspend fun applyCommandPreference(effectId:String,bookId:String,key:String,before:JsonElement,after:JsonElement) {
@@ -107,6 +109,8 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
                     "activeBook"->if(after==JsonNull)p.remove(active)else p[active]=after.jsonPrimitive.content
                     "automaticRates"->p[automaticRates]=after.jsonPrimitive.boolean
                     "photoOriginal"->p[photoOriginalKey]=after.jsonPrimitive.boolean
+                    "scanAutoCapture"->p[scanAutoCaptureKey]=after.jsonPrimitive.boolean
+                    "scanAutoProcess"->p[scanAutoProcessKey]=after.jsonPrimitive.boolean
                     "haptics"->p[hapticsKey]=after.jsonPrimitive.boolean
                     "location"->{val books=p[locationBooksKey]?:emptySet();p[locationBooksKey]=if(after.jsonPrimitive.boolean)books+bookId else books-bookId}
                     "reminders"->{val old=p[reminderSettingsKey]?.let{json.decodeFromString<Map<String,com.yohaku.expensetracker.domain.reminders.ReminderPreferences>>(it)}?:emptyMap();p[reminderSettingsKey]=json.encodeToString(old+(bookId to json.decodeFromJsonElement<com.yohaku.expensetracker.domain.reminders.ReminderPreferences>(after)))}

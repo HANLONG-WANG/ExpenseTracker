@@ -2,9 +2,9 @@
 
 审计日期：2026-11-03。基线：阶段7 `5216585`。状态：阶段8已验收（2026-11-03 本机编译与设备测试）。
 
-共 **243 条写入路径**：命令 **111**、永久边界 **40**、内部编排 **92**。注册表为 **88 个命令**；触感反馈增量登记 `AppPreferences.setHapticsEnabled` 与 `AppViewModel.setHapticsEnabled` 两条路径，对应同一 `preferences.haptics` 命令。`cloud.task.discard` 与本机 `merchant.delete` 永久边界不变（forbidden 共59项）。未发现未下沉的UI DAO写入。
+共 **245 条写入路径**：命令 **113**、永久边界 **40**、内部编排 **92**。注册表为 **90 个命令**；触感反馈增量登记 `AppPreferences.setHapticsEnabled` 与 `AppViewModel.setHapticsEnabled` 两条路径，对应同一 `preferences.haptics` 命令。扫描阶段 4 增量登记 `AppPreferences.setScanAutoCapture` 与 `setScanAutoProcess`，分别对应两个扫描偏好命令。`cloud.task.discard` 与本机 `merchant.delete` 永久边界不变（forbidden 共59项）。未发现未下沉的UI DAO写入。
 
-2026-11-06 触感增量待统一编译与验收：命令侧、展示、撤销、文档及快照已接入；分组 B 文件范围外的 `AppPreferences.commandValue`、`commandValues`、`applyCommandPreference` 须补上 `haptics` 分支，保留原值校验与 DataStore 原子效果凭据，才具备可执行的偏好命令。
+2026-11-09 扫描阶段 4：两个扫描偏好的命令读写、展示、撤销/恢复、协议/schema 和能力快照已接入；与触感偏好一样沿用 DataStore 原值校验和原子效果凭据。设备执行与扫描视觉验收待用户运行。
 
 ### 金融本机查看路径更新（2026-11-04）
 
@@ -179,6 +179,8 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 | 写入路径 | 分类 → 命令或边界 | 说明 |
 |---|---|---|
 | [AppPreferences.kt:23](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L23) `setPhotoSaveOriginal` | 命令 → preferences.photoStorage | post-commit；权限引导需要手机操作，不能由助手授权。 |
+| [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setScanAutoCapture` | 命令 → preferences.scanAutoCapture | enabled 必填；全账本共用，默认 false；post-commit 原值比较、原子凭据、撤销/恢复；不打开相机或授予权限。 |
+| [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setScanAutoProcess` | 命令 → preferences.scanAutoProcess | enabled 必填；全账本共用，默认 true；关闭时相机原图照常走保存优化，显式「处理这张」仍进入确认页；不改写已保存图片。 |
 | [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setHapticsEnabled` | 命令 → preferences.haptics | enabled 必填；本机全账本共用，默认 true；post-commit 原值比较、效果凭据和撤销同照片偏好，无权限引导。 |
 | [AppPreferences.kt:28](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L28) `setAutomaticReferenceRates` | 命令 → preferences.automaticRates | post-commit；权限引导需要手机操作，不能由助手授权。 |
 | [AppPreferences.kt:36](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L36) `saveReminderSettings` | 命令 → preferences.reminders | post-commit；权限引导需要手机操作，不能由助手授权。 |
@@ -317,7 +319,7 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 - `ui/` 非import的DAO/db命中32处，逐处为读取：MonthlyScreens/CommandScreens月计划/月评，CommandFollowupViews读账本，AppViewModel账本/金融/额度Flow及账户选择核对，CsvImportViewModel/Screen导入配置和历史，FinancialDrafts读取草稿，FinancialPlanHistory/RevisionHistory/CreditLimitScreen历史，StatementsScreen/ReceiptWorkflowScreen/ReceiptProducts文件数据。FinancialOutlookReader.withTransaction只读金融图。**直接写DAO/SQL为0**；没有“待下沉”。
 - `AppViewModel.init`仅触发本机既有purgeExpired/collectUnusedMedia/pruneBookPreferences，分别归上表边界/内部路径，不能由命令触发；初始化不是额外的用户操作。`execute`/CsvImportViewModel.work/BackupViewModel.run是协程分派，写操作已按被分派函数列出，不重复计数。
 - ViewModel其余动作：refreshToday/retryRead/recentCategories、各preview*、refreshOccurrencePreview、读取文件/解码/normalized、events及导航/dismiss/焦点/媒体本次选项/临时configure只读或只改内存。CSV step/edit间接调用previewNow的持久缓存已计入。FinancialDraftSession的自动保存/提交/放弃分别落到storeFinancialDraft/commitFinancialDraft/discardFinancialDraft，UI无DAO直写。
-- `BackupPreferences`的automaticReferenceRates/photoSaveOriginal/hapticsEnabled/reminderSettings/foregroundLocationBooks/activeBook分别对应开放偏好；referenceRates/reminderDelivery/commandEffectReceipts是缓存/送达/效果凭据；setupDraft是首次表单草稿。DTO本身不写；全体字段恢复只有AppPreferences.restoreBackup（永久禁止）。派生reminderPlan不在备份，重启按已提交资料重建。
+- `BackupPreferences`的automaticReferenceRates/photoSaveOriginal/hapticsEnabled/scanAutoCapture/scanAutoProcess/reminderSettings/foregroundLocationBooks/activeBook分别对应开放偏好；referenceRates/reminderDelivery/commandEffectReceipts是缓存/送达/效果凭据；setupDraft是首次表单草稿。DTO本身不写；全体字段恢复只有AppPreferences.restoreBackup（永久禁止）。派生reminderPlan不在备份，重启按已提交资料重建。
 - 系统权限、目录选择器和拍照是interactive的本机用户动作；文件提供器、缓存缩图、播放器/外部打开不写账本。数据库备份副本、临时上传/解包副本的完成后清理不等于云端删除用户源文件。
 
 ## 本阶段补齐与最终结论

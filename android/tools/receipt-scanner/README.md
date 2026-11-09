@@ -1,6 +1,6 @@
-# 小票扫描处理引擎与独立扫描流程（阶段 1–3）
+# 小票扫描处理引擎与扫描与入库流程（阶段 1–4）
 
-实现位于 `app/src/main/java/com/yohaku/expensetracker/receipt/scan/`。其中处理引擎不依赖 UI；`ui/features/scan/` 提供相机→确认→调整的独立流程。现有系统相机、附件入库和云端办理入口尚未接入。引擎的构造、调用和关闭在同一个后台工作线程上执行。
+实现位于 `app/src/main/java/com/yohaku/expensetracker/receipt/scan/`。其中处理引擎不依赖 UI；`ui/features/scan/` 提供相机→确认→调整的独立流程。阶段 4 已接入表单/记录拍照、已有图片处理、现有媒体入库和云端偏好命令。引擎的构造、调用和关闭在同一个后台工作线程上执行。
 
 ## API 与参考实现对应
 
@@ -108,17 +108,17 @@ GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
 
 ## 阶段 2：独立相机页
 
-入口是 `ScanCameraFlow(ScanCameraRequest(target), preferences, onBack, onCaptured)`。沿用 `FinancialFlow` 的全屏 Compose Dialog：拥有独立窗口和返回处理，隐藏系统栏（可边缘滑出），保留调用页面；不向 `AppViewModel` 的页面返回栈写入无人消费的拍照路由。调用方关闭时移除该 composable；阶段 4 再把 `ReceiptTarget.Draft/Record` 映射到稳定的 target。现有拍照按钮仍调用系统相机，没有接入此页。
+入口是 `ScanCameraFlow(ScanCameraRequest(target), preferences, onBack, onCaptured)`。沿用 `FinancialFlow` 的全屏 Compose Dialog：拥有独立窗口和返回处理，隐藏系统栏（可边缘滑出），保留调用页面；不向 `AppViewModel` 的页面返回栈写入无人消费的拍照路由。调用方关闭时移除该 composable；阶段 4 的 `rememberReceiptCamera` 将 `ReceiptTarget.Draft/Record` 序列化为稳定 target，现有拍照按钮通过 `ScanFlow` 打开此页。
 
 - `ScanCameraScreen.kt`：权限首次申请、拒绝重试/永久拒绝跳系统设置、全屏页面、生命周期和主题令牌；取景框、提示、快门分成独立 composable，阶段 5 再做专属设计。无后置相机/相机或分析失败有独立说明和重试。
 - `ScanCameraSource.kt`：CameraX Preview + RGBA_8888 ImageAnalysis（KEEP_ONLY_LATEST、4:3、请求 960×720）+ ImageCapture（MAXIMIZE_QUALITY、4:3、最高可用分辨率，允许高分辨率模式），共享 PreviewView ViewPort。实际流尺寸由 CameraX 根据设备组合能力协商。裁剪 RGBA、转正 BGR、`ImageProxyTransformFactory` + `CoordinateTransform` + FILL_CENTER 映射和像素中心 +0.5 沿用真机验证方法。
 - `ScanCapturePolicy.kt`：纯 JVM 的平滑、提示、自动拍摄判定。`ScanFrameProcessor` 在一个专属分析线程创建、使用和关闭原有 `ReceiptScanner`；阶段 1 API/引擎未改。
 - `ScanMotionMonitor.kt`：加速度计去重力后与陀螺仪共同判断手机静止；有哪个用哪个，都没有时只看画面。后台暂停传感器并清空进度，返回后不沿用旧帧。
 - `ScanCaptureSession.kt`：原始 JPEG 写入 `cache/receipt-capture/<uuid>/original.jpg`。采用 **CameraX 写入 EXIF 方向**，不额外重新编码；`targetRotation` 在快门时刷新，阶段 1 引擎解码应用 EXIF。成功时先释放相机，再调用 `onCaptured(File, autoProcess)`；此后文件所有权交给阶段 3，确认/放弃后删除文件及其父目录。返回、拍照失败、晚到的拍照回调会清理本次未交接目录。阶段 3 的 `ScanFlow` 接续确认/调整状态恢复，`ScanTemporaryFiles` 统一目录生成、写入、输出交接、删除及启动时的过期清理。
-- 两个 DataStore 偏好：`scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true；进入完整备份，旧备份缺字段采用上述默认。自动处理仅控制出口布尔值，相机页不执行 detect/render/process。云端命令暂不发布这两个偏好。
+- 两个 DataStore 偏好：`scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true；进入完整备份，旧备份缺字段采用上述默认。自动处理仅控制出口布尔值，相机页不执行 detect/render/process。阶段 4 已通过 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 发布这两个偏好。
 - Debug 角落显示分析帧率与当前结果的 `actualEps`；Logcat `ScanCamera` 输出各阶段耗时、平滑耗时和到达分析器至叠加的延迟。release 不显示/输出这些调试信息。
 
-声明 CAMERA 后，即使调用系统相机也需要该权限，否则 ACTION_IMAGE_CAPTURE 会抛 SecurityException（[Android API](https://developer.android.com/reference/android/provider/MediaStore#ACTION_IMAGE_CAPTURE)）。因此 `rememberReceiptCamera` 只补了权限申请与拒绝后的清理，继续使用 TakePicture 和原来的目标恢复/导入逻辑；`MediaFlowTest` 的系统相机替身同时处理权限回调。Manifest 的 camera、autofocus 均 required=false，不排除无相机设备。
+阶段 4 已删除系统相机启动器、入口处的重复权限申请及旧相机缓存路径。权限和不可用状态统一由 `ScanCameraScreen` 处理；Manifest 的 camera、autofocus 均 required=false，不排除无相机设备。FileProvider 保留附件/导出路径，并使用 `receipt-capture/` 传递扫描输出。
 
 ### 自动拍摄与提示参数
 
@@ -168,7 +168,7 @@ GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
 设备测试由用户运行；本轮不启动模拟器，不把编译通过写成仪器或视觉验收通过：
 
 ```sh
-# 默认流程、完整备份往返、旧系统相机兼容回归。
+# 默认流程、完整备份往返、扫描入库回归。
 GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
   ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
   :app:connectedDebugAndroidTest \
@@ -190,14 +190,14 @@ adb shell wm density 480
 
 截图目录：应用私有 `files/verification/receipt-camera/`，文件名 `{theme}-{language}-{hint,progress}.png`，支持现有 `captureSuffix` 参数。`ScanCameraFlowTest` 使用测试 APK 的 `receipt-scanner/flat.jpg`，真实运行 `ReceiptScanner.preview` 后绘制静态预览；快门可立即返回这张图或延迟回调。覆盖开页轮廓/提示、两个开关持久化和重开、手动出口的 true/false、自动出口仅一次、权限拒绝/永久拒绝、无相机、返回按钮/系统 Back 释放资源及晚到照片清理。权限路径用可注入权限状态，不操作设备的真实系统授权。真实 CameraX/传感器、EXIF 与硬件方向仍需设备验收。
 
-### 阶段 4 云端偏好连带位置（本阶段不改命令层）
+### 阶段 4 云端偏好连带位置（已接入）
 
 - `data/repository/AppPreferences.kt`：`commandValue` / `commandValues` / `applyCommandPreference` 的原子写入、冲突检测、效果凭据。
 - `data/command/FollowupCommandAdapters.kt`：偏好 capability、输入 schema、校验/预览、adapter 注册；`CommandBusinessNames.kt` 的中日名称。
 - `ui/features/command/CommandFollowupViews.kt`、`CommandEffectViews.kt`、`MonthlyScreens.kt`：偏好名称、前后值和月评展示。
 - `data/command/CommandRegistry.kt`（能力汇总）及 JVM `data/command/CommandCapabilitiesTest.kt`（schema/capabilities 生成与核验）；仪器 `CommandWorkflowExecutionTest`、`CommandFlowTest` 的偏好执行/撤销/恢复与展示覆盖沿用 `photoOriginal` 和 `haptics` 的路径。
 - `docs/formats/yohaku-command-protocol-v1.md`、`command-plan.v1.schema.json`、`examples/capabilities.valid.json`，以及 `docs/android-cloud-handoff-package/formats/` 对应副本及包内命令数量说明；通过既有生成流程更新，不手工改 schema 大段内容。
-- `entry.prepareDraft` 的 `RECEIPT_CAMERA` 续办入口与 `MediaPanels.kt` 的 `rememberReceiptCamera`、`ReceiptTarget`：阶段 4 接入本页后核对目标恢复和续办。
+- `entry.prepareDraft` 的 `RECEIPT_CAMERA` 续办入口与 `MediaPanels.kt` 的 `rememberReceiptCamera`、`ReceiptTarget`：已接入本页，目标恢复与云端续办由 `MediaFlowTest` 覆盖。
 
 
 ## 阶段 3：确认与轮廓调整
@@ -217,7 +217,7 @@ ScanFlowRequest(target = "draft-id", photo = existingFile, source = ScanPhotoSou
 ScanFlowRequest(target = "draft-id", photo = capturedFile, source = ScanPhotoSource.CAMERA)
 ```
 
-`ScanFlowResult(file: File, processed: Boolean, target: String)`：`processed=true` 是用户确认的处理后 JPEG；相机 `autoProcess=false` 直接移交原 JPEG 字节，`processed=false`，不进入处理或调整。调用方保持 request/target 稳定并在回调后移除 composable；阶段 4 负责将 Draft/Record 目标持久化并接入入库。
+`ScanFlowResult(file: File, processed: Boolean, target: String)`：`processed=true` 是用户确认的处理后 JPEG；相机 `autoProcess=false` 直接移交原 JPEG 字节，`processed=false`，不进入处理或调整。调用方保持 request/target 稳定并在回调后移除 composable；阶段 4 的 `rememberReceiptCamera` 持久化 Draft/Record 目标并接入现有入库。
 
 - 相机来源可重拍；已有图片来源显示取消。关闭按钮、系统 Back、取消流程都会明确调用 `onCancel`；重拍只回相机，不调用终态回调。
 - 原图、自动结果和编辑结果统一暂存在 `cache/receipt-capture/<uuid>/`。已有图片先在后台复制，借用的源文件不受影响；相机照片直接接管阶段 2 的目录。确认时将选中的 JPEG 移交到同根目录下新的输出目录，再删除本次原图及其他结果；原图直出也不额外编码。取消/重拍删除整个会话目录。
@@ -238,7 +238,7 @@ ScanFlowRequest(target = "draft-id", photo = capturedFile, source = ScanPhotoSou
 
 以 target/照片路径/来源名称作为跨进程稳定的组合键，通过 `rememberSaveable` + kotlinx.serialization JSON 保存照片路径、固定转正变换、自动轮廓、已应用轮廓及文件名、当前编辑轮廓、结果/调整模式、初始化/未检测到标志，以及流程的导入路径/原图直出/已结束标志。`ScanContour`、`ScanPoint`、`ScanEndLine` 可序列化。Activity 或进程重建后从缓存重新解码显示；已应用结果文件丢失时由保存的轮廓重新 render，自动结果缓存丢失时重新 process。位图、模型会话和拖动中的放大镜不保存。
 
-`ScanReviewScreen` / `ScanReviewActions` / `ScanResultImage` 负责页面和操作；`ScanContourCanvas` 中边曲线、端线、控制点、放大镜各有独立绘制函数。本阶段使用现有主题令牌与组件、中日 `word(zh, ja)`，专属三主题设计留待阶段 5。当前表单与记录页入口、云端 `entry.prepareDraft(media=RECEIPT_CAMERA)` 仍不变；没有发布新的云端命令或能力。
+`ScanReviewScreen` / `ScanReviewActions` / `ScanResultImage` 负责页面和操作；`ScanContourCanvas` 中边曲线、端线、控制点、放大镜各有独立绘制函数。本阶段使用现有主题令牌与组件、中日 `word(zh, ja)`，专属三主题设计留待阶段 5。阶段 4 的表单与记录页入口、云端 `entry.prepareDraft(media=RECEIPT_CAMERA)` 均已接入此流程，并发布两个扫描偏好命令。
 
 ### 阶段 3 验证
 
@@ -286,3 +286,75 @@ adb shell wm density 480
 `ScanReviewFlowTest` 使用 `flat.jpg` / `no-receipt.png` 真实运行引擎，覆盖已有图片→使用、相机→重拍、原图直出、拖动→重处理输出不同→取消调整/精确恢复自动结果、无票直接调整、取消清理和真实 `ActivityScenario.recreate()` 保留编辑轮廓。测试通过与触摸相同的 `MoveScanHandle` 动作驱动控制点，放大镜截图保持拖动状态。`ScanFlowTestActivity` 只存在于 debug，无 launcher，不进入 release。截图支持现有 `captureSuffix` 参数。
 
 2026-11-09 沙箱验证：相关 JVM **14/14** 通过（`ScanContourEditorTest` 5、`ScannerNumericsTest` 5、`ScanCapturePolicyTest` 4）；`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleRelease` 串行通过。仪器执行与 384×832dp 截图目视验收待用户运行。`ReceiptScanner.process/detect/render` 和 `ScanCameraFlow` 的公开接口未变；`ScanContour` 增加序列化及供编辑约束使用的未钳制插值选项，默认插值与处理数值保持原行为。
+
+## 阶段 4：接入入库与云端偏好
+
+- `MediaPanels.rememberReceiptCamera` 由 `MainActivity` 的 `ReceiptCameraHost` 持有，表单拍照使用 `ReceiptTarget.Draft(session)`，无小票的记录详情使用 `ReceiptTarget.Record(eventId)`。请求以 JSON 保存账本、目标、来源路径、主题/语言及表单保存选项；`ScanFlow` 同时保存相机/确认状态。Activity 重建或进程恢复后，入库使用原请求，不读取当前页面来改派目标。Host 先挂载应用/表单，后挂载扫描弹窗，恢复时扫描保持在最上层。
+- 扫描输出通过 FileProvider 的 `receipt-capture/` 路径进入现有 `importFiles(receipt=true)` / `importRecordReceipts`，导入结束（含失败）清理输出目录。`processed=true` 的新照片和 `processed=false` 的原图都按保存开关入库：开时保留输出原字节，关时按现有小票优化规则保存。详情补票仍用全局保存偏好。系统相机启动器、入口权限申请、旧相机缓存路径均已移除。
+- 表单每张缩略图下增加独立一行「处理这张 / 補正する」，删除仍在右上角，前移/后移另占一行，沿用各主题现有颜色与外框。入口使用 `Draft(session, replaceFileId)` 和 `EXISTING_IMAGE`；**无论自动处理开关如何，都进入确认/调整页**。新文件暂存与草稿原位置替换在同一媒体导入事务中完成，入库失败不移除旧图；旧文件沿用暂存/引用清理，编辑已存记录保存后生成新小票修订，旧图片字节和历史修订保留。扫描状态并入 `busy`，禁用其他媒体变更和表单提交。
+- `AppPreferences` 增加两个偏好的命令读取与原子应用；`FollowupCommandAdapters` 注册 `preferences.scanAutoCapture` / `preferences.scanAutoProcess`，`enabled` 必填、全账本共享、默认分别 false / true，沿用偏好执行/撤销/冲突/中断恢复。不授予权限，不自动打开相机。名称及开关值覆盖 `CommandBusinessNames`、`CommandFollowupViews`、`CommandEffectViews`、`MonthlyScreens`。`CommandRegistry` 已通过既有 adapter 汇总导出 90 个命令，无额外硬编码注册。
+- `entry.prepareDraft(media=RECEIPT_CAMERA)` 预览与续办明确引导用户在表单点「拍照」，由同一个入口打开扫描。云端不能直接指定本机图片路径或代替用户保存表单。
+- 应用 assets 协议、`docs/formats/` 和 `docs/android-cloud-handoff-package/` 的协议/schema/capabilities 示例及数量说明同步；schema 和能力示例通过 `CommandCapabilitiesTest` 的 `-Dyohaku.updateCapabilities=true` 生成，不手工拼接。产品设计、实现规格、Android README、覆盖审计与 schema 审计同步。许可汇总、体积收尾与扫描页面专属三主题设计仍留在后续阶段。
+
+### JVM 与构建
+
+在 `android/` 下串行执行；首次更新能力产物时加 `-Dyohaku.updateCapabilities=true`，日常核验不加：
+
+```sh
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:testDebugUnitTest \
+  --tests 'com.yohaku.expensetracker.data.command.*' \
+  --tests 'com.yohaku.expensetracker.data.repository.CommandScanPreferencesTest' \
+  --tests 'com.yohaku.expensetracker.PhotoStorageTest' \
+  --tests 'com.yohaku.expensetracker.receipt.scan.ScanContourEditorTest' \
+  --tests 'com.yohaku.expensetracker.ui.features.scan.ScanCapturePolicyTest'
+
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:assembleDebug :app:compileDebugAndroidTestKotlin :app:assembleRelease
+```
+
+`CommandScanPreferencesTest` 在 JVM 通过内存 DataStore 运行真实命令读写，覆盖默认读取、全账本共享、应用/撤销、冲突不写凭据、重建偏好对象后的效果去重、必填布尔与合并撤销。能力测试逐项校验 90 个实际 adapter 输入示例、方案 schema 分支与四份生成产物。
+
+### 用户运行的仪器与视觉验证
+
+本阶段不启动模拟器。以下测试已提供，编译通过不代表设备测试或截图目视验收通过。
+
+```sh
+# android/ 下执行，默认数据与流程测试；系统选择器专项默认跳过。
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.MediaFlowTest,com.yohaku.expensetracker.CommandWorkflowExecutionTest#allPreferencesSwitchAfterCommitAndRestoreWithConflict,com.yohaku.expensetracker.CommandWorkflowExecutionTest#interruptedPreferenceWriteResumesWithoutOverwritingLaterUserChange
+
+# 三主题 × 中日文，小票图片条中的处理、删除与排序入口；S24 Ultra 布局基准。
+adb shell wm size 1080x2340
+adb shell wm density 450
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
+  ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.MediaFlowTest#receiptProcessingActionsAcrossLooks \
+  -Pandroid.testInstrumentationRunnerArguments.looks=all \
+  -Pandroid.testInstrumentationRunnerArguments.visual=true
+
+# 输出：应用私有 files/verification/receipt-media/{theme}-{language}-actions{captureSuffix}.png
+mkdir -p /tmp/yohaku-receipt-media
+adb exec-out run-as com.yohaku.expensetracker.dev tar -C files/verification/receipt-media -cf - . | tar -xf - -C /tmp/yohaku-receipt-media
+# 查看截图后恢复原模拟器配置：
+adb shell wm size 1170x2532
+adb shell wm density 480
+```
+
+`MediaFlowTest` 使用阶段 2/3 的 `StaticReceiptSource` 与合成图片，真实执行扫描处理和现有媒体入库，覆盖：
+
+- 表单拍照→确认→原字节入库与临时目录清理；取消不添加图片。
+- `processed=false` 跳过确认：关原样保存时短边缩到 2000px，开时保留原字节。
+- 记录详情拍照→确认→全局优化入库，形成第一版小票；确认页经过 Activity 重建仍指向原记录。
+- 已有图片「处理这张」在自动处理关闭时仍进入确认页，重建后在三张图片的中间原位置替换；保存形成第二版，旧图与第一版保留。
+- 确认页重建时另建 ViewModel、切换到另一个账本，输出仍写入原草稿会话，保留本次原样保存选择（模拟进程丢失内存状态，非实际杀进程测试）。
+- 云端两个偏好的名称展示、`RECEIPT_CAMERA` 引导→打开草稿→新相机→重建→原会话入库；不自动提交记录。
+
+`CommandWorkflowExecutionTest` 两个相关方法覆盖实际 Room + DataStore 的偏好能力快照、执行后值、整批撤销冲突与恢复，以及写入已完成但效果标记未落地时的重试去重，防止覆盖后来手动改动。
+
+2026-11-09 阶段 4 沙箱验证：相关 JVM **50/50** 通过（含两个新偏好命令测试和能力生成/校验）；`:app:assembleDebug`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleRelease` 串行调用通过。未启动模拟器、未运行仪器测试或生成本阶段设备截图；上述设备流程与视觉目视验收待用户执行。没有提交 git。

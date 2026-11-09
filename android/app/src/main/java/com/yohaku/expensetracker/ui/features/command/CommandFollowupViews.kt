@@ -47,11 +47,15 @@ import kotlinx.serialization.json.*
     Column(Modifier.bringIntoViewRequester(requester)) {
         CommandCard(null,word("后续步骤","後続の処理"),"command-followup-status",followup=true) {
             YText(word("账本已提交；在这里重试或继续本机操作。","帳簿は保存済みです。ここで再試行・端末操作を続けられます。"),12)
-            rows.forEach{row->key(row.id){CommandFollowupRow(row,vm,steps.indexOfFirst{it.stepId==row.stepId}.takeIf{it>=0}?.plus(1))}}
+            rows.forEach{row->key(row.id){
+                val step=steps.firstOrNull{it.stepId==row.stepId}
+                val media=(step?.objects?.firstOrNull{it.type=="entryDraft"}?.after as? JsonObject)?.get("requestedMedia")?.jsonPrimitive?.contentOrNull
+                CommandFollowupRow(row,vm,steps.indexOfFirst{it.stepId==row.stepId}.takeIf{it>=0}?.plus(1),media)
+            }}
         }
     }
 }
-@Composable private fun CommandFollowupRow(row:CommandEffectEntity,vm:AppViewModel,number:Int?) {
+@Composable private fun CommandFollowupRow(row:CommandEffectEntity,vm:AppViewModel,number:Int?,requestedMedia:String?) {
     val commands=vm.cloud!!.commands
     val payload=remember(row.payloadJson){commands.followups.payload(row)}
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -86,6 +90,7 @@ import kotlinx.serialization.json.*
         if(row.status=="WAITING")when(payload.kind) {
             "DRAFT"->{
                 YText(word("已保存为草稿；请在表单里补全并亲自保存。","下書きとして保存しました。フォームで補完してご自身で保存してください。"),12)
+                if(requestedMedia=="RECEIPT_CAMERA")YText(word("打开后，在表单点「拍照」扫描小票。","開いたら、フォームの「撮影する」でレシートをスキャンしてください。"),12,Modifier.testTag("command-followup-camera-guide"))
                 YButton(word("打开草稿继续记账","下書きを開いて続ける"),{
                     var draftSnapshot:BookSnapshot?=null
                     vm.execute(onSuccess={draftSnapshot?.let(vm::resumeEntry)}) {
@@ -117,6 +122,7 @@ import kotlinx.serialization.json.*
 
 internal val workflowTypes=setOf("preference","analysisPreference","statementAssociation","statementRow","receiptProducts","receiptSource","receipt","receiptImage","attachment","csvBatch","csvEntry","drafts","entryDraft","followup")
 internal val workflowFieldLabels=mapOf(
+    "scanAutoCapture" to ("小票自动拍摄" to "レシートの自動撮影"),"scanAutoProcess" to ("小票自动处理" to "レシートの自動処理"),
     "activeBook" to ("当前账本" to "現在の帳簿"),"automaticRates" to ("自动汇率" to "自動レート取得"),"photoOriginal" to ("照片保存方式" to "写真の保存方法"),"haptics" to ("触感反馈" to "触覚フィードバック"),"location" to ("记账时定位" to "記録時の位置情報"),"reminders" to ("提醒" to "通知"),
     "monthlyReview" to ("月度评语提醒" to "月の振り返り通知"),"enabled" to ("开启重要提醒" to "通知を有効にする"),"deadline" to ("变更截止提醒" to "変更期限の通知"),"recurring" to ("周期账单提醒" to "定期請求の通知"),"budget" to ("预算提醒" to "予算の通知"),"funds" to ("资金缺口提醒" to "資金不足の通知"),"repaymentDays" to ("还款提前天数" to "返済の何日前"),"deadlineDays" to ("截止提前天数" to "期限の何日前"),"recurringDays" to ("周期提前天数" to "定期支払の何日前"),"time" to ("提醒时间" to "通知時刻"),
     "modulesJson" to ("分析模块顺序" to "分析項目の順序"),"pinnedJson" to ("置顶分析模块" to "固定する分析項目"),"sourceSummary" to ("流水摘要" to "明細の摘要"),"sourceDate" to ("流水日期" to "明細の日付"),"summary" to ("流水摘要" to "明細の摘要"),"direction" to ("资金方向" to "資金の方向"),"postedDate" to ("实际入账日" to "実計上日"),"occurredDate" to ("发生日" to "利用日"),"postingJson" to ("关联入账依据" to "関連計上の根拠"),

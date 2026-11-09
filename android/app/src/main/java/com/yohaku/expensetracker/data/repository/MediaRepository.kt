@@ -33,14 +33,15 @@ data class MediaImportResult(val blob:FileBlobEntity,val optimizationFailed:Bool
 /** One picked file; [open] is called once while the media lock is held. */
 class MediaSource(val name:String,val mime:String,val open:()->InputStream)
 data class MediaBatchResult(val success:Int,val fallback:Int,val failed:Int,val firstFailure:String?)
-suspend fun LedgerRepository.importMedia(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,open:()->InputStream):FileBlobEntity = importMediaResult(bookId,session,name,mime,receipt,preserveOriginal,open).blob
+suspend fun LedgerRepository.importMedia(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,open:()->InputStream):FileBlobEntity = importMediaResult(bookId,session,name,mime,receipt,preserveOriginal,open=open).blob
 /** File workflow: call outside database transactions; file creation cannot be rolled back by Room. */
-suspend fun LedgerRepository.importMediaResult(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,open:()->InputStream):MediaImportResult = mediaWrites.withLock {
+suspend fun LedgerRepository.importMediaResult(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,replaceReceiptId:String?=null,open:()->InputStream):MediaImportResult = mediaWrites.withLock {
     require(dao.book(bookId)!=null)
     val draft=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}?:error("请先打开记账表单 / 記録フォームを開いてください")
     require(draft.mediaSession==session){"表单已变化，请重新选择文件 / フォームが変わりました。ファイルを選び直してください"}
+    require(replaceReceiptId==null||receipt&&replaceReceiptId in draft.receiptFileIds){"待处理的小票已不在表单中 / 処理するレシートはフォームにありません"}
     val stored=storeMedia(bookId,name,mime,receipt,preserveOriginal,open)
-    try { db.withTransaction{commitImportedMediaInTransaction(stored.blob,session,receipt)} }catch(e:Throwable){stored.file.delete();throw e}
+    try { db.withTransaction{commitImportedMediaInTransaction(stored.blob,session,receipt,replaceReceiptId)} }catch(e:Throwable){stored.file.delete();throw e}
     MediaImportResult(stored.blob,stored.optimizationFailed)
 }
 /**
@@ -99,12 +100,13 @@ private suspend fun LedgerRepository.storeMedia(bookId:String,name:String,mime:S
 }
 
 /** Caller must hold mediaWrites and be inside a transaction; it owns the prepared file's lifecycle. */
-internal suspend fun LedgerRepository.commitImportedMediaInTransaction(blob:FileBlobEntity,session:String,receipt:Boolean) {
+internal suspend fun LedgerRepository.commitImportedMediaInTransaction(blob:FileBlobEntity,session:String,receipt:Boolean,replaceReceiptId:String?=null) {
     val bookId=blob.bookId;val fileId=blob.id
     val current=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}
     require(current?.mediaSession==session){"表单已关闭 / フォームが閉じられました"}
+    require(replaceReceiptId==null||receipt&&replaceReceiptId in current.receiptFileIds){"待处理的小票已不在表单中 / 処理するレシートはフォームにありません"}
     dao.putFile(blob);dao.stageMedia(DraftMediaEntity(bookId,fileId,session))
-    saveDraft(bookId,if(receipt)current.copy(mediaInitialized=true,receiptFileIds=current.receiptFileIds+fileId)else current.copy(mediaInitialized=true,attachmentIds=current.attachmentIds+fileId))
+    saveDraft(bookId,if(receipt)current.copy(mediaInitialized=true,receiptFileIds=if(replaceReceiptId==null)current.receiptFileIds+fileId else current.receiptFileIds.map{if(it==replaceReceiptId)fileId else it})else current.copy(mediaInitialized=true,attachmentIds=current.attachmentIds+fileId))
 }
 private fun decodePhotoForStorage(file:File,receipt:Boolean):Bitmap? {
     val decoded=try {
@@ -127,9 +129,9 @@ fun mediaSource(context:Context,uri:Uri):MediaSource {
     val mime=context.contentResolver.getType(uri)?:"application/octet-stream"
     return MediaSource(name,mime){context.contentResolver.openInputStream(uri)?:error("无法读取所选文件 / 選択したファイルを読み込めません")}
 }
-suspend fun LedgerRepository.importUri(context:Context,bookId:String,session:String,uri:Uri,receipt:Boolean,preserveOriginal:Boolean=false):MediaImportResult {
+suspend fun LedgerRepository.importUri(context:Context,bookId:String,session:String,uri:Uri,receipt:Boolean,preserveOriginal:Boolean=false,replaceReceiptId:String?=null):MediaImportResult {
     val source=mediaSource(context,uri)
-    return importMediaResult(bookId,session,source.name,source.mime,receipt,preserveOriginal,source.open)
+    return importMediaResult(bookId,session,source.name,source.mime,receipt,preserveOriginal,replaceReceiptId,source.open)
 }
 data class PreparedMedia(val session:String,val attachments:List<String>,val receiptImages:List<String>)
 internal suspend fun LedgerRepository.withMedia(change:PreparedLedgerChange,draft:EntryDraft):PreparedLedgerChange {

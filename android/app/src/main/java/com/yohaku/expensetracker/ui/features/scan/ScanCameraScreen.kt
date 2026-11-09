@@ -44,13 +44,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** Caller keeps the target stable and captures it in onCaptured; stage 4 maps Draft/Record here. */
+/** Caller keeps the serialized Draft/Record target stable across recreation. */
 data class ScanCameraRequest(val target: String)
 internal enum class CameraPermission { GRANTED, DENIED, PERMANENTLY_DENIED }
 
 /** Full-screen flow like FinancialFlow. Remove from composition on exit/capture.
  * onCaptured receives an EXIF-oriented JPEG in cache/receipt-capture; ownership transfers to the
- * caller, which must delete it after confirmation/abandonment. No existing camera entry is changed.
+ * caller (ScanFlow), which must delete it after confirmation/abandonment.
  */
 @Composable fun ScanCameraFlow(request: ScanCameraRequest, preferences: AppPreferences, onBack: () -> Unit, onCaptured: (File, Boolean) -> Unit) {
     ScanCameraHost(request, preferences, onBack, onCaptured)

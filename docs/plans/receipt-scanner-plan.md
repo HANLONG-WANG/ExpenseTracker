@@ -128,6 +128,8 @@ ui/features/scan/                （新页面）
 
 ### 阶段 4　接入现有入库流程，替换系统相机
 
+2026-11-09：本阶段代码、协议/能力产物及测试已接入；仪器运行和三主题×中日文小票图片条目视验收待用户执行，命令见 `android/tools/receipt-scanner/README.md` 的阶段 4。
+
 - `rememberReceiptCamera`（`MediaPanels.kt`）改为打开新相机页。`ReceiptTarget.Draft` / `ReceiptTarget.Record` 两种目标、进程重建后结果仍落到原目标的约定保持不变。
 - 处理结果（JPEG）交给现有 `importFiles` / `importRecordReceipts`：
   - 「原样保存（不压缩）」开关的含义不变：开 = 保存处理结果原字节；关 = 按现有小票优化压缩。
@@ -154,10 +156,10 @@ ui/features/scan/                （新页面）
 
 需要更新的文档：
 
-- `docs/product-design.md` 第 113 行附近：「调起系统默认相机」；
-- `docs/implementation-spec.md` 第 186–189 行；
-- `android/README.md` 的拍照段落（阶段 2 已修正 CAMERA 声明/申请；阶段 4 后再替换 `TakePicture` 描述），并补充：模型与第三方许可（EdgeSAM：NTU S-Lab License 1.0，仅非商用；SyntheticDoc：MIT；ONNX Runtime：MIT；QNN runtime：Qualcomm 许可；OpenCV：Apache-2.0）、APK 体积、HTP 预热与缓存说明、测试说明；
-- 云端协议文档中若有描述「系统相机」的文字一并更新（当前检索到的描述均为中性的「拍照」）。
+- `docs/product-design.md` 的拍照与已有图片处理说明已在阶段 4 同步；
+- `docs/implementation-spec.md` 的扫描入库与目标恢复说明已在阶段 4 同步；
+- `android/README.md` 的拍照与扫描流程段落已在阶段 4 同步；阶段 6 补充：模型与第三方许可（EdgeSAM：NTU S-Lab License 1.0，仅非商用；SyntheticDoc：MIT；ONNX Runtime：MIT；QNN runtime：Qualcomm 许可；OpenCV：Apache-2.0）、APK 体积、HTP 预热与缓存说明、测试说明；
+- 云端偏好命令、schema 与 capabilities 已在阶段 4 同步；收尾时继续检查说明与最终行为一致。
 
 ### 阶段 7　真机验收（用户）
 

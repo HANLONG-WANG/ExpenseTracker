@@ -72,17 +72,26 @@ private fun Modifier.dashed(color:Color)=drawBehind{drawRect(color,style=Stroke(
         }
     }
 }
-@Composable internal fun MaterialReceiptImage(id:String,index:Int,onOpen:()->Unit,onRemove:(()->Unit)?,onPrevious:(()->Unit)?,onNext:(()->Unit)?,image:@Composable ()->Unit) {
+@Composable internal fun MaterialReceiptImage(id:String,index:Int,onOpen:()->Unit,onRemove:(()->Unit)?,onPrevious:(()->Unit)?,onNext:(()->Unit)?,onProcess:(()->Unit)?=null,enabled:Boolean=true,image:@Composable ()->Unit) {
     val t=LocalYohaku.current
     Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
         Box(Modifier.size(67.dp,99.dp).rotate(if(t.id=="journal")if(index%2==0)-3f else 3f else if(t.id=="objects")if(index%2==0)-4f else 5f else 0f).shadow(if(t.id=="magazine")0.dp else 3.dp,clip=false).background(Color.White).border(1.dp,t.line)) {
-            Box(Modifier.fillMaxSize().testTag("media-receipt-$id").clickable(role=Role.Button,onClickLabel=word("预览图片","画像を見る"),onClick=onOpen)) {image()}
+            Box(Modifier.fillMaxSize().testTag("media-receipt-$id").clickable(enabled=enabled,role=Role.Button,onClickLabel=word("预览图片","画像を見る"),onClick=onOpen)) {image()}
             YText("${index+1}",10,Modifier.align(Alignment.BottomEnd).padding(5.dp).background(t.surface).padding(horizontal=5.dp,vertical=2.dp),number=true)
-            onRemove?.let{MaterialRemove(Modifier.align(Alignment.TopEnd).offset(x=8.dp,y=(-8).dp),"media-receipt-remove-$id",word("移除这张图片","この画像を削除"),it)}
+            onRemove?.takeIf{enabled}?.let{MaterialRemove(Modifier.align(Alignment.TopEnd).offset(x=8.dp,y=(-8).dp),"media-receipt-remove-$id",word("移除这张图片","この画像を削除"),it)}
+        }
+        // A separate full-width action keeps processing clear of the remove/order controls.
+        onProcess?.let{process->
+            Box(Modifier.width(72.dp).heightIn(min=36.dp).testTag("media-receipt-process-$id")
+                .alpha(if(enabled)1f else .35f)
+                .border(1.dp,t.line,RoundedCornerShape(if(t.id=="objects")9.dp else 0.dp))
+                .clickable(enabled=enabled,role=Role.Button,onClick=process).padding(horizontal=3.dp,vertical=7.dp),contentAlignment=Alignment.Center) {
+                YText(word("处理这张","補正する"),10,color=t.accent)
+            }
         }
         if(onRemove!=null)Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
-            ReceiptOrder("←",word("提前一张","前に移動"),"media-receipt-previous-$id",onPrevious)
-            ReceiptOrder("→",word("后移一张","後に移動"),"media-receipt-next-$id",onNext)
+            ReceiptOrder("←",word("提前一张","前に移動"),"media-receipt-previous-$id",onPrevious?.takeIf{enabled})
+            ReceiptOrder("→",word("后移一张","後に移動"),"media-receipt-next-$id",onNext?.takeIf{enabled})
         }
     }
 }

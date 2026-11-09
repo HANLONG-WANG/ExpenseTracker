@@ -14573,6 +14573,30 @@
             "required": [],
             "type": "object"
         },
+        "preferences.scanAutoCapture": {
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "enabled"
+            ],
+            "type": "object"
+        },
+        "preferences.scanAutoProcess": {
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "enabled"
+            ],
+            "type": "object"
+        },
         "receipt.items.save": {
             "additionalProperties": false,
             "properties": {
@@ -19768,6 +19792,56 @@
                             },
                             "input": {
                                 "$ref": "#/$defs/preferences.photoStorage"
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "command",
+                            "command_version",
+                            "input"
+                        ],
+                        "type": "object"
+                    },
+                    {
+                        "additionalProperties": false,
+                        "properties": {
+                            "command": {
+                                "const": "preferences.scanAutoCapture"
+                            },
+                            "command_version": {
+                                "const": 1
+                            },
+                            "id": {
+                                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                                "type": "string"
+                            },
+                            "input": {
+                                "$ref": "#/$defs/preferences.scanAutoCapture"
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "command",
+                            "command_version",
+                            "input"
+                        ],
+                        "type": "object"
+                    },
+                    {
+                        "additionalProperties": false,
+                        "properties": {
+                            "command": {
+                                "const": "preferences.scanAutoProcess"
+                            },
+                            "command_version": {
+                                "const": 1
+                            },
+                            "id": {
+                                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                                "type": "string"
+                            },
+                            "input": {
+                                "$ref": "#/$defs/preferences.scanAutoProcess"
                             }
                         },
                         "required": [

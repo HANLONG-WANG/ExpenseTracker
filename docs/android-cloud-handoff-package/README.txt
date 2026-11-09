@@ -27,7 +27,7 @@ smoke_test.py 由开发者在测试账本使用，会向真实网站创建任务
 普通办理实际必带 yohaku-command-protocol-v1.md、yohaku-capabilities-v1.json、yohaku-command-plan-v1.schema.json、yohaku-ledger-context-v1.json；选范围才附 yohaku-records-v1.json，再附用户原样选择的截图/文件。结构是每任务自动上传，不只是所选资料；具体交易、图片字节和草稿不因结构上传而全量发送。
 月评初次上传协议、能力、方案schema、结构、yohaku-monthly-review-v1.json五份，不附逐笔或源文件。提醒仅提示，用户核对后才提交；历史可手动选择已结束月份。允许用户明确补充资料。
 助手只返回 yohaku.command-plan v1 JSON；手机校验与回滚试运行、事实/风险勾选后确认。无步骤是回答；月评message必须非空，steps为可选建议，领取即保存评语而不自动执行建议。手机按来源与plan_id去重，contextDigest来自原提交，catalogDigest须与当前注册表一致。
-当前88个命令，包含基础账本、规划、金融/额度、文件/偏好与月计划。新增 preferences.haptics（enabled 必填），与照片保存偏好一样为本机所有账本共用，比较原值并支持完成后的撤销。transactional原子写账，post-commit/interactive另排队、重试或由本机用户完成。整批撤销只有完整证据且无冲突时可用；不可自动撤销的步骤在预览说明。
+当前90个命令，包含基础账本、规划、金融/额度、文件/偏好与月计划。preferences.haptics、preferences.scanAutoCapture 和 preferences.scanAutoProcess（enabled 必填），与照片保存偏好一样为本机所有账本共用，比较原值并支持完成后的撤销。transactional原子写账，post-commit/interactive另排队、重试或由本机用户完成。整批撤销只有完整证据且无冲突时可用；不可自动撤销的步骤在预览说明。
 恢复备份、连接凭据/设备管理、所有永久删除永远禁止，包括未提交任务的放弃（cloud.task.discard）；回收/归档/停用允许。助手不得声明USER_FACT或提供任意SQL/路径/网络调用。
 此补充及formats/协议覆盖Word中仅描述通用文本另存、早期客户端范围的流程；Word保留原HTTP/API接入基线，网站接口契约不变。正式当前客户端规格见 ../implementation-spec.md 的3.2/3.3（从本目录为上一级）。
 协议唯一应用源文本位于assets，formats/为同步副本。能力说明和示例来源是适配器注册表；能力样例及完整command-plan.v1.schema.json由CommandCapabilitiesTest用同一更新开关生成；后者随任务以yohaku-command-plan-v1.schema.json上传。本次由验收方重新生成，不能手写生成内容或digest。完整格式与docs/formats逐文件同步。

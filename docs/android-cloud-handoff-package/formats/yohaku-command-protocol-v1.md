@@ -283,13 +283,14 @@
 - `book.select`：book 类型引用，可使用前序 book.create 输出。只切换当前选择，后面的账本写入仍限定 plan.book_id。归档账本可查看，回收站账本不可选择。
 - `preferences.reminders`：完整设置而非补丁。enabled 默认false；repayment/deadline/recurring/budget/funds 默认true；monthlyReview 默认true、独立于 enabled（关闭全部提醒须同时设 enabled=false 和 monthlyReview=false）；repaymentDays=[7,1]、deadlineDays=[3,1]、recurringDays=[1]、time=09:00。未知/不合法时间、天数拒绝，不能把省略理解为保持。
 - `preferences.automaticRates` / `preferences.location`：enabled 必填；前者全应用，后者本账本前台定位。`preferences.photoStorage`：original 必填，true原样，false节省空间，是全账本新表单默认，不重写旧照片。
+- `preferences.scanAutoCapture` / `preferences.scanAutoProcess`：`enabled` 必填（例如自动拍摄 `{"enabled":true}`、自动处理 `{"enabled":false}`），本机所有账本共用；初始偏好分别为 false / true。自动拍摄在轮廓可靠、画面及手机稳定时触发；关闭自动处理时相机原图跳过确认页，仍按照片保存方式优化或原样入库。「处理这张」是显式处理已有图片，始终进入确认/调整页，不受自动处理开关影响。两者只改偏好，不打开相机、不授权系统权限、不修改已保存图片；应用前比较原值，设置与效果凭据原子写入，支持撤销、冲突阻止和中断恢复，与照片保存偏好相同。
 - `preferences.haptics`：`enabled` 必填（例如 `{"enabled":true}`），本机所有账本共用，初始偏好默认 true。提交后应用前仍须匹配预览原值；设置与效果去重凭据原子保存。完成后可按同一偏好撤销机制恢复，当前值变化会阻止整批撤销；系统触摸振动设置仍生效。
 - 提醒或定位开启且当前缺系统权限时，手机追加 interactive 授权引导。助手不能授权、不能填权限声明。预览会标明；这类包含权限交互的步骤**整批不可撤销**。已有权限时只改偏好，可在完成且原值未变时撤销恢复。撤销不会撤回系统权限。
 - `attachment.attachSource`：entry 类型引用、sourceName 精确任务附件名称。**只准本方案来源任务已经上传的用户源文件**，不含自动生成的协议/能力/上下文/记录附件，不含其他任务、任意路径、URL或任意URI。原始字节已在手机，本机校验长度/哈希后附上。后续完成后可撤销本方案新增且未变化的关联，不删除源文件、不触发物理文件清理。
 
 需要你在本机操作：
 
-- `entry.prepareDraft`：set 默认空；media=NONE（默认）/ATTACHMENT/RECEIPT_IMAGES/RECEIPT_CAMERA，说明用户在普通表单中补附件、选小票图片或拍照。金额/分类等可留缺项；已有草稿会阻止覆盖。方案执行只生成一次持久草稿和引导，**保存必须由用户在本机表单亲自操作**。草稿补完不可作为整批自动撤销。
+- `entry.prepareDraft`：set 默认空；media=NONE（默认）/ATTACHMENT/RECEIPT_IMAGES/RECEIPT_CAMERA，说明用户在普通表单中补附件、选小票图片或在表单点「拍照」打开应用内扫描（相机→确认/调整→原目标入库）。金额/分类等可留缺项；已有草稿会阻止覆盖。方案执行只生成一次持久草稿和引导，**保存必须由用户在本机表单亲自操作**。草稿补完不可作为整批自动撤销。
 - `backup.export`：无输入；用户选择目录后调用完整备份。内容是用户开始导出时的全部账本、附件、偏好，不是预览时冻结的单账本快照。不能用于恢复备份。
 - `statement.exportOriginal`：batch，另存预览时同一份流水原件；`command.exportResult`：无输入，只另存当前方案收到的原始结果。导出目标由用户选择，助手不能填写目录或文件URI。
 - 导出器持久化目录/目标及固定文件身份，恢复时核验同一目标，不自动再弹选择器或另建副本。已有目标校验不符时提示检查后重试同一文件，不自动覆盖可能的用户修改。已导出文件不可整批撤销。用户改动、移除目标或源文件时显示失败，不能当作成功或跳过。

@@ -118,7 +118,7 @@ import java.time.YearMonth
 }
 
 // Preference keys are protocol identifiers, never display them as labels.
-private fun monthlyPreferenceName(key:String)=when(key){"activeBook"->"当前账本 / 現在の帳簿";"reminders"->"提醒设置 / 通知設定";"automaticRates"->"自动汇率 / 自動レート";"photoOriginal"->"照片保存 / 写真保存";"haptics"->"触感反馈 / 触覚フィードバック";"location"->"定位 / 位置情報";else->"偏好 / 設定"}
+private fun monthlyPreferenceName(key:String)=when(key){"scanAutoCapture"->"小票自动拍摄 / レシートの自動撮影";"scanAutoProcess"->"小票自动处理 / レシートの自動処理";"activeBook"->"当前账本 / 現在の帳簿";"reminders"->"提醒设置 / 通知設定";"automaticRates"->"自动汇率 / 自動レート";"photoOriginal"->"照片保存 / 写真保存";"haptics"->"触感反馈 / 触覚フィードバック";"location"->"定位 / 位置情報";else->"偏好 / 設定"}
 
 @Composable internal fun MonthlyHistoryScreen(s:BookSnapshot,vm:AppViewModel) {
     val cloud=vm.cloud?:return

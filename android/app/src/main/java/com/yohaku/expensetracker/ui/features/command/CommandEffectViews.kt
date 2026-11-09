@@ -258,12 +258,12 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     if(key.endsWith("At")&&raw.jsonPrimitive.longOrNull!=null)return word("记录时间：","記録日時：")+FinancialDisplayFacts.time(java.time.Instant.ofEpochMilli(raw.jsonPrimitive.long),java.time.ZoneId.systemDefault(),s.book.language)
     if(key in setOf("appliedAt","observedAt","recordedAt")&&raw.jsonPrimitive.isString)return (if(key=="recordedAt")word("记录时间：","記録日時：")else "")+FinancialDisplayFacts.time(java.time.Instant.parse(text),if(key=="observedAt")java.time.OffsetDateTime.parse(text).offset else zone?:java.time.OffsetDateTime.parse(text).offset,s.book.language)
     if((key.endsWith("Minor")||key=="minor")&&raw.jsonPrimitive.longOrNull!=null)return Money(Currency.valueOf(if(key in setOf("baseMinor","expectedBaseMinor"))s.book.currency else value.second?:currency),raw.jsonPrimitive.long).display()
-    if(key in setOf("automaticRates","location","haptics","enabled"))return if(text=="true"||text=="1")word("开","オン")else word("关","オフ")
+    if(key in setOf("automaticRates","location","haptics","scanAutoCapture","scanAutoProcess","enabled"))return if(text=="true"||text=="1")word("开","オン")else word("关","オフ")
     if(key=="photoOriginal")return if(text=="true")word("原样保存","そのまま保存")else word("节省空间","省容量")
     if(key=="activeBook")return resolveName(text,s,model)
     if(key in setOf("modulesJson","pinnedJson"))return when(text){"CATEGORIES"->word("分类","カテゴリ");"MERCHANTS"->word("商户","お店");"TREND"->word("趋势","推移");"ACTIVITIES"->word("活动","シーン");"COMPARISON"->word("对比","比較");else->word("无","なし")}
     if(key=="uncertain_fields")return fieldName(text)
-    if(key=="requestedMedia")return when(text){"ATTACHMENT"->word("在表单中选择附件","フォームで添付を選択");"RECEIPT_IMAGES"->word("在表单中选择小票图片","フォームでレシート画像を選択");"RECEIPT_CAMERA"->word("在表单中拍摄小票","フォームでレシートを撮影");else->word("补全记账资料","記録情報を補完")}
+    if(key=="requestedMedia")return when(text){"ATTACHMENT"->word("在表单中选择附件","フォームで添付を選択");"RECEIPT_IMAGES"->word("在表单中选择小票图片","フォームでレシート画像を選択");"RECEIPT_CAMERA"->word("在表单点「拍照」扫描小票","フォームの「撮影する」でレシートをスキャン");else->word("补全记账资料","記録情報を補完")}
     if(key=="permission")return if(text=="LOCATION")word("前台定位","前景の位置情報")else word("系统通知","システム通知")
     if(key=="direction")return if(text=="in")word("流入","入金")else word("流出","出金")
     if(key=="mode"&&text in setOf("interactive","post-commit"))return if(text=="interactive")word("需要你在本机操作","端末での操作が必要")else word("提交后执行","保存後に実行")

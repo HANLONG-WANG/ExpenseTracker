@@ -104,7 +104,9 @@ adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisua
 
 ## 照片与附件导入（2026-10-31 源码更新）
 
-表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`TakePicture` 调起系统默认相机，一次一张，写入 `cache/camera/IMG_yyyyMMdd_HHmmss.jpg`（FileProvider 授权；应用已声明 `CAMERA` 权限供独立的应用内相机页使用，因此现有系统相机入口也先请求该权限），之后按小票导入并删除临时文件。启动器挂在 `MainActivity`（`LocalReceiptCamera`），待处理的账本/表单会话/路径存于 saved state，拍照期间进程被回收也能导入已保存草稿。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），从相机或其他应用返回超过 5 秒也不会重建页面，记账弹层与滚动位置保持不变。云端分析台的选择器不变。
+表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`LocalReceiptCamera` 在 `MainActivity` 级打开 `ScanFlow` 应用内扫描相机，权限申请、拒绝与无相机状态由相机页处理，一次一张。默认拍照后进入确认/调整页，输出交给现有小票导入再清理扫描临时目录。待处理账本、草稿媒体会话或记录 ID、已有图片路径及表单保存选项存于 saved state；拍照/确认期间进程被回收，恢复后仍入库原目标。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），记账弹层与滚动位置保持不变。云端分析台选择器不变。
+
+相机页“自动拍摄”默认关，“自动处理”默认开，偏好跨账本共享并进入完整备份。关闭自动处理后原图直出、跳过确认页，仍按“原样保存（不压缩）”开关优化或保留字节；处理后的图片也按同一开关作为新照片入库。表单小票缩略图下的“处理这张”与排序按钮分行，始终打开已有图片确认/调整（即使自动处理关闭），确认后在同一媒体会话的原位置替换为新文件。已保存图片字节不改写，编辑保存按既有规则产生新小票修订；取消或入库失败保留旧图，旧文件沿用暂存/引用清理。扫描/处理与导入期间禁用其他媒体变更。云端 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 使用必填 `enabled`，支持原值比较、原子效果凭据、撤销及恢复；`entry.prepareDraft(media=RECEIPT_CAMERA)` 续办仍在表单点“拍照”打开此流程。阶段 4 的设备与三主题×中日文截图命令见 [扫描模块说明](tools/receipt-scanner/README.md#阶段-4接入入库与云端偏好)。
 
 应用内扫描阶段 1–3 已提供独立的 `ScanFlow`（尚未替换上述入口）：CameraX 预览/轮廓、补光、自动拍摄与自动处理开关，以及确认/轮廓调整/放大镜。已有图片可作为借用输入，相机关闭自动处理时原 JPEG 直出并标记未处理。偏好进入完整备份，旧备份默认自动拍摄关、自动处理开。临时文件统一位于 `cache/receipt-capture/`，确认/取消清理原图，启动清理超过 24 小时的残留；确认/调整状态可重建恢复。接口与完整命令见 [扫描模块说明](tools/receipt-scanner/README.md#阶段-3确认与轮廓调整)。`ScanCameraFlowTest` 和 `ScanReviewFlowTest` 支持 `looks=all visual=true`，截图分别在 `files/verification/receipt-camera/`、`files/verification/receipt-review/`；本轮仪器与视觉测试由用户运行，尚未目视验收。
 

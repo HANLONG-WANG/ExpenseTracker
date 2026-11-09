@@ -7,12 +7,20 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.yohaku.expensetracker.ui.features.scan.*
+import com.yohaku.expensetracker.receipt.scan.ScanTemporaryFiles
+import kotlinx.coroutines.*
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
+import com.yohaku.expensetracker.data.cloud.*
+import com.yohaku.expensetracker.data.command.*
+import kotlinx.serialization.json.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.features.*
@@ -26,38 +34,77 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class MediaFlowTest {
-    @get:Rule val ui=createComposeRule()
+    @get:Rule val ui=createAndroidComposeRule<ScanFlowTestActivity>()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
     private lateinit var root:File
+    private val preferenceScope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+    private lateinit var preferenceFile:File
+    private lateinit var prefs:AppPreferences
+    private lateinit var cloud:CloudRepository
+    private val sources=mutableListOf<StaticReceiptSource>()
+    private var previousScanDirectories=emptySet<File>()
+    private val scanRoot get()=File(instrumentation.targetContext.cacheDir,"receipt-capture")
+    private fun scanDirectories()=scanRoot.listFiles().orEmpty().filter{it !in previousScanDirectories}
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     @Before fun open() {
         val service=instrumentation.uiAutomation.serviceInfo;service.flags=service.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;instrumentation.uiAutomation.serviceInfo=service
         val context=instrumentation.targetContext
         root=File(File(context.filesDir,"attachments"),"ui-media-"+java.util.UUID.randomUUID()).apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db,mediaRoot=root)
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{
-            var camera:((String,ReceiptTarget)->Unit)?=null
-            androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides cameraOwner){camera=rememberReceiptCamera(vm)}
-            androidx.compose.runtime.CompositionLocalProvider(LocalReceiptCamera provides camera){NativeApp(vm)}
-        }
+        preferenceFile=File(context.cacheDir,"media-test-${java.util.UUID.randomUUID()}.preferences_pb")
+        prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=preferenceScope,produceFile={preferenceFile}))
+        previousScanDirectories=scanRoot.listFiles().orEmpty().toSet()
+        cloud=CloudRepository(context,repo,object:CloudCredentials {
+            override val connection=MutableStateFlow<CloudConnectionInfo?>(null)
+            override suspend fun credentials():CloudConnectionConfig?=null
+            override suspend fun save(config:CloudConnectionConfig)=Unit
+            override suspend fun markBound()=Unit
+            override suspend fun markNeedsReconnect()=Unit
+            override suspend fun clear()=Unit
+        },scheduleTransfer={},scheduleAcknowledgements={},commandReferenceSnapshot={emptyList()},commandPreferences=prefs)
+        vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock),cloud=cloud)
+        ui.runOnIdle { ScanFlowTestActivity.content={
+            ReceiptCameraHost(vm,scanFlow={ request,preferences,done,cancel ->
+                ScanFlowHost(request,preferences,done,cancel,
+                    sourceFactory={StaticReceiptSource(it,cameraPhoto,false,false).also(sources::add)},
+                    permissionOverride=CameraPermission.GRANTED,
+                    motionFactory={_,_->object:ScanMotionSource {
+                        override fun start()=Unit
+                        override fun isStill(nowMs:Long)=true
+                        override fun close()=Unit
+                    }})
+            }){NativeApp(vm)}
+        } }
     }
-    /** Stands in for the camera app: writes [cameraPhoto] into the EXTRA_OUTPUT uri, or cancels when null. */
-    private var cameraPhoto:ByteArray?=null
-    private val cameraOwner=object:androidx.activity.result.ActivityResultRegistryOwner {
-        override val activityResultRegistry=object:androidx.activity.result.ActivityResultRegistry() {
-            override fun <I,O> onLaunch(requestCode:Int,contract:androidx.activity.result.contract.ActivityResultContract<I,O>,input:I,options:androidx.core.app.ActivityOptionsCompat?) {
-                if(contract is androidx.activity.result.contract.ActivityResultContracts.RequestPermission) {
-                    assertEquals(android.Manifest.permission.CAMERA,input)
-                    dispatchResult(requestCode,true);return
-                }
-                val photo=cameraPhoto;if(photo!=null)instrumentation.targetContext.contentResolver.openOutputStream(input as android.net.Uri)!!.use{it.write(photo)}
-                dispatchResult(requestCode,photo!=null)
-            }
-        }
+    /** The production flow uses the same static CameraX source substitute as stage 2/3. */
+    private var cameraPhoto:ByteArray=byteArrayOf()
+    private fun syntheticReceipt()=instrumentation.context.assets.open("receipt-scanner/flat.jpg").use{it.readBytes()}
+    @After fun close(){
+        ui.runOnIdle{ScanFlowTestActivity.content={};sources.forEach{it.close()}}
+        vm.viewModelScope.cancel()
+        runBlocking{withContext(scanReviewWorker){};preferenceScope.coroutineContext[Job]!!.cancelAndJoin()}
+        db.close();root.deleteRecursively();preferenceFile.delete();scanDirectories().forEach(ScanTemporaryFiles::discard)
     }
-    @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
+    /** The receipt strip scrolls horizontally inside the vertically scrolling sheet; performScrollTo only scrolls the nearest scrollable parent. */
+    private fun receiptAction(tag:String)=ui.onNodeWithTag("media-receipt-strip").performScrollTo().let{ui.onNodeWithTag(tag).performScrollTo()}
+    private fun waitScan(tag:String) {
+        ui.waitUntil(180_000){ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()||ui.onAllNodesWithTag("scan-review-error").fetchSemanticsNodes().isNotEmpty()}
+        ui.onNodeWithTag("scan-review-error").assertDoesNotExist()
+        ui.onNodeWithTag(tag).assertIsDisplayed()
+    }
+    private fun shoot() {
+        waitScan("scan-shutter")
+        ui.waitUntil(30_000){ui.onAllNodes(hasTestTag("scan-shutter") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
+        ui.onNodeWithTag("scan-shutter").performClick()
+    }
+    private fun acceptScan():ByteArray {
+        waitScan("scan-result")
+        val result=scanDirectories().single{File(it,"automatic.jpg").isFile}.resolve("automatic.jpg").readBytes()
+        ui.onNodeWithTag("scan-use").performClick()
+        return result
+    }
     private fun nodes(root:AccessibilityNodeInfo?):List<AccessibilityNodeInfo> = if(root==null)emptyList()else listOf(root)+(0 until root.childCount).flatMap{nodes(root.getChild(it))}
     private fun systemNodes()=nodes(instrumentation.uiAutomation.rootInActiveWindow)
     private fun systemClick(text:String,long:Boolean=false,rootOnly:Boolean=false) {
@@ -220,36 +267,149 @@ class MediaFlowTest {
             }
         }finally{runBlocking{vm.preferences.setPhotoSaveOriginal(previous)};listOf("photo.png","broken.png","missing.txt").forEach{File(context.filesDir,"attachments/ui-source-$it").delete()}}
     }
+    private fun startMediaDraft(theme:String="magazine",language:String="zh"):String {
+        val book=runBlocking {
+            val id=repo.createBook("小票 $theme $language",Currency.JPY,theme,language)
+            repo.updateBook(repo.dao.book(id)!!.copy(initialized=true))
+            repo.saveAccount(id,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+            repo.saveCategory(id,"生活",EntryKind.EXPENSE,null);prefs.select(id);id
+        }
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value&&vm.photoSaveOriginal.value!=null}
+        val snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+        ui.runOnIdle{vm.startEntry(snapshot);vm.changeEntry(book,vm.entry.value!!.copy(categoryId=snapshot.categories.first().id,amount="100",merchant="扫描测试"));vm.navigate("entry")}
+        ui.waitUntil(10000){!vm.busy.value}
+        return book
+    }
     @Test fun cameraCapturesOneReceiptThroughImportAndRemovesTemporaryFile() {
-        val context=instrumentation.targetContext;val cache=File(context.cacheDir,"camera")
+        cameraPhoto=syntheticReceipt()
+        val book=startMediaDraft()
+        ui.runOnIdle{vm.setMediaImportOption(vm.entry.value!!.mediaSession,true)}
+        ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick()
+        shoot();val processed=acceptScan()
+        ui.waitUntil(15000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==1}
+        val stored=runBlocking{repo.dao.file(book,vm.entry.value!!.receiptFileIds.single())!!}
+        assertEquals("image/jpeg",stored.mime);assertArrayEquals(processed,repo.mediaFile(stored).readBytes())
+        assertFalse(cameraPhoto.contentEquals(processed));assertTrue(scanDirectories().isEmpty())
+        ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick()
+        waitScan("scan-camera");ui.onNodeWithTag("scan-back").performClick()
+        ui.waitUntil{!vm.busy.value};assertEquals(1,vm.entry.value!!.receiptFileIds.size);assertTrue(scanDirectories().isEmpty())
+    }
+    @Test fun unprocessedCameraOriginalFollowsBothStorageOptions() {
         cameraPhoto=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(2400,4800,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.WHITE);compress(Bitmap.CompressFormat.JPEG,95,out);recycle()}}.toByteArray()
-        for((theme,language) in testLooks(this@MediaFlowTest)) {
-            val book=runBlocking {
-                val id=repo.createBook("拍照 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(id)!!.copy(initialized=true))
-                repo.saveAccount(id,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01");repo.saveCategory(id,"生活",EntryKind.EXPENSE,null);vm.preferences.select(id);id
+        runBlocking{prefs.setScanAutoProcess(false)}
+        val book=startMediaDraft()
+        for((index,original) in listOf(false,true).withIndex()) {
+            ui.runOnIdle{vm.setMediaImportOption(vm.entry.value!!.mediaSession,original)}
+            ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();shoot()
+            ui.waitUntil(15000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==index+1}
+            ui.onNodeWithTag("scan-review").assertDoesNotExist()
+            val stored=runBlocking{repo.dao.file(book,vm.entry.value!!.receiptFileIds[index])!!}
+            val file=repo.mediaFile(stored)
+            if(original)assertArrayEquals(cameraPhoto,file.readBytes())else {
+                val size=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}.also{android.graphics.BitmapFactory.decodeFile(file.path,it)}
+                assertEquals(2000,minOf(size.outWidth,size.outHeight));assertFalse(cameraPhoto.contentEquals(file.readBytes()))
             }
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value&&vm.photoSaveOriginal.value!=null}
-            val snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
-            ui.runOnIdle{vm.startEntry(snapshot);vm.changeEntry(book,vm.entry.value!!.copy(categoryId=snapshot.categories.first().id));vm.navigate("entry")}
-            ui.waitUntil(10000){!vm.busy.value}
-            ui.runOnIdle{vm.setMediaImportOption(vm.entry.value!!.mediaSession,false)}
-            ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick()
-            ui.waitUntil(15000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==1}
-            val stored=runBlocking{repo.dao.file(book,vm.entry.value!!.receiptFileIds.single())!!}
-            assertEquals("image/jpeg",stored.mime);assertTrue(stored.originalName.matches(Regex("IMG_\\d{8}_\\d{6}\\.jpg")))
-            val size=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}.also{android.graphics.BitmapFactory.decodeFile(repo.mediaFile(stored).path,it)}
-            assertEquals(2000,minOf(size.outWidth,size.outHeight))
-            assertTrue(cache.listFiles().isNullOrEmpty())
+            assertTrue(scanDirectories().isEmpty())
+        }
+    }
+    @Test fun processingReplacesImageAtItsPositionAndSavingCreatesNewRevision() {
+        val book=startMediaDraft();val draft=vm.entry.value!!
+        val bytes=syntheticReceipt()
+        val ids=runBlocking{(1..3).map{repo.importMedia(book,draft.mediaSession,"album-$it.jpg","image/jpeg",true,true){bytes.inputStream()}.id}}
+        ui.runOnIdle{vm.changeEntry(book,vm.entry.value!!.copy(receiptFileIds=ids))}
+        ui.waitUntil{!vm.busy.value}
+        ui.entryAction("entry-save-button").performClick()
+        ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+        val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()};val event=saved.events.single()
+        ui.runOnIdle{vm.editEntry(saved,event)};ui.waitUntil{!vm.busy.value}
+        runBlocking{prefs.setScanAutoProcess(false)} // Explicit processing must still open review.
+        ui.runOnIdle{vm.setMediaImportOption(vm.entry.value!!.mediaSession,true)}
+        receiptAction("media-receipt-process-${ids[1]}").performClick()
+        waitScan("scan-result");assertTrue(vm.busy.value)
+        ui.activityRule.scenario.recreate();waitScan("scan-result")
+        val processed=acceptScan()
+        ui.waitUntil(10000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.get(1)!=ids[1]}
+        val replacement=vm.entry.value!!.receiptFileIds[1]
+        assertEquals(listOf(ids[0],replacement,ids[2]),vm.entry.value!!.receiptFileIds)
+        val current=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+        assertArrayEquals(processed,repo.mediaFile(current.files.single{it.id==replacement}).readBytes())
+        assertEquals(ids,current.entryReceiptImages(event.id).map{it.id})
+        assertArrayEquals(bytes,repo.mediaFile(current.files.single{it.id==ids[1]}).readBytes())
+        ui.entryAction("entry-save-button").performClick();ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+        val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+        assertEquals(2,after.receipts.single().revision)
+        assertEquals(listOf(ids[0],replacement,ids[2]),after.entryReceiptImages(event.id).map{it.id})
+        assertEquals(ids,after.receiptImages.filter{it.revision==1}.sortedBy{it.position}.map{it.fileId})
+        assertArrayEquals(bytes,repo.mediaFile(after.files.single{it.id==ids[1]}).readBytes());assertTrue(scanDirectories().isEmpty())
+    }
+    @Test fun restoredScanImportsToOriginalDraftEvenWithDifferentOpenBook() {
+        cameraPhoto=syntheticReceipt()
+        val original=startMediaDraft();val session=vm.entry.value!!.mediaSession
+        ui.runOnIdle{vm.setMediaImportOption(session,true)}
+        ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();shoot();waitScan("scan-result")
+        val other=runBlocking{repo.createBook("另一账本",Currency.JPY).also{repo.updateBook(repo.dao.book(it)!!.copy(initialized=true));prefs.select(it)}}
+        // Drop the old ViewModel as process recreation would; saved Compose state restores the request.
+        ui.runOnIdle{vm.viewModelScope.cancel();vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))}
+        ui.activityRule.scenario.recreate()
+        waitScan("scan-result");val processed=acceptScan()
+        ui.waitUntil(15000){!vm.busy.value&&runBlocking{repo.dao.storedDraft(original)?.let{repo.json.decodeFromString<EntryDraft>(it.json).receiptFileIds.size==1}==true}}
+        val restored=runBlocking{repo.json.decodeFromString<EntryDraft>(repo.dao.storedDraft(original)!!.json)}
+        assertEquals(session,restored.mediaSession);assertEquals(1,restored.receiptFileIds.size)
+        assertArrayEquals(processed,repo.mediaFile(runBlocking{repo.dao.file(original,restored.receiptFileIds.single())!!}).readBytes())
+        assertNull(runBlocking{repo.dao.storedDraft(other)});assertNull(vm.entry.value);assertTrue(scanDirectories().isEmpty())
+    }
+    @Test fun cloudReceiptCameraFollowupOpensScanAndKeepsDraftTarget() {
+        cameraPhoto=syntheticReceipt()
+        val book=startMediaDraft()
+        ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil{vm.entry.value==null&&!vm.busy.value}
+        val commands=cloud.commands
+        val row=runBlocking {
+            val s=repo.snapshot(repo.dao.book(book)!!).first()
+            fun step(id:String,name:String,input:String)=CommandStep(id,name,1,commandJson.parseToJsonElement(input).jsonObject)
+            val plan=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),book,commands.registry.catalogDigest,
+                repo.commandExports(book,RecordScope(),prefs).context.contextDigest,steps=listOf(
+                    step("capture","preferences.scanAutoCapture","""{"enabled":true}"""),
+                    step("process","preferences.scanAutoProcess","""{"enabled":false}"""),
+                    step("draft","entry.prepareDraft","""{"set":{"account":"${s.accounts.single().id}","category":"${s.categories.first().id}","merchant":"云端扫描"},"media":"RECEIPT_CAMERA"}""")))
+            commands.receive(commandClaim(plan),"https://example.test",plan.context_digest).also{commands.preview(it.planId)}
+        }
+        ui.runOnIdle{vm.openCommandPlan(row.planId)}
+        ui.waitUntil(10000){ui.onAllNodesWithTag("command-draft-field-media").fetchSemanticsNodes().isNotEmpty()}
+        ui.onNodeWithTag("command-step-capture").assert(hasAnyDescendant(hasText("小票自动拍摄",substring=true)))
+        ui.onNodeWithTag("command-step-process").assert(hasAnyDescendant(hasText("小票自动处理",substring=true)))
+        ui.onNodeWithTag("command-draft-field-media").assert(hasAnyDescendant(hasText("拍照",substring=true)))
+        runBlocking{commands.confirm(row.planId,commandChecks(commands.confirmation(commands.plan(row.planId))!!))}
+        ui.waitUntil(10000){ui.onAllNodesWithTag("command-followup-continue-draft-DRAFT").fetchSemanticsNodes().isNotEmpty()}
+        ui.onNodeWithTag("command-followup-continue-draft-DRAFT").performScrollTo().performClick()
+        ui.onNodeWithTag("command-followup-camera-guide").assertTextContains("拍照",substring=true)
+        ui.onNodeWithTag("command-followup-open-draft").performScrollTo().performClick()
+        ui.waitUntil(10000){vm.entry.value!=null&&!vm.busy.value&&vm.route.value=="entry"}
+        val session=vm.entry.value!!.mediaSession
+        ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();waitScan("scan-camera")
+        ui.activityRule.scenario.recreate();waitScan("scan-camera");shoot()
+        ui.waitUntil(10000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==1}
+        assertEquals(session,vm.entry.value!!.mediaSession)
+        val stored=runBlocking{repo.json.decodeFromString<EntryDraft>(repo.dao.storedDraft(book)!!.json)}
+        assertEquals(session,stored.mediaSession);assertEquals(vm.entry.value!!.receiptFileIds,stored.receiptFileIds)
+        assertTrue(runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}.events.isEmpty())
+        assertTrue(scanDirectories().isEmpty())
+    }
+    @Test fun receiptProcessingActionsAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val book=startMediaDraft(theme,language);val draft=vm.entry.value!!;val bytes=syntheticReceipt()
+            val ids=runBlocking{(1..3).map{repo.importMedia(book,draft.mediaSession,"receipt-$it.jpg","image/jpeg",true,true){bytes.inputStream()}.id}}
+            ui.runOnIdle{vm.changeEntry(book,vm.entry.value!!.copy(receiptFileIds=ids))};ui.waitUntil{!vm.busy.value}
+            receiptAction("media-receipt-process-${ids[0]}").assertIsDisplayed()
+                .assertTextContains(if(language=="ja")"補正する"else"处理这张",substring=true)
+            ui.onNodeWithTag("media-receipt-next-${ids[0]}").assertIsEnabled()
+            ui.onNodeWithTag("media-receipt-remove-${ids[0]}").assertIsDisplayed()
             if(visualEnabled()) {
-                ui.onNodeWithTag("media-take-receipt").performScrollTo();ui.waitForIdle()
-                val bitmap=instrumentation.uiAutomation.takeScreenshot();val folder=File(context.filesDir,"verification/media-import").apply{mkdirs()}
-                File(folder,"$theme-$language-camera.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+                ui.waitForIdle();android.os.SystemClock.sleep(350)
+                val bitmap=instrumentation.uiAutomation.takeScreenshot()
+                val folder=File(instrumentation.targetContext.filesDir,"verification/receipt-media").apply{mkdirs()}
+                File(folder,"$theme-$language-actions${InstrumentationRegistry.getArguments().getString("captureSuffix", "")}.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
             }
-            val photo=cameraPhoto;cameraPhoto=null
-            ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();ui.waitForIdle()
-            assertEquals(1,vm.entry.value!!.receiptFileIds.size);assertTrue(cache.listFiles().isNullOrEmpty())
-            cameraPhoto=photo
-            ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+            ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil{vm.entry.value==null&&!vm.busy.value}
         }
     }
     /** A saved record without receipts takes its first ones on the detail page; storage follows the global photo setting. */
@@ -258,7 +418,7 @@ class MediaFlowTest {
         val png=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(40,20,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.BLUE);compress(Bitmap.CompressFormat.PNG,100,out);recycle()}}.toByteArray()
         val pick=File(context.filesDir,"attachments/ui-source-record.png").apply{writeBytes(png)}
         val uri=androidx.core.content.FileProvider.getUriForFile(context,context.packageName+".files",pick,"record.png").buildUpon().appendQueryParameter("mime","image/png").build()
-        cameraPhoto=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(2400,4800,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.WHITE);compress(Bitmap.CompressFormat.JPEG,95,out);recycle()}}.toByteArray()
+        cameraPhoto=syntheticReceipt()
         fun current()=(vm.state.value as? AppState.Ready)?.snapshot
         fun openDetail(event:String){ui.runOnIdle{vm.navigate("home")};ui.revealOnPage("event-$event").performClick();ui.waitUntil(10000){vm.route.value=="detail"}}
         try {
@@ -296,12 +456,17 @@ class MediaFlowTest {
                 ui.waitUntil(10000){vm.photoSaveOriginal.value==false}
                 openDetail(shot)
                 ui.onNodeWithTag("record-take-receipt").performScrollTo().performClick()
+                shoot();waitScan("scan-result");ui.activityRule.scenario.recreate()
+                val processed=acceptScan()
                 ui.waitUntil(15000){!vm.busy.value&&current()?.entryReceiptImages(shot)?.size==1}
                 val stored=current()!!.entryReceiptImages(shot).single()
                 assertEquals("image/jpeg",stored.mime)
                 val size=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}.also{android.graphics.BitmapFactory.decodeFile(repo.mediaFile(stored).path,it)}
-                assertEquals(2000,minOf(size.outWidth,size.outHeight))
-                assertTrue(File(context.cacheDir,"camera").listFiles().isNullOrEmpty())
+                val raw=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}.also{android.graphics.BitmapFactory.decodeByteArray(processed,0,processed.size,it)}
+                val expected=optimizedPhotoSize(raw.outWidth,raw.outHeight,true)
+                assertEquals(expected.width,size.outWidth);assertEquals(expected.height,size.outHeight)
+                assertEquals(1,current()!!.receipts.single{it.eventId==shot}.revision)
+                assertTrue(scanDirectories().isEmpty())
                 ui.onAllNodesWithTag("record-take-receipt").assertCountEquals(0)
             }
         }finally{runBlocking{vm.preferences.setPhotoSaveOriginal(previous)};pick.delete()}

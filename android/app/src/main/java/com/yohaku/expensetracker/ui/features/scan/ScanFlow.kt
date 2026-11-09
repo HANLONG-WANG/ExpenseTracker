@@ -24,7 +24,7 @@ private data class ScanFlowState(
     val ended: Boolean = false,
 )
 
-/** Complete standalone scan flow. Does not open any existing import/record entry point.
+/** Complete scan flow. The caller imports the output into its saved draft/record target.
  * Output is a JPEG in scan cache, owned by onDone; delete it (and its parent) after import.
  * Original scan photos are removed BEFORE onDone/onCancel. Existing-image input is borrowed.
  */

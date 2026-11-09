@@ -44,7 +44,7 @@ class MainActivity:ComponentActivity() {
             val target=reminderBook.collectAsState().value
             androidx.compose.runtime.LaunchedEffect(target){target?.let{vm.openReminderBook(it.first,it.second);reminderBook.value=null}}
             var backupResult by rememberSaveable {mutableStateOf(resultText)}
-            CompositionLocalProvider(LocalReceiptCamera provides rememberReceiptCamera(vm)){NativeApp(vm,backupResult,{backupResult=null})}
+            ReceiptCameraHost(vm){NativeApp(vm,backupResult,{backupResult=null})}
         }
     }
 }
