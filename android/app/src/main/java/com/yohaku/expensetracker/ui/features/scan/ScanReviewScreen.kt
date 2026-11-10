@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.components.*
+import com.yohaku.expensetracker.receipt.scan.ScanGeometryUnavailable
 import com.yohaku.expensetracker.ui.theme.*
 import kotlinx.coroutines.*
 import java.io.File
@@ -23,25 +24,32 @@ import java.io.File
     var images by remember { mutableStateOf<ScanReviewImages?>(null) }
     var busy by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
+    var geometryUnavailable by remember { mutableStateOf(false) }
     var operation by remember { mutableStateOf(ScanReviewOperation.LOAD) }
     var attempt by remember { mutableIntStateOf(0) }
     val currentState by rememberUpdatedState(state)
     val update by rememberUpdatedState(onState)
     fun run(action: ScanReviewOperation) { operation = action; busy = true; attempt++ }
     LaunchedEffect(attempt) {
-        busy = true; failed = false
+        busy = true; failed = false; geometryUnavailable = false
         try {
             val (next, loaded) = withContext(scanReviewWorker) { loadScanReview(context, currentState, operation) }
             images = loaded; update(next)
         } catch (e: CancellationException) { throw e }
+        catch (e: ScanGeometryUnavailable) {
+            // Automatic processing returns NotDetected; a manual render keeps its editable draft.
+            android.util.Log.i("ScanReview", "Contour needs adjustment: ${e.message}")
+            geometryUnavailable = true
+        }
         catch (e: Exception) { android.util.Log.e("ScanReview", "Receipt processing failed", e); failed = true }
         finally { busy = false }
     }
     ScanReviewPage(state, images, busy, failed, source, onUse = { onUse(state.result) }, onLeave, onCancel,
-        onChange = { onState(state.copy(draft = it)) },
+        onChange = { geometryUnavailable = false; onState(state.copy(draft = it)) },
         onEdit = { onState(state.copy(editing = true, draft = state.accepted ?: state.automatic)) },
         onRender = { run(ScanReviewOperation.RENDER) }, onRestore = { run(ScanReviewOperation.RESTORE) }, onRetry = { run(operation) },
-        onCancelEdit = { if (state.hasResult) { failed = false; onState(state.copy(editing = false, draft = state.accepted ?: state.automatic)) } else onCancel() })
+        onCancelEdit = { geometryUnavailable = false; if (state.hasResult) { failed = false; onState(state.copy(editing = false, draft = state.accepted ?: state.automatic)) } else onCancel() },
+        geometryUnavailable = geometryUnavailable)
 }
 
 /** Production presentation also used for deterministic in-flight screenshots, without delaying inference. */
@@ -50,6 +58,7 @@ import java.io.File
     onUse: () -> Unit, onLeave: () -> Unit, onCancel: () -> Unit,
     onChange: (com.yohaku.expensetracker.receipt.scan.ScanContour) -> Unit,
     onEdit: () -> Unit, onRender: () -> Unit, onRestore: () -> Unit, onRetry: () -> Unit, onCancelEdit: () -> Unit,
+    geometryUnavailable: Boolean = false,
 ) {
     Column(Modifier.fillMaxSize().scanPaper().safeDrawingPadding().padding(16.dp).testTag("scan-review"),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -66,9 +75,10 @@ import java.io.File
         }
         if (!busy && !failed) {
             if (state.editing) ScanCaption(
-                if (state.notDetected && !state.hasResult) word("没找到小票，请拖动边框", "レシートが見つかりません。枠をドラッグしてください")
+                if (geometryUnavailable) word("轮廓不足以处理，请调整左右边缘和上下端线", "輪郭を補正できません。左右の縁と上下の端を調整してください")
+                else if (state.notDetected && !state.hasResult) word("没找到小票，请拖动边框", "レシートが見つかりません。枠をドラッグしてください")
                 else word("拖动控制点贴合边缘 · 拖动时放大", "点を縁に合わせる・ドラッグ中に拡大"),
-                Modifier.fillMaxWidth().testTag("scan-review-hint"), attention = state.notDetected && !state.hasResult)
+                Modifier.fillMaxWidth().testTag("scan-review-hint"), attention = geometryUnavailable || (state.notDetected && !state.hasResult))
             else ScanCaption(word("检查边缘与文字，确认后使用", "縁と文字を確かめてから使用してください"), Modifier.fillMaxWidth())
         }
         ScanReviewActions(state, busy, failed, source, onUse, onLeave, onEdit, onRender, onRestore, onCancelEdit)

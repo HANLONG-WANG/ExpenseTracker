@@ -209,14 +209,14 @@ private fun Context.activity(): Activity = when (this) {
                     AndroidView(factory = { source.view }, modifier = Modifier.fillMaxSize())
                     ScanContourOverlay(cameraFrame, Modifier.fillMaxSize())
                     if (BuildConfig.DEBUG) YText(
-                        "%.1f fps\n%s".format(cameraFrame?.fps ?: 0.0, cameraFrame?.actualEps?.entries?.joinToString("\n") { "${it.key}: ${it.value}" } ?: "EP …"),
+                        "%.1f fps · dropped %d\n%s".format(cameraFrame?.fps ?: 0.0, cameraFrame?.failedFrames ?: 0, cameraFrame?.actualEps?.entries?.joinToString("\n") { "${it.key}: ${it.value}" } ?: "EP …"),
                         10, Modifier.align(Alignment.TopStart).background(t.ink.copy(alpha = .85f)).padding(8.dp).testTag("scan-debug"), color = t.surface,
                     )
                 }
             }
         } else ScanStatus(
             if (cameraIssue == CameraIssue.NO_CAMERA) word("此设备没有可用的后置相机", "この端末には使用できる背面カメラがありません")
-            else word("相机或轮廓分析失败，请重试", "カメラまたは輪郭の解析に失敗しました。再試行してください"),
+            else word("相机连接失败，请重试", "カメラに接続できませんでした。再試行してください"),
             Modifier.testTag("scan-camera-error"), action = { YButton(word("重试", "再試行"), retry, primary = true) })
     }
     val hint = cameraFrame?.hint ?: ScanHint.CENTER

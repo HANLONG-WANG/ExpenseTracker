@@ -14,6 +14,7 @@ import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Observer
 import com.yohaku.expensetracker.BuildConfig
 import com.yohaku.expensetracker.receipt.scan.*
 import org.opencv.core.Core
@@ -30,6 +31,7 @@ internal data class ScanCameraFrame(
     val timestampMs: Long,
     val fps: Double,
     val actualEps: Map<String, String>,
+    val failedFrames: Int = 0,
 )
 internal enum class CameraIssue { NO_CAMERA, FAILED }
 internal interface ScanCameraListener {
@@ -82,6 +84,14 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
     private var camera: Camera? = null
     private var listener: ScanCameraListener? = null
     private var lastDelivered = 0L
+    private val frameFailures = ScanFrameFailures { count, error ->
+        Log.w("ScanCamera", "Dropped analysis frame; total failures=$count", error)
+    }
+    private val cameraStateObserver = Observer<CameraState> { state ->
+        state.error?.let { error ->
+            if (!closed.get()) fail(IllegalStateException("Camera error ${error.code}", error.cause))
+        }
+    }
 
     override fun start(owner: LifecycleOwner, listener: ScanCameraListener) {
         this.listener = listener
@@ -114,6 +124,7 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
                     camera = p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, group)
                     a.setAnalyzer(worker, ::analyze)
                     listener.ready(checkNotNull(camera).cameraInfo.hasFlashUnit())
+                    checkNotNull(camera).cameraInfo.cameraState.observe(owner, cameraStateObserver)
                 } catch (e: Exception) { fail(e) }
             }, main)
         }
@@ -123,34 +134,35 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
         val began = SystemClock.elapsedRealtime()
         try {
             if (closed.get()) return
-            val engine = processor ?: ScanFrameProcessor(context).also { processor = it }
-            val bgr = rgbaToUpright(image)
-            try {
-                val source = ImageProxyTransformFactory().apply { isUsingCropRect = true; isUsingRotationDegrees = true }.getOutputTransform(image)
-                val (result, smooth) = engine.analyze(bgr, began)
-                val hint = scanHint(result, bgr.cols(), bgr.rows(), smooth.stable)
-                // Integer OpenCV pixel centers -> CameraX edge coordinates (+0.5), as ReceiptBench.
-                val points = smooth.points.flatMap { listOf((it.x * bgr.cols() + .5).toFloat(), (it.y * bgr.rows() + .5).toFloat()) }.toFloatArray()
-                main.execute {
-                    if (!closed.get()) {
-                        val target = view.outputTransform
-                        if (target != null) {
-                            CoordinateTransform(source, target).mapPoints(points)
-                            val now = SystemClock.elapsedRealtime()
-                            val fps = if (lastDelivered == 0L) 0.0 else 1000.0 / (now - lastDelivered).coerceAtLeast(1)
-                            lastDelivered = now
-                            if (BuildConfig.DEBUG) Log.d("ScanCamera", "fps=$fps arrival-to-overlay=${now-began}ms")
-                            listener?.frame(ScanCameraFrame(points.asList().chunked(2).map { ScanPoint(it[0].toDouble()/view.width, it[1].toDouble()/view.height) }, hint, began, fps, result.diagnostics.actualEps))
+            frameFailures.dropping(began) {
+                val engine = processor ?: ScanFrameProcessor(context).also { processor = it }
+                val bgr = rgbaToUpright(image)
+                try {
+                    val source = ImageProxyTransformFactory().apply { isUsingCropRect = true; isUsingRotationDegrees = true }.getOutputTransform(image)
+                    val (result, smooth) = engine.analyze(bgr, began)
+                    val hint = scanHint(result, bgr.cols(), bgr.rows(), smooth.stable)
+                    // Integer OpenCV pixel centers -> CameraX edge coordinates (+0.5), as ReceiptBench.
+                    val points = smooth.points.flatMap { listOf((it.x * bgr.cols() + .5).toFloat(), (it.y * bgr.rows() + .5).toFloat()) }.toFloatArray()
+                    main.execute {
+                        if (!closed.get()) frameFailures.dropping(SystemClock.elapsedRealtime()) {
+                            val target = view.outputTransform
+                            if (target != null) {
+                                CoordinateTransform(source, target).mapPoints(points)
+                                val now = SystemClock.elapsedRealtime()
+                                val fps = if (lastDelivered == 0L) 0.0 else 1000.0 / (now - lastDelivered).coerceAtLeast(1)
+                                lastDelivered = now
+                                if (BuildConfig.DEBUG) Log.d("ScanCamera", "fps=$fps arrival-to-overlay=${now-began}ms")
+                                listener?.frame(ScanCameraFrame(points.asList().chunked(2).map { ScanPoint(it[0].toDouble()/view.width, it[1].toDouble()/view.height) }, hint, began, fps, result.diagnostics.actualEps, frameFailures.count))
+                            }
                         }
                     }
-                }
-            } finally { bgr.release() }
-        } catch (e: Exception) { main.execute { if (!closed.get()) fail(e) } }
-        finally { image.close() }
+                } finally { bgr.release() }
+            }
+        } finally { image.close() }
     }
 
     private fun fail(e: Exception) {
-        Log.e("ScanCamera", "Camera/analysis failed", e)
+        Log.e("ScanCamera", "Camera failed", e)
         analysis?.clearAnalyzer()
         listener?.failed(CameraIssue.FAILED, e)
     }
@@ -172,6 +184,7 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         analysis?.clearAnalyzer()
+        camera?.cameraInfo?.cameraState?.removeObserver(cameraStateObserver)
         camera?.cameraControl?.enableTorch(false)
         val cases = listOfNotNull(analysis, preview, capture).toTypedArray()
         if (cases.isNotEmpty()) provider?.unbind(*cases)

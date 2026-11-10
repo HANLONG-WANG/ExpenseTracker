@@ -183,10 +183,10 @@ Room 33→34：`recurrences` 增加 `merchant`/`note`（NOT NULL DEFAULT ''）�
 
 | 类（省略 `com.yohaku.expensetracker.`） | 目的 |
 |---|---|
-| JVM `receipt.scan.ScannerNumericsTest`、`receipt.scan.ScanContourEditorTest`、`ui.features.scan.ScanCapturePolicyTest` | 数值金标准、轮廓/坐标/文件交接、平滑/提示/自动拍摄 |
+| JVM `receipt.scan.ScannerNumericsTest`、`receipt.scan.ScanContourEditorTest`、`receipt.scan.ScanOrientationTest`、`ui.features.scan.ScanCapturePolicyTest`、`ui.features.scan.ScanFrameFailuresTest` | 数值金标准、±45° 纠斜、轮廓/坐标/文件交接、平滑/提示/自动拍摄、异常帧恢复与日志节流 |
 | JVM `PhotoStorageTest`、`data.repository.CommandScanPreferencesTest`、`data.command.CommandCapabilitiesTest` | 旧备份默认、偏好原子应用/撤销、能力/schema 一致性 |
-| 仪器 `receipt.scan.ReceiptScannerTest` | 合成图完整引擎、CPU 回退、EXIF、Python 金标准 |
-| 仪器 `ScanCameraFlowTest`、`ScanReviewFlowTest`、`MediaFlowTest` | 静态相机、确认/调整/恢复、原目标入库及原位置替换；也包含视觉方法 |
+| 仪器 `receipt.scan.ReceiptScannerTest` | 合成图完整引擎、宽短裁图方向与上下标记、几何不足、CPU 回退、EXIF、Python 金标准 |
+| 仪器 `ScanCameraFlowTest`、`ScanReviewFlowTest`、`MediaFlowTest` | 静态相机连续异常帧恢复、几何不足进入/保留调整、解码错误、确认/恢复、原目标入库及原位置替换；也包含视觉方法 |
 | 仪器 `BackupRoundTripTest`、`CommandWorkflowExecutionTest` 指定方法 | 扫描偏好备份、命令执行/撤销/冲突/中断恢复 |
 
 ```sh
@@ -194,7 +194,7 @@ GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches \
   ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
   :app:testDebugUnitTest \
   --tests 'com.yohaku.expensetracker.receipt.scan.*' \
-  --tests 'com.yohaku.expensetracker.ui.features.scan.ScanCapturePolicyTest' \
+  --tests 'com.yohaku.expensetracker.ui.features.scan.*' \
   --tests 'com.yohaku.expensetracker.PhotoStorageTest' \
   --tests 'com.yohaku.expensetracker.data.repository.CommandScanPreferencesTest' \
   --tests 'com.yohaku.expensetracker.data.command.CommandCapabilitiesTest'

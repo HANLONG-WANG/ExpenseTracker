@@ -18,6 +18,7 @@ import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.repository.AppPreferences
 import com.yohaku.expensetracker.receipt.scan.ScanPoint
+import com.yohaku.expensetracker.receipt.scan.ScanRegressionPhotos
 import com.yohaku.expensetracker.ui.features.scan.*
 import com.yohaku.expensetracker.ui.theme.YohakuTheme
 import kotlinx.coroutines.*
@@ -105,6 +106,32 @@ class ScanCameraFlowTest {
             toggle("scan-auto-capture").assertIsOff()
         }
         assertEquals(0, captured)
+    }
+
+    @Test fun incompleteFramesAndUnexpectedFailureDoNotInterruptAnalysis() {
+        ui.setContent {
+            YohakuTheme("magazine", "zh") {
+                ScanCameraHost(ScanCameraRequest("frame-sequence"), prefs, {}, { _, _ -> fail("Unexpected capture") },
+                    sourceFactory = { source(it) }, permissionOverride = CameraPermission.GRANTED, motionFactory = still)
+            }
+        }
+        waitForSource()
+        val source = sources.single()
+        val frames = listOf(ScanRegressionPhotos.empty(), ScanRegressionPhotos.corner(),
+            ScanRegressionPhotos.insufficientGeometry(), byteArrayOf(1, 2, 3), photo)
+        for ((index, bytes) in frames.withIndex()) {
+            ui.runOnIdle { source.analyzePhoto(bytes) }
+            ui.waitUntil(90_000) { source.completedFrames == index + 1 }
+            ui.onNodeWithTag("scan-camera-error").assertDoesNotExist()
+            ui.onNodeWithTag("scan-shutter").assertIsEnabled()
+            assertFalse(source.closed)
+            assertEquals(1, sources.size) // No retry/recreation was needed.
+            assertEquals(if (index >= 3) 1 else 0, source.failedFrames)
+            if (index == 0 || index == 2) ui.onNodeWithTag("scan-outline").assertContentDescriptionEquals("contour:0")
+        }
+        ui.onNodeWithTag("scan-outline").assertContentDescriptionEquals("contour:128")
+        assertEquals(4, source.deliveredFrames)
+        ui.onNodeWithTag("scan-debug").assertTextContains("dropped 1", substring = true)
     }
 
     @Test fun switchesPersistAcrossReopeningAndManualShutterExportsBothProcessingModes() {
@@ -256,6 +283,10 @@ internal class StaticReceiptSource(
     @Volatile var closed = false
     @Volatile var inferred: ScanCameraFrame? = null
     @Volatile var failure: Throwable? = null
+    @Volatile var completedFrames = 0
+    @Volatile var deliveredFrames = 0
+    private val frameFailures = ScanFrameFailures { _, error -> failure = error }
+    val failedFrames get() = frameFailures.count
     var pendingFile: File? = null
     private var captureCallback: ((Result<Unit>) -> Unit)? = null
     var lastTimestamp = 0L
@@ -264,26 +295,32 @@ internal class StaticReceiptSource(
         view.doOnLayout {
             if (closed) return@doOnLayout
             listener.ready(true); started = true
-            if (infer) worker.execute {
+            if (infer) analyzePhoto(jpeg)
+        }
+    }
+    fun analyzePhoto(photo: ByteArray) {
+        worker.execute {
+            frameFailures.dropping(SystemClock.elapsedRealtime()) {
+                val engine = processor ?: ScanFrameProcessor(context = view.context).also { processor = it }
+                val bytes = MatOfByte(*photo); val full = Imgcodecs.imdecode(bytes, Imgcodecs.IMREAD_COLOR); val small = Mat()
                 try {
-                    val engine = ScanFrameProcessor(context = view.context).also { processor = it }
-                    val bytes = MatOfByte(*jpeg); val full = Imgcodecs.imdecode(bytes, Imgcodecs.IMREAD_COLOR); val small = Mat()
-                    try {
-                        Imgproc.resize(full, small, Size(624.0, 960.0))
-                        val (preview, contour) = engine.analyze(small, SystemClock.elapsedRealtime())
-                        val width = small.cols(); val height = small.rows()
-                        main.execute {
-                            if (!closed) {
-                                val scale = maxOf(view.width.toDouble()/width, view.height.toDouble()/height)
-                                val dx = (view.width - width*scale)/2; val dy = (view.height-height*scale)/2
-                                inferred = ScanCameraFrame(contour.points.map { ScanPoint(((it.x*width+.5)*scale+dx)/view.width, ((it.y*height+.5)*scale+dy)/view.height) },
-                                    scanHint(preview,width,height,contour.stable),SystemClock.elapsedRealtime(),5.5,preview.diagnostics.actualEps)
-                                emit(inferred!!.hint)
-                            }
+                    val scale = 960.0 / maxOf(full.cols(), full.rows())
+                    Imgproc.resize(full, small, Size(), scale, scale)
+                    val (preview, contour) = engine.analyze(small, SystemClock.elapsedRealtime())
+                    val width = small.cols(); val height = small.rows()
+                    main.execute {
+                        if (!closed) {
+                            val displayScale = maxOf(view.width.toDouble()/width, view.height.toDouble()/height)
+                            val dx = (view.width - width*displayScale)/2; val dy = (view.height-height*displayScale)/2
+                            inferred = ScanCameraFrame(contour.points.map { ScanPoint(((it.x*width+.5)*displayScale+dx)/view.width, ((it.y*height+.5)*displayScale+dy)/view.height) },
+                                scanHint(preview,width,height,contour.stable),SystemClock.elapsedRealtime(),5.5,preview.diagnostics.actualEps, frameFailures.count)
+                            emit(inferred!!.hint)
+                            deliveredFrames++
                         }
-                    } finally { small.release(); full.release(); bytes.release() }
-                } catch (e: Throwable) { failure = e }
+                    }
+                } finally { small.release(); full.release(); bytes.release() }
             }
+            main.execute { completedFrames++ } // Queued after any delivered overlay.
         }
     }
     fun emit(hint: ScanHint, timestamp: Long = SystemClock.elapsedRealtime()) {

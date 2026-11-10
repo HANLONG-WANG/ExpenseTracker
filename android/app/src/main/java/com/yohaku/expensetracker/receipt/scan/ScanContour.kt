@@ -5,7 +5,7 @@ import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import kotlin.math.*
 
-/** Engine coordinates refer to the EXIF-upright image, before D7a's principal-axis rotation.
+/** Engine coordinates refer to the EXIF-upright image, before deskew (at most +/-45 degrees).
  * The editor uses ScanEditFrame and maps its display contour back before rendering. */
 @Serializable
 data class ScanPoint(val x: Double, val y: Double)
@@ -66,18 +66,23 @@ data class ScanContour(
         }
     }
     companion object {
-        /** The mask is fitted in its principal-axis space, so sideways receipts also work. */
+        /** Fit image-left/right edges in the EXIF-relative, at most +/-45 degree deskew frame. */
         fun fromMask(mask: ScanMask): ScanContour {
             OpenCvRuntime.ensure()
             CvScope().use { s -> return fromSource(mask.width, mask.height, ReceiptGeometry.source(s, mask.mat(s))) }
         }
         internal fun fromSource(width: Int, height: Int, source: ReceiptGeometry.Source): ScanContour {
+            require(width > 1 && height > 1)
             fun point(index: Double): ScanPoint {
                 val i = floor(index).toInt(); val j = min(i + 1, 127); val f = index - i
                 return ScanPoint((source.outline[2 * i] * (1 - f) + source.outline[2 * j] * f).coerceIn(0.0, width - 1.0),
                     (source.outline[2 * i + 1] * (1 - f) + source.outline[2 * j + 1] * f).coerceIn(0.0, height - 1.0))
             }
-            return ScanContour(width, height, List(5) { point(it * 63.0 / 4) }, List(5) { point(127 - it * 63.0 / 4) }, source.topVisible, source.bottomVisible)
+            val left = List(5) { point(it * 63.0 / 4) }; val right = List(5) { point(127 - it * 63.0 / 4) }
+            // The fitted/clipped polygon may degenerate even when its sampled source sides pass.
+            // Only polygon validation is translated; source shape/index and caller errors still throw.
+            return try { ScanContour(width, height, left, right, source.topVisible, source.bottomVisible) }
+            catch (e: IllegalArgumentException) { throw ScanGeometryUnavailable("Invalid fitted contour: ${e.message}", e) }
         }
         fun centered(width: Int, height: Int) = ScanContour(width, height,
             List(5) { ScanPoint((width - 1) * .25, (height - 1) * (.1 + .2 * it)) },

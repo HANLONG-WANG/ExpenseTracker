@@ -9,11 +9,15 @@ import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import kotlin.math.*
 
-/** Direct port of ReceiptBench Geometry; coefficients and metadata retain Python D7a units. */
+/** ReceiptBench geometry with EXIF-relative deskew limited to +/-45 degrees; D7a units retained. */
 internal object ReceiptGeometry {
     fun axis(xx: Double, xy: Double, yy: Double): DoubleArray {
         val angle = .5 * atan2(2 * xy, xx - yy)
+        // Compute the angle before sin/cos so exact diagonal ties stay at +/-45 degrees.
+        val fromVertical = if (angle >= 0) PI / 2 - angle else -PI / 2 - angle
+        val deskew = ScanOrientation.deskewRadians(fromVertical)
         var vx = cos(angle); var vy = sin(angle)
+        if (deskew != fromVertical) { val x = vx; vx = -vy; vy = x }
         if (vy < 0) { vx = -vx; vy = -vy }
         return doubleArrayOf(vx, vy)
     }
@@ -30,12 +34,12 @@ internal object ReceiptGeometry {
     fun bytes(m: Mat) = ByteArray((m.total() * m.channels()).toInt()).also { m.get(0, 0, it) }
     private fun bbox(m: Mat): IntArray {
         val b = org.opencv.geometry.Geometry.boundingRect(m)
-        require(b.width != 0 && b.height != 0) { "empty warped receipt mask" }
+        requireGeometry(b.width != 0 && b.height != 0) { "empty warped receipt mask" }
         return intArrayOf(b.x, b.y, b.x + b.width, b.y + b.height)
     }
     fun clean(s: CvScope, raw: Mat, meta: MutableMap<String, Any?>): Mat {
         val labels = s.mat(); val n = Imgproc.connectedComponents(raw, labels, 8, CvType.CV_32S)
-        require(n > 1) { "empty EdgeSAM mask" }
+        requireGeometry(n > 1) { "empty EdgeSAM mask" }
         val h = raw.rows(); val w = raw.cols(); var chosen = labels.get(h / 2, w / 2)[0].toInt(); val center = chosen != 0
         val contours = ArrayList<MatOfPoint>(); val hierarchy = s.mat()
         try {
@@ -46,7 +50,7 @@ internal object ReceiptGeometry {
                     val d = (q.x - w / 2.0) * (q.x - w / 2.0) + (q.y - h / 2.0) * (q.y - h / 2.0)
                     if (d < best) { best = d; p = q }
                 }
-                requireNotNull(p) { "no mask contour" }
+                checkNotNull(p) { "Nonempty mask has no contour" }
                 chosen = labels.get(p.y.toInt(), p.x.toInt())[0].toInt()
             }
             contours.forEach { it.release() }; contours.clear()
@@ -61,7 +65,7 @@ internal object ReceiptGeometry {
     data class Crop(val image: Mat, val mask: Mat, val valid: Mat, val back: DoubleArray, val meta: Map<String, Any?>)
     fun upright(s: CvScope, im: Mat, mask: Mat): Crop {
         val m = org.opencv.geometry.Geometry.moments(mask, true)
-        require(m.m00 > 0) { "empty source mask" }
+        requireGeometry(m.m00 > 0) { "empty source mask" }
         val v = axis(m.mu20, m.mu11, m.mu02); val w = im.cols(); val h = im.rows()
         val a = doubleArrayOf(v[1], -v[0], 0.0, v[0], v[1], 0.0)
         var minx = 0.0; var miny = 0.0; var maxx = 0.0; var maxy = 0.0
@@ -100,9 +104,10 @@ internal object ReceiptGeometry {
             val vb = bytes(valid); val l = IntArray(h); val r = IntArray(h); val vl = IntArray(h); val vr = IntArray(h)
             MaskBounds.rows(mask, w, h, l, r); MaskBounds.rows(vb, w, h, vl, vr)
             val ys = (0 until h).filter { r[it] >= 0 }
-            require(ys.size >= if (ribbon) 100 else 2) { "too few ribbon rows" }
+            requireGeometry(ys.size >= if (ribbon) 100 else 2) { "too few ribbon rows" }
             lo = ys.first().toDouble(); hi = ys.last().toDouble(); mid = (lo + hi) / 2; half = (hi - lo) / 2
-            require(ribbon || half >= 20) { "mask longitudinal span too small" }
+            // Absolute sampling span, not an aspect-ratio requirement: wide, short paper is valid.
+            requireGeometry(ribbon || half >= 20) { "mask longitudinal span too small" }
             val med = median(ys.map { (r[it] - l[it]).toDouble() }.toDoubleArray())
             val lx = ArrayList<Double>(); val ly = ArrayList<Double>(); val rx = ArrayList<Double>(); val ry = ArrayList<Double>()
             for (y in ys) if (r[y] - l[y] > .55 * med && y > lo + .035 * (hi - lo) && y < hi - .035 * (hi - lo)) {
@@ -140,10 +145,10 @@ internal object ReceiptGeometry {
             repeat(20) {
                 val x = side(c, y); val z = (y - mid) / half
                 val d = (c[1] + z * (2 * c[2] + z * 3 * c[3])) / half; val den = 1 - line[1] * d
-                require(abs(den) >= .05) { "unstable ribbon/end intersection" }
+                requireGeometry(abs(den) >= .05) { "unstable ribbon/end intersection" }
                 y -= (y - line[0] - line[1] * x) / den
             }
-            require(abs(y - start) <= limit * (hi - lo)) { "end intersection outside fit domain" }
+            requireGeometry(abs(y - start) <= limit * (hi - lo)) { "end intersection outside fit domain" }
             return y
         }
     }
@@ -155,9 +160,9 @@ internal object ReceiptGeometry {
         init {
             val widths = DoubleArray(512) {
                 val y = y0 + (y1 - y0) * it / 511
-                (side(right, y) - side(left, y)).also { width -> require(width >= 10) { "crossing fitted ribbon" } }
+                (side(right, y) - side(left, y)).also { width -> requireGeometry(width >= 10) { "crossing fitted ribbon" } }
             }
-            require(y1 - y0 >= 100) { "degenerate ribbon" }
+            requireGeometry(y1 - y0 >= 100) { "degenerate ribbon" }
             val rw = round(median(widths)) + 1; val rh = round(y1 - y0) + 1; val scale = max(1.0, 2000.0 / max(rw, rh))
             ow = round(rw * scale); oh = round(rh * scale)
             require(ow.toLong() * oh <= 35000000 && max(ow, oh) < 32767) { "ribbon output exceeds memory/remap bound" }
@@ -168,7 +173,7 @@ internal object ReceiptGeometry {
     data class Source(val topVisible: Boolean, val bottomVisible: Boolean, val outline: FloatArray, val meta: Map<String, Any?>)
     fun source(s: CvScope, mask: Mat, preview: Boolean = false): Source {
         val h = mask.rows(); val w = mask.cols()
-        require(Core.countNonZero(mask) >= .01 * h * w) { "mask covers less than 1% of frame" }
+        requireGeometry(Core.countNonZero(mask) >= .01 * h * w) { "mask covers less than 1% of frame" }
         val scale = 1200.0 / max(h, w); val sm = s.mat()
         Imgproc.resize(mask, sm, Size(round(w * scale).toDouble(), round(h * scale).toDouble()), 0.0, 0.0, Imgproc.INTER_NEAREST)
         val b = bytes(sm); val sw = sm.cols(); val sh = sm.rows()
@@ -176,7 +181,7 @@ internal object ReceiptGeometry {
         for (y in 0 until sh) for (x in 0 until sw) if (b[y * sw + x] != 0.toByte()) {
             if (idx++ % 4 == 0) { n++; sx += x; sy += y; sxx += x.toDouble() * x; sxy += x.toDouble() * y; syy += y.toDouble() * y }
         }
-        require(idx >= 100) { "mask too small for fitting" }
+        requireGeometry(idx >= 100) { "mask too small for fitting" }
         val v = axis(sxx - sx * sx / n, sxy - sx * sy / n, syy - sy * sy / n)
         val a = doubleArrayOf(v[1], -v[0], 0.0, v[0], v[1], 0.0)
         val frame = arrayOf(doubleArrayOf(0.0, 0.0), doubleArrayOf((w - 1) * scale, 0.0), doubleArrayOf((w - 1) * scale, (h - 1) * scale), doubleArrayOf(0.0, (h - 1) * scale))
@@ -213,23 +218,23 @@ internal object ReceiptGeometry {
             }
             if (bestEdge >= 0) {
                 val p = frame[bestEdge]; val q = frame[(bestEdge + 1) % 4]
-                require(abs(q[0] - p[0]) >= 1) { "end exits lateral frame edge" }
+                requireGeometry(abs(q[0] - p[0]) >= 1) { "end exits lateral frame edge" }
                 val slope = (q[1] - p[1]) / (q[0] - p[0]); lines[end] = doubleArrayOf(p[1] - slope * p[0], slope); visible[end] = false
             } else lines[end] = e.end(end == 0, false)
         }
         var relaxed = false; var relaxedReason: String? = null
         val ends = try {
             doubleArrayOf(e.intersect(e.left, lines[0], e.lo, .25), e.intersect(e.right, lines[0], e.lo, .25), e.intersect(e.left, lines[1], e.hi, .25), e.intersect(e.right, lines[1], e.hi, .25))
-        } catch (error: IllegalArgumentException) {
+        } catch (error: ScanGeometryUnavailable) {
             if (!preview) throw error
             relaxed = true; relaxedReason = error.message
             doubleArrayOf(e.lo, e.lo, e.hi, e.hi)
         }
         val (tl, tr, bl, br) = ends
-        require(min(bl - tl, br - tr) >= 40) { "crossed or degenerate end lines" }
+        requireGeometry(min(bl - tl, br - tr) >= 40) { "crossed or degenerate end lines" }
         for (i in 0 until 512) {
             val t = i / 511.0
-            require(e.side(e.right, tr + t * (br - tr)) - e.side(e.left, tl + t * (bl - tl)) >= 5) { "fitted source sides cross" }
+            requireGeometry(e.side(e.right, tr + t * (br - tr)) - e.side(e.left, tl + t * (bl - tl)) >= 5) { "fitted source sides cross" }
         }
         val inv = inverse(s, a); val outline = FloatArray(128 * 2)
         for (i in 0 until 128) {

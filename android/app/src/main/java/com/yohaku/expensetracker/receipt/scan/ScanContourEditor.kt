@@ -36,7 +36,7 @@ data class ScanEditFrame(val sourceWidth: Int, val sourceHeight: Int, val radian
         fun forContour(contour: ScanContour): ScanEditFrame {
             val dx = contour.left.last().x + contour.right.last().x - contour.left.first().x - contour.right.first().x
             val dy = contour.left.last().y + contour.right.last().y - contour.left.first().y - contour.right.first().y
-            return ScanEditFrame(contour.width, contour.height, atan2(dx, dy))
+            return ScanEditFrame(contour.width, contour.height, ScanOrientation.deskewRadians(atan2(dx, dy)))
         }
     }
 }

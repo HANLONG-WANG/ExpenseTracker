@@ -151,6 +151,65 @@ class ReceiptScannerTest {
             CvScope().use { s -> assertFalse(scanner.preview(decode(s, photo)).detected) }
         }
     }
+    @Test fun wideVisibleMiddleKeepsImageTopAndFitsImageLeftAndRight() {
+        ReceiptScanner(context).use { scanner ->
+            val photo = ScanRegressionPhotos.wideMiddle()
+            val processed = scanner.process(photo)
+            assertTrue("$processed", processed is ScanProcessResult.Processed)
+            val result = processed as ScanProcessResult.Processed
+            val source = result.detection.source
+            assertTrue(abs(source.meta["angle_degrees"] as Double) <= 45)
+            assertTrue(abs(result.render.diagnostics.geometry["input_axis_degrees"] as Double) <= 45)
+            assertTrue(result.render.width > result.render.height)
+            val contour = result.detection.contour
+            assertTrue(abs(ScanEditFrame.forContour(contour).radians) <= PI / 4)
+            assertTrue(contour.left[2].x < contour.right[2].x)
+            assertTrue(contour.left.first().y < contour.left.last().y)
+            CvScope().use { s ->
+                val preview = scanner.preview(decode(s, photo))
+                assertTrue(preview.detected)
+                assertTrue(abs(preview.diagnostics.geometry["angle_degrees"] as Double) <= 45)
+                val output = decode(s, result.render.jpeg)
+                val pixels = ReceiptGeometry.bytes(output)
+                fun marker(red: Boolean): ScanPoint {
+                    var n = 0; var x = 0.0; var y = 0.0
+                    for (row in 0 until output.rows()) for (col in 0 until output.cols()) {
+                        val i = (row * output.cols() + col) * 3
+                        val b = pixels[i].toInt() and 255; val g = pixels[i+1].toInt() and 255; val r = pixels[i+2].toInt() and 255
+                        if (if (red) r > 150 && g < 100 && b < 100 else b > 150 && g < 100 && r < 100) {
+                            n++; x += col; y += row
+                        }
+                    }
+                    assertTrue("Missing ${if (red) "red" else "blue"} marker", n > 100)
+                    return ScanPoint(x / n / output.cols(), y / n / output.rows())
+                }
+                val top = marker(true); val bottom = marker(false)
+                assertTrue("Upper marker $top", top.y < .35)
+                assertTrue("Lower marker $bottom", bottom.y > .65)
+                assertEquals(top.x, bottom.x, .15)
+            }
+        }
+    }
+
+    @Test fun insufficientGeometryIsNotDetectedButInvalidInputStillThrows() {
+        ReceiptScanner(context).use { scanner ->
+            val photo = ScanRegressionPhotos.insufficientGeometry()
+            val detection = scanner.detect(photo) as ScanDetection.NotDetected
+            assertEquals(true, detection.diagnostics.geometry["selection_eligible"])
+            assertEquals(detection.reason, detection.diagnostics.geometry["not_detected_reason"])
+            assertTrue(detection.reason.isNotBlank())
+            assertTrue(scanner.process(photo) is ScanProcessResult.NotDetected)
+            CvScope().use { s ->
+                val preview = scanner.preview(decode(s, photo))
+                assertFalse(preview.detected)
+                assertNotNull(preview.diagnostics.geometry["not_detected_reason"])
+                assertThrows(IllegalArgumentException::class.java) { scanner.preview(s.mat()) }
+            }
+            assertThrows(IllegalArgumentException::class.java) { scanner.detect(byteArrayOf(1, 2, 3)) }
+            assertThrows(IllegalArgumentException::class.java) { scanner.process(byteArrayOf(1, 2, 3)) }
+        }
+    }
+
     @Test fun exifAllEightOrientationsAndOrientedPhotoProcessingAgree() {
         OpenCvRuntime.ensure()
         val file = File.createTempFile("scan-exif-", ".jpg", context.cacheDir)

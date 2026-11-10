@@ -59,7 +59,7 @@ internal class Grid(val w: Int, val h: Int, val a: FloatArray) {
             if (hit) fg++ else bg++
         }
         meta["grid_fold_foreground_cells"] = fg; meta["grid_fold_background_cells"] = bg
-        require(fg == 0) { "SyntheticDoc folded in $fg receipt cells" }
+        requireGeometry(fg == 0) { "SyntheticDoc folded in $fg receipt cells" }
     }
     fun warpMasks(s: CvScope, mask: Mat, valid: Mat, cw: Int, ch: Int): Array<Mat> {
         val block = 96; val horizontal = GridMath.horizontal(a, w, h, cw)

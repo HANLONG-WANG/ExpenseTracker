@@ -46,16 +46,22 @@ class ReceiptScanner(context: Context) : AutoCloseable {
     fun preview(frame: Mat): ScanPreview {
         checkWorker(); require(frame.type() == CvType.CV_8UC3 && !frame.empty())
         models.beginCall(); val t = ScanTimings(); val meta = linkedMapOf<String, Any?>()
-        CvScope().use { s ->
-            val mask = segmenter.segment(s, frame, true, t, meta)
-                ?: return ScanPreview(emptyList(), 0.0, null, null, null, null, false, null, null, diagnostics(meta, t))
-            val source = t.measure("geometry") { ReceiptGeometry.source(s, mask, preview = true) }
-            meta.putAll(source.meta)
-            val moments = org.opencv.geometry.Geometry.moments(mask, true)
-            return ScanPreview(source.outline.asList().chunked(2).map { ScanPoint(it[0].toDouble(), it[1].toDouble()) },
-                meta["mask_area_ratio"] as Double, ScanPoint(moments.m10 / moments.m00, moments.m01 / moments.m00),
-                (meta["model_score"] as Number).toDouble(), (meta["fit_inlier_residual_work_px"] as Double) / (meta["geometry_scale"] as Double),
-                meta["fit_outlier_fraction"] as Double, meta["preview_relaxed_end"] as Boolean, source.topVisible, source.bottomVisible, diagnostics(meta, t))
+        try {
+            CvScope().use { s ->
+                val mask = segmenter.segment(s, frame, true, t, meta)
+                    ?: return ScanPreview(emptyList(), 0.0, null, null, null, null, false, null, null, diagnostics(meta, t))
+                val source = t.measure("geometry") { ReceiptGeometry.source(s, mask, preview = true) }
+                meta.putAll(source.meta)
+                val moments = org.opencv.geometry.Geometry.moments(mask, true)
+                return ScanPreview(source.outline.asList().chunked(2).map { ScanPoint(it[0].toDouble(), it[1].toDouble()) },
+                    meta["mask_area_ratio"] as Double, ScanPoint(moments.m10 / moments.m00, moments.m01 / moments.m00),
+                    (meta["model_score"] as Number).toDouble(), (meta["fit_inlier_residual_work_px"] as Double) / (meta["geometry_scale"] as Double),
+                    meta["fit_outlier_fraction"] as Double, meta["preview_relaxed_end"] as Boolean, source.topVisible, source.bottomVisible, diagnostics(meta, t))
+            }
+        } catch (e: ScanGeometryUnavailable) {
+            meta["not_detected_reason"] = e.message
+            return ScanPreview(emptyList(), (meta["mask_area_ratio"] as? Double) ?: 0.0, null,
+                (meta["model_score"] as? Number)?.toDouble(), null, null, false, null, null, diagnostics(meta, t))
         }
     }
     fun detect(photo: ByteArray): ScanDetection {
@@ -63,13 +69,20 @@ class ReceiptScanner(context: Context) : AutoCloseable {
         CvScope().use { s -> return detect(s, decode(s, photo, t), t, meta) }
     }
     private fun detect(s: CvScope, im: Mat, t: ScanTimings, meta: MutableMap<String, Any?>): ScanDetection {
-        val mask = segmenter.segment(s, im, false, t, meta) ?: return ScanDetection.NotDetected(im.cols(), im.rows(), "No candidate covers all prompts with area 3%-85%", diagnostics(meta, t))
-        val source = t.measure("geometry") { ReceiptGeometry.source(s, mask) }
-        meta["source_geometry"] = source.meta
-        val contour = ScanContour.fromSource(im.cols(), im.rows(), source)
-        val pixels = ReceiptGeometry.bytes(mask)
-        mask.release()
-        return ScanDetection.Found(ScanMask(im.cols(), im.rows(), pixels), contour, diagnostics(meta, t), source)
+        try {
+            val mask = segmenter.segment(s, im, false, t, meta) ?: return ScanDetection.NotDetected(im.cols(), im.rows(), "No candidate covers all prompts with area 3%-85%", diagnostics(meta, t))
+            val source = t.measure("geometry") { ReceiptGeometry.source(s, mask) }
+            meta["source_geometry"] = source.meta
+            val contour = ScanContour.fromSource(im.cols(), im.rows(), source)
+            val pixels = ReceiptGeometry.bytes(mask)
+            mask.release()
+            return ScanDetection.Found(ScanMask(im.cols(), im.rows(), pixels), contour, diagnostics(meta, t), source)
+        } catch (e: ScanGeometryUnavailable) { return notDetected(im, e, meta, t) }
+    }
+    private fun notDetected(im: Mat, e: ScanGeometryUnavailable, meta: MutableMap<String, Any?>, t: ScanTimings): ScanDetection.NotDetected {
+        val reason = checkNotNull(e.message)
+        meta["not_detected_reason"] = reason
+        return ScanDetection.NotDetected(im.cols(), im.rows(), reason, diagnostics(meta, t))
     }
     /** The unchanged detection keeps the original mask; no contour approximation or EdgeSAM rerun. */
     fun render(photo: ByteArray, detection: ScanDetection.Found): ScanRender {
@@ -101,7 +114,9 @@ class ReceiptScanner(context: Context) : AutoCloseable {
             val im = decode(s, photo, t)
             return when (val detection = detect(s, im, t, meta)) {
                 is ScanDetection.NotDetected -> ScanProcessResult.NotDetected(detection)
-                is ScanDetection.Found -> ScanProcessResult.Processed(detection, render(s, im, detection.mask.mat(s), detection.source, t, meta))
+                is ScanDetection.Found -> try {
+                    ScanProcessResult.Processed(detection, render(s, im, detection.mask.mat(s), detection.source, t, meta))
+                } catch (e: ScanGeometryUnavailable) { ScanProcessResult.NotDetected(notDetected(im, e, meta, t)) }
             }
         }
     }

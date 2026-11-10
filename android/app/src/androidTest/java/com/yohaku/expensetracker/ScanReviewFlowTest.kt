@@ -151,6 +151,61 @@ class ScanReviewFlowTest {
         assertFalse(directory.exists()); assertTrue(borrowed.exists()); assertTrue(results.isEmpty())
     }
 
+    @Test fun insufficientGeometryStartsInAdjustmentAcrossLooks() {
+        val borrowed = File(root, "thin-middle.png").apply { writeBytes(ScanRegressionPhotos.insufficientGeometry()) }
+        install(ScanFlowRequest("geometry", borrowed, ScanPhotoSource.EXISTING_IMAGE))
+        waitFor("scan-contour-editor")
+        val contour = contour()
+        assertEquals(ScanContour.centered(1300, 32), contour)
+        for ((t, l) in testLooks(this)) {
+            ui.runOnIdle { theme = t; language = l }
+            ui.onNodeWithTag("scan-review-error").assertDoesNotExist()
+            ui.onNodeWithTag("scan-review-hint").assertTextContains(
+                if (l == "ja") "レシートが見つかりません" else "没找到小票", substring = true)
+            ui.onNodeWithTag("scan-render").assertIsEnabled()
+            shot("$t-$l-insufficient-geometry")
+        }
+    }
+
+    @Test fun manualGeometryFailureKeepsDraftOpenAcrossLooks() {
+        val photo = input()
+        // Valid editable polygon, but neither paper side is visible inside the frame.
+        val draft = ScanContour(1300, 2000,
+            List(5) { ScanPoint(0.0, 200.0 + it * 400) },
+            List(5) { ScanPoint(1299.0, 200.0 + it * 400) }, true, true)
+        var state by mutableStateOf(ScanReviewState(photo.path, frame = ScanEditFrame(1300, 2000),
+            draft = draft, editing = true, notDetected = true, initialized = true))
+        ui.runOnIdle {
+            ScanFlowTestActivity.content = {
+                YohakuTheme(theme, language) {
+                    ScanReviewScreen(state, { state = it }, ScanPhotoSource.EXISTING_IMAGE,
+                        onUse = { fail("Unexpected result") }, onLeave = {}, onCancel = {})
+                }
+            }
+        }
+        waitFor("scan-contour-editor")
+        ui.onNodeWithTag("scan-render").performClick()
+        ui.waitUntil(30_000) { ui.onAllNodes(hasText("轮廓不足以处理", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(draft, contour())
+        for ((t, l) in testLooks(this)) {
+            ui.runOnIdle { theme = t; language = l }
+            ui.onNodeWithTag("scan-review-error").assertDoesNotExist()
+            ui.onNodeWithTag("scan-review-hint").assertTextContains(
+                if (l == "ja") "左右の縁と上下の端を調整" else "请调整左右边缘和上下端线", substring = true)
+            ui.onNodeWithTag("scan-render").assertIsEnabled()
+            shot("$t-$l-adjust-geometry")
+        }
+    }
+
+    @Test fun undecodablePhotoStillShowsProcessingError() {
+        val broken = File(root, "broken.jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        install(ScanFlowRequest("broken", broken, ScanPhotoSource.EXISTING_IMAGE))
+        ui.waitUntil(30_000) { ui.onAllNodesWithTag("scan-review-error").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("scan-review-error").assertIsDisplayed()
+        ui.onNodeWithTag("scan-review-retry").assertIsDisplayed()
+        ui.onNodeWithTag("scan-contour-editor").assertDoesNotExist()
+    }
+
     @Test fun activityRecreationKeepsEditingContourAndOriginalPhoto() {
         install(ScanFlowRequest("restore", input(), ScanPhotoSource.EXISTING_IMAGE))
         result(); ui.onNodeWithTag("scan-edit").performClick()

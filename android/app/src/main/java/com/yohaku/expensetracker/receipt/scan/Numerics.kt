@@ -59,7 +59,7 @@ internal object Numerics {
     }
     fun robustFit(x: DoubleArray, y: DoubleArray, degree: Int, scale: Double): Fit {
         val n = x.size; val k = degree + 1
-        require(n >= max(15, degree + 2)) { "too few boundary samples: $n" }
+        requireGeometry(n >= max(15, degree + 2)) { "too few boundary samples: $n" }
         val base = max(2.0, scale * .012)
         var best = solve(x, y, degree); var cost = cost(x, y, best)
         val rng = Pcg64()
