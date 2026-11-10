@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
 
-    @Test fun version39AddsMerchantHistoryAndCsvSourceWithoutChangingBusinessRows()=runBlocking<Unit> {
+    @Test fun version39AddsHistoryAndCleanupWithAtomicHistoryAndBookPurge()=runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val name="upgrade-merchants-39-40.db";context.deleteDatabase(name)
         val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
@@ -48,11 +48,11 @@ class DatabaseUpgradeTest {
             assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version)
             assertEquals(100L,repo.dao.event("b","e")!!.amountMinor)
             assertEquals("Coffee",repo.dao.event("b","e")!!.merchant)
-            assertNull(repo.dao.eventMerchant("b","e")) // Batch A deliberately performs no cleanup.
+            assertEquals("m",repo.dao.eventMerchant("b","e")!!.merchantId)
             assertFalse(repo.dao.merchant("b","m")!!.active)
             db.openHelper.readableDatabase.query("SELECT sourceMatchKey FROM csv_batch_events").use{assertTrue(it.moveToFirst());assertTrue(it.isNull(0))}
-            assertTrue(dao.page("b",10).isEmpty())
-            val operation=MerchantOperationEntity("b","operation",2,MerchantOperationType.RENAME,MerchantOperationSource.LOCAL,
+            assertEquals(1,dao.page("b",10).size)
+            val operation=MerchantOperationEntity("b","operation",System.currentTimeMillis()+1000,MerchantOperationType.RENAME,MerchantOperationSource.LOCAL,
                 sourceMerchantId="m",sourceMerchantName="Coffee",targetMerchantId="m",targetMerchantName="Tea",
                 sourceBefore=MerchantProfile("Coffee","old note",false),sourceAfter=MerchantProfile("Tea","old note",false),
                 counts=MerchantImpactCounts(affectedRecords=1,renamedRecords=1))
@@ -60,24 +60,25 @@ class DatabaseUpgradeTest {
             db.withTransaction {
                 assertFalse(repo.writeMerchantOperationInTransaction(operation,listOf(impact),changed=false))
             }
-            assertTrue(dao.page("b",10).isEmpty())
+            assertEquals(1,dao.page("b",10).size)
             val failed=runCatching { db.withTransaction {
                 repo.dao.putEvent(repo.dao.event("b","e")!!.copy(merchant="Tea"))
                 repo.writeMerchantOperationInTransaction(operation,listOf(impact),changed=true)
                 error("Rollback business and history together")
             } }
-            assertTrue(failed.isFailure);assertTrue(dao.page("b",10).isEmpty());assertTrue(dao.impacts("b",operation.id,10).isEmpty())
+            assertTrue(failed.isFailure);assertEquals(1,dao.page("b",10).size);assertTrue(dao.impacts("b",operation.id,10).isEmpty())
             assertEquals("Coffee",repo.dao.event("b","e")!!.merchant)
             db.withTransaction { repo.writeMerchantOperationInTransaction(operation,listOf(impact),changed=true) }
-            assertEquals(operation,dao.page("b",1).single());assertTrue(dao.page("b",1,1).isEmpty())
+            assertEquals(operation,dao.page("b",1).single());assertEquals(MerchantOperationType.HISTORY_CLEANUP,dao.page("b",1,1).single().type)
             assertEquals(operation,dao.forMerchant("b","m",10).single())
-            assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).single())
+            assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).first())
             assertEquals(impact,dao.impacts("b",operation.id,10).single())
             db.withTransaction {
+                repo.dao.clearEventMerchant("b","e")
                 db.openHelper.writableDatabase.execSQL("DELETE FROM events WHERE bookId='b' AND id='e'")
                 repo.dao.deleteMerchant("b","m")
             }
-            assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).single())
+            assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).first())
             val other=repo.createBook("Other",com.yohaku.expensetracker.domain.model.Currency.JPY)
             db.withTransaction { repo.writeMerchantOperationInTransaction(operation.copy(bookId=other),listOf(impact.copy(bookId=other)),true) }
             assertTrue(repo.commitBookOperation(repo.previewBookOperation("b",BookOperation.TRASH)))
@@ -85,6 +86,24 @@ class DatabaseUpgradeTest {
             assertTrue(dao.page("b",10).isEmpty());assertTrue(dao.impacts("b",operation.id,10).isEmpty())
             assertEquals(1,dao.page(other,10).size);assertEquals(1,dao.impacts(other,operation.id,10).size)
             db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
+    @Test fun version39OrganizesHistoryAndRetainsPendingPlaces()=runBlocking<Unit> {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="merchant-cleanup-v39.db";context.deleteDatabase(name)
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null).use{merchantV39Fixture(it)}
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            assertMerchantV40Fixture(db)
+            val repo=LedgerRepository(db);val s=repo.snapshot(repo.dao.book("b")!!).first()
+            assertEquals(900L,s.balance(s.accounts.single()))
+            assertEquals(1,s.recordedPlaces("Ｃａｆｅ").size)
+            val count=db.merchantHistoryDao().impacts("b","merchant-history-v40",100).size
+            repo.saveEntry("b",s.editingEntryDraft(s.events.single{it.id=="e"}).copy(note="ordinary save"))
+            val after=repo.snapshot(repo.dao.book("b")!!).first()
+            assertEquals(s.eventPlaces,after.eventPlaces)
+            assertEquals(count,db.merchantHistoryDao().impacts("b","merchant-history-v40",100).size)
         }finally{db.close();context.deleteDatabase(name)}
     }
 

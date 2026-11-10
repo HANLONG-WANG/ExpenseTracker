@@ -58,7 +58,7 @@ internal fun canonical(value:JsonElement):JsonElement=when(value) {
 @Serializable data class UndoAvailability(val available:Boolean,val zh:String,val ja:String)
 @Serializable data class UndoConflict(val type:String,val key:String,val field:String,val expected:JsonElement,val current:JsonElement,val reference:UndoReference?=null)
 @Serializable data class UndoGuard(val type:String,val key:String,val after:JsonElement)
-@Serializable data class UndoRecord(val steps:List<CommandStep>,val guards:List<UndoGuard>,val effects:List<ObjectEffect>,val rows:List<UndoRowChange> = emptyList(),val removals:List<UndoRemoval> = emptyList(),val version:Int=1)
+@Serializable data class UndoRecord(val steps:List<CommandStep>,val guards:List<UndoGuard>,val effects:List<ObjectEffect>,val rows:List<UndoRowChange> = emptyList(),val removals:List<UndoRemoval> = emptyList(),val version:Int=1,val databaseVersion:Int=0)
 internal data class UndoPreparation(val availability:UndoAvailability,val steps:List<CommandStep> = emptyList(),val guards:List<UndoGuard> = emptyList())
 
 /** Row keys and raw snapshots are local execution evidence, never cloud inputs. Null before means

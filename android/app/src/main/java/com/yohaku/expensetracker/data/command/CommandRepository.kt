@@ -273,7 +273,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
             UndoGuard(type,id,run.undoValue(type,id))
         }
         val inverseSteps=(if(rows.isEmpty())emptyList()else listOf(CommandStep("restore_objects","local.restoreExecution",1,buildJsonObject{})))+preferenceInverseSteps(inverses.asReversed().flatMap{it.steps})
-        val undo=if(undoOf==null)UndoRecord(inverseSteps,guards+accountGuards+entryGuards+structureGuards+planningGuards+financeGuards,actualEffects,rows,journal.removals(rows),version=3)else null
+        val undo=if(undoOf==null)UndoRecord(inverseSteps,guards+accountGuards+entryGuards+structureGuards+planningGuards+financeGuards,actualEffects,rows,journal.removals(rows),version=3,databaseVersion=com.yohaku.expensetracker.data.db.DATABASE_VERSION)else null
         return Triple(NormalizedPlan(steps),ConfirmationModel(context,effects,netEffects(effects),unknown=unknown,removals=record?.removals.orEmpty()),execution.copy(undo=undo))
     }
     private fun grantedPermissions():Set<String> {

@@ -50,7 +50,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         }
         YButton(word("＋ 保存商户","＋ お店を保存"),{newName="";editing=""},Modifier.testTag("merchant-add"),primary=true)
         val names=s.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.merchant.isNotBlank()&&it.id !in s.merchantByEvent}
-            .groupBy{normalizedMerchantName(it.merchant)}.filterKeys{key->key !in s.merchantsByName}
+            .groupBy{normalizedMerchantName(it.merchant)}
         if(names.isNotEmpty())ThemeSection(word("记录中出现过的原名","記録にある元の名前"),"FROM YOUR RECORDS")
         Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
             names.values.toList().chunked(2).forEach{row->Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(12.dp)) {

@@ -823,3 +823,16 @@ C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用�
 - 12 张系统截图已下载并查看，位于 `/tmp/yohaku-merchant-d-review/{magazine,journal,objects}-{zh,ja}-{concurrent,legacy}.png`，另有两张 `overview-*.png` 汇总图。设备原件在应用内部 `files/verification/merchant-conflict--s24/`（现有截图助手会为传入的 `-s24` 再加一个连字符）。提示、前后商户、长名称换行均完整，复用三主题现有 `YSheet`/`ThemeAuditPanel`。**结束后已恢复 `1170×2532 / density 480`**。
 - 既有撤销精确恢复断言按新规则保留所有业务字段比较，单独排除并验证同步版本递增；没有删除失效断言。截图测试限定冲突面板内的文字，并让各语言场景使用不同的用户输入，避免背景同名记录和“输入其实未变”的夹具干扰。
 - 本批不执行全外观矩阵、系统/性能专项；迁移整理和旧撤销日志兼容留 E，互请/计划/CSV 判重留 F，云端协议扩展留 G，商户历史 UI 与三主题正式精修留 H。
+
+### 商户改造 E 验证（2026-11-10）
+
+完成未发布 Room 39→40 内的历史整理、旧日志默认列补齐及升级冲突标记、旧备份暂存恢复验证，并删除商户名称读取兜底。实现细节见 `docs/implementation-spec.md` §1.14。历史选择每个变化账本一条 `HISTORY_CLEANUP / UPGRADE` 主记录，以对象明细保留实际旧新字段；不增加 revision、不改保存排序、金额或分录。F/G/H 保持后续范围。
+
+- Gradle 始终串行，使用 `GRADLE_USER_HOME=/tmp/yohaku-desktop-gradle` 和 `--offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process`。最终 `:app:testDebugUnitTest` **193 项：192 通过、1 项既有跳过、0 失败**；`:app:installDebug :app:installDebugAndroidTest` 成功。日志 `/tmp/merchant-e-unit.log`、`/tmp/merchant-e-install.log`。未使用 `connectedDebugAndroidTest`。
+- `emulator-5580` 默认参数 `am instrument` 运行以下九个完整类，共 **106 个测试项，修正/定向复验后全部取得通过结果**：`DatabaseUpgradeTest` 12、`BackupRoundTripTest` 2、`AnalysisProjectionTest` 13、`AnalysisFlowTest` 5、`MerchantFlowTest` 6、`LocationEntryFlowTest` 4、`DraftEditingFlowTest` 42、`CsvImportRoundTripTest` 3、`CommandLedgerExecutionTest` 19。
+- 首轮为 99/106，通过日志 `/tmp/merchant-e-instrumentation-initial.log`（213.686 秒）。两个新夹具错误地用会排除永久清理记录的 DAO 检查占位行，已改直接 SQL；分析既有测试补齐 D 的编辑基线和同步代数；旧日志测试使用正式压缩日志读写入口、来源列修改使用 UPDATE。数据库升级、备份、分析三类共 27 项及分类管理 UI 单项复验通过（`/tmp/merchant-e-retest.log`）；分类 UI 首轮输入节点未出现，单独复跑通过，未改业务或放宽断言。
+- 旧日志最终定向用例 `preUpgradeJournalsRejectCleanedObjectsButUndoUntouchedRowsAndCheckNewColumns` **1/1 通过，3.326 秒**（`/tmp/merchant-e-undo-final.log`）：真实旧库升级后，未整理行仍可撤销；被整理的事件/模板返回升级冲突；新日志可正常撤销同一对象；旧 CSV 关系行补 NULL 后比较，后续非空来源键阻止整行删除；新版本日志若缺来源列则明确拒绝。旧数据测试核对实际正向写入及撤销结果。
+- 已知 `batchFiveHundredNotesOnLargeLedgerLogsPerformance` 在整批运行时触发 192MB 堆上限；独立进程复跑 **1/1 通过，14.825 秒**（`/tmp/merchant-e-performance.log`）。C2 商户一致性用例保持通过。
+- 共用 39 版夹具覆盖停用/唯一同名、有效明确 ID、历史重名、明确收入/普通收入、退款旧文字、软删除、归档/回收站账本、永久清理占位、模板/周期和失效引用、未变化账本、草稿原样保留、待整理位置；核对事件数量、金额、分录、余额、revision 和修订时间。`prepareRestore` 实际升级暂存副本，原备份版本及 SHA-256 不变；迁移后普通保存仍保留位置。原历史事务回滚、独立对象删除后保留历史、整本永久清理测试仍通过。
+- 视觉：临时切换 **1080×2340 / density 450**，以 `looks=all visual=true captureSuffix=-batch-e-s24` 运行 `MerchantFlowTest#ambiguousOriginalNamesRemainVisibleWithoutInferredOwnership`，**1/1 通过，4.222 秒**，内部覆盖三主题×中日文。6 张截图已逐张查看：正式重名商户均显示 0 笔，未关联原名保留 1 笔且可见，三主题布局和文字无重叠/截断；本机副本 `/tmp/merchant-e-visual-review/`，设备外部 files 下 `phase-b-p12-merchants-batch-e-s24/`，日志 `/tmp/merchant-e-visual.log`。检查后已恢复 **1170×2532 / density 480**。
+- 本批共 19 个修改文件：生产代码 `MerchantUpgradeMigration.kt`、`CommandModels.kt`、`CommandRepository.kt`、`CommandUndo.kt`、`CommandUndoJournal.kt`、`AnalysisProjection.kt`、`MerchantsScreen.kt`；测试 `DatabaseFixtures.kt`、`DatabaseUpgradeTest.kt`、`BackupRoundTripTest.kt`、`CommandLedgerExecutionTest.kt`、`AnalysisProjectionTest.kt`、`MerchantFlowTest.kt`、`AnalysisProjectionCalculationTest.kt`、`EntryDefaultsTest.kt`；文档本 README、`docs/implementation-spec.md`、`docs/product-design.md`、`docs/plans/development-plan.md`。Room schema 仍为 40；云端命令输入/能力 schema 无变化，未重生成协议产物。

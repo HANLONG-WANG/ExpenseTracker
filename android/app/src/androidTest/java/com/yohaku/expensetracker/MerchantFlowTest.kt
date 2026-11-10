@@ -90,6 +90,27 @@ class MerchantFlowTest {
             file.outputStream().use{requireNotNull(frame).compress(Bitmap.CompressFormat.PNG,100,it)}
         }finally { previous?.recycle();frame?.recycle() }
     }
+    @Test fun ambiguousOriginalNamesRemainVisibleWithoutInferredOwnership() {
+        for((theme,language) in testLooks(this@MerchantFlowTest)) {
+            val ids=runBlocking {
+                val book=repo.createBook("历史重名 $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val account=repo.saveAccount(book,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,1000),"2026-10-01")
+                val category=repo.saveCategory(book,"咖啡",EntryKind.EXPENSE,null)
+                repo.dao.putMerchant(MerchantEntity(book,"one","Cafe",note="北门"))
+                repo.dao.putMerchant(MerchantEntity(book,"two","ＣＡＦＥ",note="南门",active=false))
+                val event=repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="100",merchant="cafe"))
+                vm.preferences.select(book);book to event
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==ids.first}
+            ui.runOnIdle{vm.navigate("merchants")}
+            ui.onNodeWithTag("merchant-card-one").assertTextContains(if(language=="ja")"0 件"else"0 笔",substring=true)
+            ui.onNodeWithTag("merchant-card-two").assertTextContains(if(language=="ja")"0 件"else"0 笔",substring=true)
+            ui.onNodeWithTag("merchant-card-recorded-${ids.second}").performScrollTo().assertIsDisplayed()
+            shot("$theme-$language-ambiguous-original")
+        }
+    }
+
     @Test fun compactDirectoryAdoptionAndBothMergeEntrances() {
         for((theme,language) in testLooks(this@MerchantFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh

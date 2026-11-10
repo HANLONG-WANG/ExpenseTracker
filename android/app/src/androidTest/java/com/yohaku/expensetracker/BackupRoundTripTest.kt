@@ -25,6 +25,23 @@ import java.util.UUID
  * without terminating the instrumentation process or touching the installed user's database. */
 @RunWith(AndroidJUnit4::class)
 class BackupRoundTripTest {
+    @Test fun oldBackupUsesSameCleanupOnStagingCopy()=runBlocking<Unit> {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val root=File(context.cacheDir,"backup-v39-${UUID.randomUUID()}").apply{mkdirs()}
+        try {
+            val source=File(root,"database/yohaku.db").apply{parentFile!!.mkdirs()}
+            android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(source,null).use{merchantV39Fixture(it)}
+            val prefs=File(root,"preferences.json").apply{writeText(BackupArchive.json.encodeToString(BackupPreferences.serializer(),BackupPreferences()))}
+            val manifest=BackupManifest("yohaku.backup",1,"old",1,39,"2026-11-01T00:00:00Z",emptyList(),0,0,
+                listOf(source,prefs).map{BackupEntry(it.relativeTo(root).path,it.length(),BackupArchive.sha256(it))})
+            prepareRestore(context,root,manifest)
+            val restored=openYohakuDatabase(context,File(root,"ready/yohaku.db").path)
+            try{assertMerchantV40Fixture(restored)}finally{restored.close()}
+            android.database.sqlite.SQLiteDatabase.openDatabase(source.path,null,android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use{assertEquals(39,it.version)}
+            assertEquals(manifest.entries.first().sha256,BackupArchive.sha256(source))
+        }finally{root.deleteRecursively()}
+    }
+
     @Test fun exportMutateRestorePreservesWholeApplicationData()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val root=File(context.cacheDir,"backup-test-${UUID.randomUUID()}").apply{mkdirs()}

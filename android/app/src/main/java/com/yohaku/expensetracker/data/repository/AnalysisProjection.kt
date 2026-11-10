@@ -23,9 +23,7 @@ fun BookSnapshot.merchantKey(event:EventEntity):String {
         return original?.let{merchantKey(it)}?:"name:"
     }
     if(event.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name))merchantByEvent[event.id]?.let{return "id:"+it}
-    // Legacy expense fallback remains until batch E completes historical backfill.
-    val matching=if(event.kind==EntryKind.EXPENSE.name)merchantsByName[normalizedMerchantName(event.merchant)]?.takeIf{event.merchant.isNotBlank()}?.singleOrNull()else null
-    return matching?.let{"id:"+it.id}?:"name:"+if(event.kind==EntryKind.EXPENSE.name)normalizedMerchantName(event.merchant)else event.merchant
+    return "name:"+if(event.kind==EntryKind.EXPENSE.name)normalizedMerchantName(event.merchant)else event.merchant
 }
 fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merchants.firstOrNull{it.id==key.removePrefix("id:")}?.name.orEmpty() else merchantNameLabels[key]?:key.removePrefix("name:")
 fun BookSnapshot.analysis(filter:AnalysisFilter):AnalysisReport {

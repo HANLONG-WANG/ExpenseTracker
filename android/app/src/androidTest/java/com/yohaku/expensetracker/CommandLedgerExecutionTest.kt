@@ -93,6 +93,71 @@ class CommandLedgerExecutionTest {
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
         assertEquals("UNDONE",commands.plan(row.planId).status)
     }
+    @Test fun preUpgradeJournalsRejectCleanedObjectsButUndoUntouchedRowsAndCheckNewColumns()=runBlocking<Unit> {
+        val name="command-undo-v39.db";context.deleteDatabase(name)
+        db.close();db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        r=LedgerRepository(db,clock);commands=CommandRepository(r)
+        try {
+            val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+            val untouched=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="10",merchant="Unchanged"))
+            val cleaned=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="10",merchant="cafe"))
+            val cleanPlan=execute(book,listOf(step("note","entry.update","""{"targets":{"ids":["$cleaned"]},"set":{"note":"cloud"}}""")))
+            val untouchedPlan=execute(book,listOf(step("note","entry.update","""{"targets":{"ids":["$untouched"]},"set":{"note":"cloud"}}""")))
+            val templatePlan=execute(book,listOf(step("template","template.save","""{"name":"Coffee","kind":"EXPENSE","category":"$category","account":"$bank","currency":"JPY","merchant":"cafe"}""")))
+            val createdPlan=execute(book,listOf(step("entry","entry.create","""{"account":"$bank","category":"$category","amount":{"currency":"JPY","minor":10},"merchant":"CSV"}""")))
+            val created=snapshot(book).events.single{it.merchant=="CSV"}.id
+            db.csvImportDao().putBatch(CsvBatchEntity(book,"batch","old.csv","hash",1,1,1,0,bank))
+            db.csvImportDao().putEvents(listOf(CsvBatchEventEntity(book,created,"batch")))
+            val csv=CommandUndoJournal(r,book).snapshot().values.single{it.first=="csv_batch_events"}.second
+            val csvChange=UndoRowChange("csv_batch_events",buildJsonObject{put("bookId",book);put("eventId",created)},null,csv)
+            suspend fun legacy(plan:CommandPlanEntity,extra:List<UndoRowChange> = emptyList()) {
+                val record=readCommandExecution(commands.plan(plan.planId).executionJson!!)
+                val undo=record.undo!!.copy(rows=record.undo.rows+extra)
+                val json=commandJson.encodeToJsonElement(record.copy(undo=undo)).jsonObject
+                val oldUndo=json.getValue("undo").jsonObject
+                fun oldRow(value:JsonElement):JsonElement=if(value is JsonObject)JsonObject(value-"sourceMatchKey")else value
+                val rows=oldUndo.getValue("rows").jsonArray.map{value->
+                    val row=value.jsonObject
+                    if(row["table"]==JsonPrimitive("csv_batch_events"))JsonObject(row.mapValues{(key,v)->if(key in setOf("before","after"))oldRow(v)else v})else row
+                }
+                val old=JsonObject(json+("undo" to JsonObject((oldUndo-"databaseVersion")+("rows" to JsonArray(rows)))))
+                db.commandDao().update(commands.plan(plan.planId).copy(executionJson=storeCommandJson(old.toString())))
+            }
+            legacy(cleanPlan);legacy(untouchedPlan);legacy(templatePlan);legacy(createdPlan,listOf(csvChange))
+            // Legacy writes predate automatic linking. The migration, not a read, repairs them.
+            r.dao.putMerchant(MerchantEntity(book,"shop","Ｃａｆｅ",active=false))
+            db.close()
+            android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,android.database.sqlite.SQLiteDatabase.OPEN_READWRITE).use {
+                restoreFixtureDatabase(it,39,"com.yohaku.expensetracker.data.db.YohakuDatabase/39.json")
+            }
+            db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+            r=LedgerRepository(db,clock);commands=CommandRepository(r)
+            assertEquals("shop",r.dao.eventMerchant(book,cleaned)!!.merchantId)
+            assertUndoConflict(cleanPlan,"数据已升级整理")
+            assertUndoConflict(templatePlan,"数据已升级整理")
+            val undo=commands.prepareUndo(untouchedPlan.planId);val preview=commands.preview(undo.planId)
+            assertTrue(preview.conflicts.toString(),preview.executable);commands.confirm(undo.planId,commandChecks(preview))
+            assertEquals("",r.dao.event(book,untouched)!!.note)
+            // A journal produced after cleanup must remain undoable on the same marked object.
+            val newPlan=execute(book,listOf(step("note","entry.update","""{"targets":{"ids":["$cleaned"]},"set":{"note":"after upgrade"}}""")))
+            val newUndo=commands.prepareUndo(newPlan.planId);val newPreview=commands.preview(newUndo.planId)
+            assertTrue(newPreview.conflicts.toString(),newPreview.executable);commands.confirm(newUndo.planId,commandChecks(newPreview))
+            assertEquals("cloud",r.dao.event(book,cleaned)!!.note)
+            assertEquals("shop",r.dao.eventMerchant(book,cleaned)!!.merchantId)
+            val oldCsv=readCommandExecution(commands.plan(createdPlan.planId).executionJson!!).undo!!
+            val journal=CommandUndoJournal(r,book)
+            assertTrue(journal.conflicts(journal.migratedRecord(oldCsv.copy(databaseVersion=40))).any{it.field=="sourceMatchKey"})
+            // Entire-row removal must notice a post-upgrade source key, even though old JSON lacks it.
+            db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey='later-source' WHERE bookId=? AND eventId=?",arrayOf(book,created))
+            assertUndoConflict(createdPlan,"sourceMatchKey")
+            db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey=NULL WHERE bookId=? AND eventId=?",arrayOf(book,created))
+            val csvUndo=commands.prepareUndo(createdPlan.planId);val csvPreview=commands.preview(csvUndo.planId)
+            assertTrue(csvPreview.conflicts.toString(),csvPreview.executable);commands.confirm(csvUndo.planId,commandChecks(csvPreview))
+            assertNull(r.dao.event(book,created))
+            db.openHelper.readableDatabase.query("SELECT * FROM csv_batch_events").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
     @Test fun budgetExclusionEditsTemplatesExportsAndUndo()=runBlocking<Unit> {
         val (book,bank)=setup();val c=r.saveCategory(book,"食事",EntryKind.EXPENSE,null)
         val e=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=c,amount="1200",date="2026-11-02"))

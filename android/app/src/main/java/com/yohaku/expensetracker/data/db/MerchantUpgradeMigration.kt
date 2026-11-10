@@ -1,5 +1,9 @@
 package com.yohaku.expensetracker.data.db
 
+import android.content.ContentValues
+import android.database.sqlite.SQLiteDatabase
+import java.text.Normalizer
+import java.util.Locale
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
@@ -22,8 +26,95 @@ private fun createMerchantUpgradeStructure(db:SupportSQLiteDatabase) {
     db.execSQL("ALTER TABLE csv_batch_events ADD COLUMN sourceMatchKey TEXT DEFAULT NULL")
 }
 
-/** Batch E adds frozen migration-only normalization and data cleanup here, after structure SQL.
- * Room/prepareRestore run both steps in the same upgrade transaction. Batch A changes no data.
- */
-@Suppress("UNUSED_PARAMETER")
-private fun organizeMerchantHistoryV40(db:SupportSQLiteDatabase) = Unit
+/** Frozen v40 normalization: future search/input rules must not change what restoring a v39
+ * backup does. Keep this pure function independent of repository normalization helpers. */
+private fun merchantNameV40(value:String)=Normalizer.normalize(value.trim(),Normalizer.Form.NFKC).lowercase(Locale.ROOT)
+
+private data class MerchantV40(val id:String,val name:String)
+private data class MerchantRowV40(val id:String,val name:String,val merchantId:String?,val kind:String,val trashed:Boolean=false)
+private data class MerchantImpactV40(val type:String,val before:MerchantRowV40,val name:String,val merchantId:String?)
+
+/** Raw cursor -> frozen calculation -> changed columns only. Room and prepareRestore provide
+ * the upgrade transaction. One readable HISTORY_CLEANUP summary per changed book; details are
+ * also durable markers for pre-v40 undo journals. No revisions, save times or drafts are touched. */
+private fun organizeMerchantHistoryV40(db:SupportSQLiteDatabase) {
+    val books=db.query("SELECT id FROM books").use{c->buildList{while(c.moveToNext())add(c.getString(0))}}
+    val timestamp=System.currentTimeMillis()
+    for(book in books) {
+        val merchants=db.query("SELECT id,name FROM merchants WHERE bookId=?",arrayOf(book)).use{c->
+            buildList{while(c.moveToNext())add(MerchantV40(c.getString(0),c.getString(1)))}}
+        val byId=merchants.associateBy{it.id}
+        val byName=merchants.groupBy{merchantNameV40(it.name)}
+        fun resolve(row:MerchantRowV40):MerchantV40? = byId[row.merchantId]
+            ?:if(row.kind=="EXPENSE"&&row.name.isNotBlank())byName[merchantNameV40(row.name)]?.singleOrNull()else null
+        val impacts=mutableListOf<MerchantImpactV40>()
+        fun update(table:String,id:String,values:ContentValues) {
+            if(values.size()>0)db.update(table,SQLiteDatabase.CONFLICT_ABORT,values,"bookId=? AND id=?",arrayOf(book,id))
+        }
+        val events=db.query("""SELECT e.id,e.merchant,m.merchantId,e.kind,e.deletedAt FROM events e
+            LEFT JOIN event_merchants m ON m.bookId=e.bookId AND m.eventId=e.id
+            WHERE e.bookId=? AND e.purgedAt IS NULL""",arrayOf(book)).use{c->buildList {
+            while(c.moveToNext())add(MerchantRowV40(c.getString(0),c.getString(1),c.getString(2),c.getString(3),!c.isNull(4)))
+        }}
+        val finalNames=events.associate{it.id to it.name}.toMutableMap()
+        fun writeEvent(row:MerchantRowV40,name:String,id:String?) {
+            if(row.name==name&&row.merchantId==id)return
+            update("events",row.id,ContentValues().apply{if(row.name!=name)put("merchant",name)})
+            if(row.merchantId!=id) {
+                if(id==null)db.execSQL("DELETE FROM event_merchants WHERE bookId=? AND eventId=?",arrayOf(book,row.id))
+                else if(row.merchantId==null)db.execSQL("INSERT INTO event_merchants (bookId,eventId,merchantId) VALUES (?,?,?)",arrayOf(book,row.id,id))
+                else db.execSQL("UPDATE event_merchants SET merchantId=? WHERE bookId=? AND eventId=?",arrayOf(id,book,row.id))
+            }
+            finalNames[row.id]=name
+            impacts+=MerchantImpactV40(if(row.kind=="REFUND")"REFUND"else"EVENT",row,name,id)
+        }
+        for(row in events.filter{it.kind!="REFUND"}) {
+            val merchant=resolve(row)
+            writeEvent(row,if(row.kind in setOf("EXPENSE","INCOME"))merchant?.name?:row.name else row.name,merchant?.id)
+        }
+        // Resolve all refund originals once, after purchase display names have reached final state.
+        val originals=db.query("SELECT eventId,originalEventId FROM settlements WHERE bookId=? AND originalEventId IS NOT NULL",arrayOf(book)).use{c->
+            buildMap{while(c.moveToNext())put(c.getString(0),c.getString(1))}}
+        val expenses=events.filter{it.kind=="EXPENSE"}.map{it.id}.toSet()
+        for(row in events.filter{it.kind=="REFUND"}) {
+            val original=originals[row.id]?.takeIf{it in expenses}
+            writeEvent(row,original?.let{finalNames.getValue(it)}?:row.name,null)
+        }
+        for((table,type) in listOf("entry_templates" to "TEMPLATE","recurrences" to "RECURRENCE")) {
+            val rows=db.query("SELECT id,merchant,merchantId,"+(if(table=="recurrences")"'EXPENSE'"else"kind")+",name FROM $table WHERE bookId=?",arrayOf(book)).use{c->buildList {
+                while(c.moveToNext())add(MerchantRowV40(c.getString(0),c.getString(1),c.getString(2),c.getString(3)) to c.getString(4))
+            }}
+            for((row,title) in rows) {
+                val merchant=resolve(if(table=="recurrences"&&row.name.isBlank())row.copy(name=title)else row)
+                val name=merchant?.name?:row.name
+                val id=merchant?.id
+                if(row.name==name&&row.merchantId==id)continue
+                update(table,row.id,ContentValues().apply {
+                    if(row.name!=name)put("merchant",name)
+                    if(row.merchantId!=id)put("merchantId",id)
+                })
+                impacts+=MerchantImpactV40(type,row,name,id)
+            }
+        }
+        if(impacts.isEmpty())continue
+        val operation="merchant-history-v40"
+        val records=impacts.filter{it.type=="EVENT"}
+        db.insert("merchant_operations",SQLiteDatabase.CONFLICT_ABORT,ContentValues().apply {
+            put("bookId",book);put("id",operation);put("timestamp",timestamp)
+            put("type","HISTORY_CLEANUP");put("source","UPGRADE")
+            put("count_affectedRecords",records.size)
+            put("count_newlyLinkedRecords",records.count{it.before.merchantId!=it.merchantId&&it.merchantId!=null})
+            put("count_renamedRecords",records.count{it.before.name!=it.name})
+            put("count_trashedRecords",records.count{it.before.trashed})
+            put("count_linkedRefunds",impacts.count{it.type=="REFUND"})
+            put("count_templates",impacts.count{it.type=="TEMPLATE"})
+            put("count_recurrenceRules",impacts.count{it.type=="RECURRENCE"})
+            put("count_savedLocations",0);put("count_pendingPlaces",0);put("count_drafts",0)
+        })
+        for(impact in impacts)db.insert("merchant_operation_impacts",SQLiteDatabase.CONFLICT_ABORT,ContentValues().apply {
+            put("bookId",book);put("operationId",operation);put("objectType",impact.type);put("objectId",impact.before.id)
+            put("oldMerchantName",impact.before.name);put("newMerchantName",impact.name)
+            put("oldMerchantId",impact.before.merchantId);put("newMerchantId",impact.merchantId)
+        })
+    }
+}

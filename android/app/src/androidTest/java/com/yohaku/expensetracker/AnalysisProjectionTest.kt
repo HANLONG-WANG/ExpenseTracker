@@ -69,7 +69,7 @@ class AnalysisProjectionTest {
         val s=fresh.snapshot(fresh.dao.book(book)!!).first()
         assertEquals("珈琲の新資料",s.events.single().merchant);assertEquals(shop,s.eventMerchants.single().merchantId)
         assertEquals(1000L,s.analysis(AnalysisFilter("2026-10-01","2026-10-31",merchantKey="id:"+shop)).total)
-        val review=repo.previewEntry(book,EntryDraft(id=event,accountId=account,categoryId=parent,amount="1000",date="2026-10-01",merchant="手动填写"))
+        val review=repo.previewEntry(book,s.merchantInput(s.editingEntryDraft(s.events.single()),"手动填写"))
         assertNotNull(repo.commitEntryReview(book,review));assertTrue(snapshot().eventMerchants.isEmpty())
     }
     @Test fun deletingMerchantDetachesLiveReferencesAndPreservesRecordedNames()=runBlocking {
@@ -95,7 +95,7 @@ class AnalysisProjectionTest {
         assertEquals("原名",after.events.single{it.id==trashed}.merchant)
         assertEquals(before.templates.single().copy(merchantId=null),after.templates.single{it.id==template})
         assertEquals(before.recurrences.single().copy(merchantId=null),after.recurrences.single{it.id==rule})
-        assertEquals(draft.copy(merchantId=null,merchantLocated=false),after.draft)
+        assertEquals(draft.copy(merchantId=null,merchantLocated=false,merchantSyncVersion=draft.merchantSyncVersion+1),after.draft)
         assertEquals("",after.merchantLabel("id:$shop"))
         val deletion=db.merchantHistoryDao().page(book,100).single{it.type==MerchantOperationType.DELETE}
         assertEquals(shop,deletion.sourceMerchantId);assertEquals("原名",deletion.sourceMerchantName);assertNull(deletion.targetMerchantId)
@@ -268,6 +268,19 @@ class AnalysisProjectionTest {
         repo.saveMerchant(book,"A2",id=a);assertEquals("A",repo.dao.event(book,confirmed)!!.merchant)
         repo.saveMerchant(book,"B2",id=b)
         assertTrue(snapshot().events.all{it.merchant=="B2"})
+    }
+
+    @Test fun analysisReadsOnlyPersistentLinksEvenWhenNameIsUnique()=runBlocking {
+        val shop=repo.saveMerchant(book,"Cafe")
+        // Deliberately corrupt a fixture to expose any accidental read fallback.
+        repo.dao.putEvent(EventEntity(book,"unlinked","EXPENSE",account,parent,100,"JPY",100,"2026-10-01","cAFE",""))
+        val before=snapshot()
+        assertEquals("name:cafe",before.merchantKey(before.events.single()))
+        assertEquals(0L,before.analysis(AnalysisFilter("2026-10-01","2026-10-31",merchantKey="id:$shop")).total)
+        repo.saveEntry(book,before.editingEntryDraft(before.events.single()))
+        val after=snapshot()
+        assertEquals("id:$shop",after.merchantKey(after.events.single()))
+        assertEquals(100L,after.analysis(AnalysisFilter("2026-10-01","2026-10-31",merchantKey="id:$shop")).total)
     }
 
     @Test fun unlinkedExpenseGroupsNormalizeNamesLikeOriginalDirectory()=runBlocking {

@@ -58,9 +58,11 @@ class AnalysisProjectionCalculationTest {
         val both=s.analysis(AnalysisFilter("2026-09-01","2026-10-31"))
         assertEquals(listOf("2026-09","2026-10"),both.groups{it.date.take(7)}.sortedBy{it.key}.map{it.key})
         val legacyShop="legacy"
-        val legacy=s.copy(merchants=s.merchants+MerchantEntity("b",legacyShop,"日常"))
+        // A migrated/written fixture carries persistent associations; analysis never invents them.
+        val links=s.events.filter{it.kind=="EXPENSE"&&it.merchant=="日常"}.map{EventMerchantEntity("b",it.id,legacyShop)}
+        val legacy=s.copy(merchants=s.merchants+MerchantEntity("b",legacyShop,"日常"),eventMerchants=s.eventMerchants+links)
         assertEquals(1500L,legacy.analysis(filter.copy(merchantKey="id:"+legacyShop)).total)
-        assertEquals(1,legacy.eventMerchants.size) // exact-name analysis grouping does not rewrite old facts
+        assertEquals(5,legacy.eventMerchants.size)
         assertEquals(s.events,legacy.events);assertEquals(s.postings,legacy.postings)
         assertEquals(1800L,s.budgetProjection("2026-10").spentMinor) // excluded activity still remains in analysis
     }

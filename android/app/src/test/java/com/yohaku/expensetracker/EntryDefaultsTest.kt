@@ -65,7 +65,9 @@ class EntryDefaultsTest {
         assertNull(s.merchantInput(EntryDraft(merchantId="shop"),"Cafe 1").merchantId)
         val recorded=event("purchase","bank").copy(merchant=" cafe 12 ")
         assertFalse(s.merchantKey(recorded).startsWith("id:"))
-        assertEquals("id:shop",s.copy(merchants=s.merchants.take(1)).merchantKey(recorded))
+        val written=s.copy(merchants=s.merchants.take(1),eventMerchants=listOf(EventMerchantEntity("b",recorded.id,"shop")))
+        assertEquals("id:shop",written.merchantKey(recorded))
+        assertEquals("name:cafe 12",s.copy(merchants=s.merchants.take(1)).merchantKey(recorded))
     }
     @Test fun merchantBaselineIsMinimalAndOldDraftJsonRemainsUnbased() {
         val json=kotlinx.serialization.json.Json { encodeDefaults=true }

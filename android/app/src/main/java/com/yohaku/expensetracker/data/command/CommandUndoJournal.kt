@@ -216,7 +216,72 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         }
         return newMerchantUndoConflicts(before.mapValues{it.value.values.toList()},after.mapValues{it.value.values.toList()})
     }
+    /** Missing databaseVersion identifies journals written before v40. Only known migration
+     * defaults are supplied; current values (including later source keys) are still compared. */
+    fun migratedRecord(record:UndoRecord):UndoRecord {
+        if(record.databaseVersion>=40)return record
+        fun row(table:String,value:JsonObject):JsonObject {
+            val defaults=buildMap<String,JsonElement> {
+                if(record.databaseVersion<40&&table=="csv_batch_events")put("sourceMatchKey",JsonNull)
+                if(record.databaseVersion<39&&table in setOf("events","entry_templates"))put("budgetExcluded",JsonPrimitive(0))
+            }
+            return JsonObject(defaults+value)
+        }
+        fun event(value:JsonElement):JsonElement = if(record.databaseVersion<39&&value is JsonObject)
+            JsonObject(mapOf("budgetExcluded" to JsonPrimitive(false))+value)else value
+        val guards=record.guards.map{guard->guard.copy(after=when {
+            guard.type=="entry"->event(guard.after)
+            guard.type=="entryAssociations"->JsonObject(guard.after.jsonObject.mapValues{(field,value)->when(field) {
+                "original"->event(value)
+                "refunds"->JsonArray(value.jsonArray.map(::event))
+                else->value
+            }})
+            guard.type.startsWith("planning:")||guard.type.startsWith("finance:")->JsonObject(guard.after.jsonObject.mapValues{(table,value)->JsonArray(value.jsonArray.map{row(table,it.jsonObject)})})
+            else->guard.after
+        })}
+        return record.copy(guards=guards,rows=record.rows.map{it.copy(before=it.before?.let{v->row(it.table,v)},after=row(it.table,it.after))})
+    }
+
+    fun upgradeConflicts(record:UndoRecord):List<UndoConflict> {
+        if(record.databaseVersion>=40)return emptyList()
+        val touched=sql.query("""SELECT i.objectType,i.objectId FROM merchant_operation_impacts i
+            JOIN merchant_operations o ON o.bookId=i.bookId AND o.id=i.operationId
+            WHERE i.bookId=? AND o.type='HISTORY_CLEANUP' AND o.source='UPGRADE'""",arrayOf(bookId)).use{c->buildSet {
+            while(c.moveToNext())add((if(c.getString(0)=="REFUND")"EVENT"else c.getString(0)) to c.getString(1))
+        }}
+        if(touched.isEmpty())return emptyList()
+        val referenced=mutableSetOf<Pair<String,String>>()
+        fun add(type:String,value:JsonElement?) { value?.jsonPrimitive?.contentOrNull?.let{referenced+=type to it} }
+        fun row(table:String,value:JsonObject) {
+            when(table) {
+                "events"->add("EVENT",value["id"])
+                "entry_templates"->add("TEMPLATE",value["id"])
+                "recurrences"->add("RECURRENCE",value["id"])
+            }
+            for(field in listOf("eventId","originalEventId","sourceEventId","fundingEventId","linkedTransferEventId","causeEventId"))add("EVENT",value[field])
+            add("RECURRENCE",value["recurrenceId"])
+        }
+        for(change in record.rows) { row(change.table,change.after);change.before?.let{row(change.table,it)} }
+        for(guard in record.guards) {
+            if(guard.type in setOf("entry","entryDetails","entryPlace","entryAssociations"))referenced+="EVENT" to guard.key
+            if(guard.type=="entryAssociations") {
+                val value=guard.after.jsonObject
+                (value["original"] as? JsonObject)?.let{row("events",it)}
+                (value["refunds"] as? JsonArray)?.forEach{row("events",it.jsonObject)}
+            }
+            if(guard.type.startsWith("planning:")||guard.type.startsWith("finance:"))
+                guard.after.jsonObject.forEach{(table,values)->values.jsonArray.forEach{row(table,it.jsonObject)}}
+        }
+        return (referenced intersect touched).map{(type,id)->UndoConflict(type,id,"数据已升级整理 / データはアップグレード時に整理済み",
+            JsonPrimitive("升级前数据 / アップグレード前のデータ"),JsonPrimitive("数据已升级整理 / データはアップグレード時に整理済み"))}
+    }
+
     fun conflicts(record:UndoRecord):List<UndoConflict> = record.rows.flatMap{change->
+        // Unknown/missing columns cannot be silently treated as null, even on a deleted row.
+        val columns=tables.getValue(change.table).columns.toSet()
+        val missing=(columns-change.after.keys)+(change.before?.let{columns-it.keys}.orEmpty())
+        missing.map{field->UndoConflict(change.table,objectKey(change.table,change.after),field,
+            JsonPrimitive("日志缺少字段 / ログに項目がありません"),JsonPrimitive("无法安全解释升级后的字段 / 更新後の項目を安全に解釈できません"))}+
         undoDifferences(change.table,objectKey(change.table,change.after),if(change.removed)JsonNull else comparableRow(change.table,restorableRow(change.table,change.after))?:JsonNull,comparableRow(change.table,read(change))?:JsonNull)
     }+record.rows.filter{it.table in setOf("books","events")&&it.before?.get("deletedAt")==JsonNull&&it.after["deletedAt"]!=JsonNull&&it.after["deletedAt"]?.jsonPrimitive?.longOrNull?.let{time->time<=ledger.clock.millis()-recoveryDuration.toMillis()}==true}.map{change->
         UndoConflict(change.table,objectKey(change.table,change.after),"recoveryDeadline",JsonPrimitive("可恢复 / 復元可能"),JsonPrimitive("已超过恢复期限 / 復元期限切れ"))
@@ -292,7 +357,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
     /** Called only by local.restoreExecution, after whole-batch conflict checks in the same outer
      * transaction. UPDATE preserves original rows; DELETE is restricted to recorded null-before rows. */
     suspend fun restore(run:CommandRun):Set<String> {
-        val record=requireNotNull(run.undoRecord)
+        val record=migratedRecord(requireNotNull(run.undoRecord))
         check(record.version in 2..3)
         val rows=record.rows
         for(change in rows) {
