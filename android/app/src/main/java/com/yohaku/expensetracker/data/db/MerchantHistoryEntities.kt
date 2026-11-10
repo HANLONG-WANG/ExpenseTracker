@@ -69,7 +69,13 @@ interface MerchantHistoryDao {
     @Query("""SELECT * FROM merchant_operation_impacts WHERE bookId=:bookId AND operationId=:operationId
         ORDER BY objectType,objectId LIMIT :limit OFFSET :offset""")
     suspend fun impacts(bookId:String,operationId:String,limit:Int,offset:Int=0):List<MerchantOperationImpactEntity>
-    // Batch C calls this with the inverse operation insert in the same outer undo transaction.
+    @Query("""SELECT * FROM merchant_operations WHERE bookId=:bookId AND cloudPlanId=:planId
+        AND cloudExecutionId=:executionId AND source='CLOUD' AND type!='CLOUD_UNDO'
+        ORDER BY timestamp,id""")
+    suspend fun cloudOperations(bookId:String,planId:String,executionId:String):List<MerchantOperationEntity>
+    @Query("SELECT * FROM merchant_operation_impacts WHERE bookId=:bookId AND operationId=:operationId ORDER BY objectType,objectId")
+    suspend fun undoImpacts(bookId:String,operationId:String):List<MerchantOperationImpactEntity>
+    // Called with the inverse operation insert in the same outer undo transaction.
     @Query("""UPDATE merchant_operations SET undoneByOperationId=:undoOperationId,undoneAt=:timestamp
         WHERE bookId=:bookId AND id=:operationId AND undoneByOperationId IS NULL""")
     suspend fun markUndone(bookId:String,operationId:String,undoOperationId:String,timestamp:Long):Int

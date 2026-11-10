@@ -50,18 +50,4 @@ suspend fun LedgerRepository.removeMerchantLocation(bookId:String,id:String)=db.
     dao.removeMerchantLocation(bookId,id)
 }
 
-/** Keep recorded names and audit snapshots; only live references belong to saved merchant data. */
-suspend fun LedgerRepository.deleteMerchant(bookId:String,merchantId:String)=db.withTransaction {
-    requireNotNull(dao.merchant(bookId,merchantId)){"商户不属于本账本 / 別の帳簿のお店です"}
-    dao.deleteMerchantLocations(bookId,merchantId)
-    dao.deleteMerchantLinks(bookId,merchantId)
-    dao.clearTemplateMerchant(bookId,merchantId)
-    dao.clearRecurrenceMerchant(bookId,merchantId)
-    dao.storedDraft(bookId)?.let{stored->
-        val draft=json.decodeFromString<EntryDraft>(stored.json)
-        if(draft.merchantId==merchantId)dao.putDraft(stored.copy(json=json.encodeToString(draft.withoutMerchantLink())))
-    }
-    dao.deleteMerchant(bookId,merchantId)
-}
-
 internal fun EntryDraft.withoutMerchantLink()=copy(merchantId=null,merchantLocated=false)

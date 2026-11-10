@@ -311,6 +311,9 @@ class CommandFlowTest {
             ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
             ui.runOnIdle{vm.openCommandPlan(row.planId)}
             ui.waitUntil(15000){ui.onAllNodesWithTag("command-step-entry").fetchSemanticsNodes().isNotEmpty()}
+            alignCommandStep("command-step-merchant")
+            ui.onNodeWithText(if(language=="ja")"お店の整理範囲"else"商户整理范围").assertExists()
+            shot("$theme-$language-merchant-scope-preview")
             ui.onNodeWithTag("command-step-entry").performScrollTo()
             shot("$theme-$language-ledger-preview")
             ui.onNodeWithTag("command-details-entry").performScrollTo().performClick()

@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import com.yohaku.expensetracker.ui.haptics.Haptic
@@ -23,10 +24,11 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
     var choosingMerge by rememberSaveable(s.book.id){mutableStateOf(false)}
     var mergeTarget by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var deleting by rememberSaveable(s.book.id){mutableStateOf(false)}
+    var organizing by rememberSaveable(s.book.id){mutableStateOf(false)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     var locationFor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var locationId by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
-    YTitle(word("常去的地方，留下原名。","いつものお店を、元の名前で。"),"PLACES OF EVERYDAY LIFE",pageFlow=true)
+    YTitle(word("常去的地方，留下名字。","いつものお店を、その名前で。"),"PLACES OF EVERYDAY LIFE",pageFlow=true)
     val merchant=s.merchants.find{it.id==selected}
     if(merchant==null) {
         if(s.merchants.isEmpty())YEmpty(word("保存常去商户与地点，记账时可以主动选择。","いつものお店と場所を保存すると、記録で選べます。"))
@@ -47,8 +49,8 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
             }
         }
         YButton(word("＋ 保存商户","＋ お店を保存"),{newName="";editing=""},Modifier.testTag("merchant-add"),primary=true)
-        val names=s.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.merchant.isNotBlank()&&s.eventMerchants.none{link->link.eventId==it.id}}
-            .groupBy{normalizedMerchantName(it.merchant)}.filterKeys{key->s.merchants.none{normalizedMerchantName(it.name)==key}}
+        val names=s.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.merchant.isNotBlank()&&it.id !in s.merchantByEvent}
+            .groupBy{normalizedMerchantName(it.merchant)}.filterKeys{key->key !in s.merchantsByName}
         if(names.isNotEmpty())ThemeSection(word("记录中出现过的原名","記録にある元の名前"),"FROM YOUR RECORDS")
         Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
             names.values.toList().chunked(2).forEach{row->Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -65,21 +67,17 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         YLead(merchant.name,word("改名后，名下记录、模板和周期账单会同步。","名前の変更は関連する記録・テンプレート・定期支払いにも反映します。"),"YOUR SAVED PLACES",pageFlow=true)
         Panel {
             YText(merchant.note.ifBlank{word("暂无备注","メモなし")},13)
-            YButton(word("编辑原名与备注","元の名前・メモを編集"),{editing=merchant.id})
-            YText(word("保存会统一名下记录的商户名，原名不再保留。","保存時に関連記録のお店名を揃えます。元の名前は残りません。"),11,color=LocalYohaku.current.muted)
+            YButton(word("编辑名称与备注","名前・メモを編集"),{editing=merchant.id})
+            YText(word("改名会同步记录；只改备注或启停不会整理记录。","名前の変更は記録に反映します。メモ・有効状態だけの変更は記録を整理しません。"),11,color=LocalYohaku.current.muted)
         }
         YButton(word("合并到其他商户","別のお店に統合"),{choosingMerge=true},Modifier.testTag("merchant-merge"),enabled=s.merchants.size>1)
         YLink(word("删除商户","お店を削除"),{deleting=true},Modifier.testTag("merchant-delete"))
-        if(deleting)YSheet(word("删除商户","お店を削除"),{deleting=false}) {
-            val count=s.visibleEvents.count{s.merchantKey(it)=="id:${merchant.id}"}
-            YText(word("删除「${merchant.name}」后，保存地点也会一起删除。此操作不能撤销。","「${merchant.name}」を削除すると、保存した場所も削除されます。この操作は取り消せません。"),13)
-            if(count>0)YText(word("关联的 $count 条记录会保留原来的商户文字，只是不再关联这个商户。","関連する ${count} 件の記録には元のお店名を残し、このお店との関連付けだけを解除します。"),13)
-            YText(word("如果只是暂时不想在候选中出现，可以在商户资料中停用。","一時的に候補に表示したくない場合は、お店の情報から停止できます。"),13)
-            YButton(word("确认删除商户","お店の削除を確定"),{vm.execute(onSuccess={
-                vm.entry.value?.takeIf{it.merchantId==merchant.id}?.let{vm.entry.value=it.withoutMerchantLink()}
-                deleting=false;selected=null
-            }){vm.repository.deleteMerchant(s.book.id,merchant.id);vm.haptic(Haptic.Removed)}},Modifier.testTag("merchant-delete-confirm"),primary=true,enabled=!busy)
-        }
+        if(deleting)MerchantOperationConfirmation(s,MerchantOperationInput(MerchantOperationType.DELETE,merchant.id),vm,
+            word("删除商户","お店を削除"),{deleting=false},{selected=null;deleting=false},delete=true)
+        val pending=s.eventPlaces.count{p->s.merchantByEvent[p.eventId]==merchant.id}
+        if(pending>0)YButton(word("整理待处理位置（$pending）","未整理の場所（$pending）"),{organizing=true},Modifier.testTag("merchant-organize-places"))
+        if(organizing)MerchantOperationConfirmation(s,MerchantOperationInput(MerchantOperationType.ORGANIZE_LOCATIONS,merchant.id),vm,
+            word("整理待处理位置","未整理の場所を整理"),{organizing=false},{organizing=false})
         ThemeSection(word("保存地点","保存した場所"),"SAVED PLACES")
         s.merchantLocations.filter{it.merchantId==merchant.id}.forEach{l->Panel {
             YText(l.name,18)
@@ -109,90 +107,123 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         }
     }
     val target=s.merchants.find{it.id==mergeTarget}
-    if(merchant!=null&&target!=null)MerchantMergeConfirmation(s,merchant,target,!busy,{mergeTarget=null}) {
-        vm.execute(onSuccess={vm.syncMerchantDraft(merchant.id,target.id,target.name);selected=target.id;mergeTarget=null;vm.haptic(Haptic.Done)}) {
-            vm.repository.mergeMerchants(s.book.id,merchant.id,target.id)
-        }
-    }
+    if(merchant!=null&&target!=null)MerchantOperationConfirmation(s,MerchantOperationInput(MerchantOperationType.MERGE,merchant.id,target.id),vm,
+        word("合并商户","お店を統合"),{mergeTarget=null},{selected=target.id;mergeTarget=null},merge=true)
     editing?.let{id->MerchantEditor(s,s.merchants.find{it.id==id},newName,vm,{editing=null},{selected=it})}
     locationFor?.let{id->LocationEditor(s,id,s.merchantLocations.find{it.id==locationId},vm,{locationFor=null;locationId=null})}
 }
 private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val latitude:Double,val longitude:Double,val radius:String="100")
 
+@Composable private fun MerchantImpact(preview:MerchantOperationPreview) {
+    val c=preview.counts
+    val rows=listOf(
+        listOf(word("正常记录","通常の記録") to c.affectedRecords-c.trashedRecords,word("回收站","ごみ箱") to c.trashedRecords),
+        listOf(word("新关联","新規関連") to c.newlyLinkedRecords,word("改名","名前変更") to c.renamedRecords,word("退款","返金") to c.linkedRefunds),
+        listOf(word("模板","テンプレート") to c.templates,word("周期","定期") to c.recurrenceRules,word("草稿","下書き") to c.drafts),
+        listOf(word("保存地点","保存場所") to c.savedLocations,word("待整理位置","未整理の位置") to c.pendingPlaces),
+    ).mapNotNull { row->row.filter{it.second>0}.takeIf{it.isNotEmpty()}?.joinToString(" · "){"${it.first} ${it.second}"} }
+    YText(rows.joinToString("\n").ifEmpty{word("不影响其他记录","ほかの記録には影響しません")},12,Modifier.testTag("merchant-name-impact"))
+}
+
 @Composable private fun MerchantEditor(s:BookSnapshot,old:MerchantEntity?,initialName:String,vm:AppViewModel,onDismiss:()->Unit,onMerged:(String)->Unit) {
     var name by rememberSaveable{mutableStateOf(old?.name?:initialName)}
     var note by rememberSaveable{mutableStateOf(old?.note.orEmpty())}
     var active by rememberSaveable{mutableStateOf(old?.active?:true)}
+    val createdId=remember{vm.repository.id()}
+    var confirming by remember{mutableStateOf(false)}
     val busy by vm.busy.collectAsStateWithLifecycle()
-    val places=remember(s.events,s.eventPlaces,s.eventMerchants,name,old){if(old==null)s.recordedPlaces(name)else emptyList()}
-    val defaults=places.map{p->RecordedPlaceChoice(name=word("${p.latestDate.substring(5).replace('-','/')} 记账处","${p.latestDate.substring(5).replace('-','/')} の記録場所"),latitude=p.latitude,longitude=p.longitude)}
-    val choices=remember(name.trim(),places){mutableStateListOf<RecordedPlaceChoice>().apply{addAll(defaults)}}
-    var adjusting by remember(name.trim(),places){mutableStateOf<Int?>(null)}
-    var adoption by remember{mutableStateOf(false)}
-    var merge by remember{mutableStateOf<MerchantEntity?>(null)}
-    val adopted=s.merchantAdoptions(name,old)
-    val changed=s.merchantNameChanges(name,old)
-    fun save(confirmed:Boolean=false) {
-        vm.execute(onSuccess={old?.let{vm.syncMerchantDraft(it.id,it.id,name.trim())};vm.haptic(Haptic.Done);onDismiss()}) {
-            vm.repository.saveMerchantWithLocations(s.book.id,name,note,old?.id,active,choices.filter{it.keep}.map{
-                MerchantPlaceInput(it.name,it.latitude,it.longitude,it.radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"))
-            },confirmAdoption=confirmed)
-        }
+    val originalName=initialName.takeIf{old==null&&it.isNotBlank()}
+    val matches=s.merchants.filter{it.id!=old?.id&&normalizedMerchantName(it.name)==normalizedMerchantName(name)}
+    // A spelling-only update retains the selected identity, even with historical duplicates.
+    val collision=(old==null||normalizedMerchantName(old.name)!=normalizedMerchantName(name))&&matches.isNotEmpty()
+    val target=if(collision)matches.singleOrNull()else null
+    val input=when {
+        target!=null&&old!=null->MerchantOperationInput(MerchantOperationType.MERGE,old.id,target.id,note=note,createdId=createdId)
+        target!=null&&originalName!=null->MerchantOperationInput(MerchantOperationType.ASSIGN_ORIGINAL_NAME,targetId=target.id,originalName=originalName,note=note,createdId=createdId)
+        else->merchantSaveInput(name,note,old,active,originalName,createdId)
     }
-    if(!adoption&&merge==null&&adjusting==null)YSheet(word("商户资料","お店の情報"),onDismiss) {
-        YField(word("商户原名","お店の元の名前"),name,{name=it})
-        if(changed>0)YText(word("保存后会有 $changed 条记录的商户名改为新名称。","保存すると ${changed} 件の記録のお店名が新しい名前になります。"),12,Modifier.testTag("merchant-name-impact"))
+    val calculated=runCatching{s.prepareMerchantOperation(input)}
+    if(!confirming)YSheet(word("商户资料","お店の情報"),onDismiss) {
+        originalName?.let{YText(word("来源原名组：$it","元の名前グループ：$it"),13,Modifier.testTag("merchant-original-group"))}
+        YField(word("商户名称","お店の名前"),name,{name=it})
+        calculated.getOrNull()?.let{MerchantImpact(it.preview)}
         YField(word("备注","メモ"),note,{note=it},multiline=true)
-        YToggle(word("启用候选选择","選択候補として有効"),active,{active=it})
-        if(places.isNotEmpty()) {
-            ThemeSection(word("记账时的位置","記録したときの場所"),"RECORDED PLACES")
-            places.forEachIndexed{index,place->
-                val choice=choices[index]
-                Panel(Modifier.testTag("recorded-place-$index")) {
-                    YToggle(word("保留地点","場所を保存"),choice.keep,{choices[index]=choices[index].copy(keep=it)})
-                    YField(word("地点名称","場所の名前"),choice.name,{choices[index]=choices[index].copy(name=it)})
-                    YText(word("记了 ${place.count} 次","${place.count} 回記録"),11)
-                    YLink(word("在地图上调整","地図で調整"),{adjusting=index})
+        if(target==null)YToggle(word("启用候选选择","選択候補として有効"),active,{active=it})
+        else YText(word("沿用「${target.name}」的名称和启停；备注加入目标资料。","「${target.name}」の名前・有効状態を保持し、メモを追加します。"),12)
+        if(name.isNotBlank())calculated.exceptionOrNull()?.message?.let{YText(it,12)}
+        YButton(word("保存商户资料","お店の情報を保存"),{
+            val prepared=calculated.getOrThrow()
+            if(input.type in setOf(MerchantOperationType.MERGE,MerchantOperationType.ASSIGN_ORIGINAL_NAME)||prepared.preview.counts.newlyLinkedRecords>0||prepared.preview.counts.pendingPlaces>0||
+                input.type==MerchantOperationType.RENAME&&(prepared.preview.counts.templates>0||prepared.preview.counts.recurrenceRules>0))confirming=true
+            else vm.execute(onSuccess={vm.syncMerchantOperationDraft(prepared);vm.haptic(Haptic.Done);onDismiss()}){vm.repository.commitMerchantEdits(prepared)}
+        },Modifier.testTag("merchant-save"),primary=true,enabled=!busy&&calculated.isSuccess)
+    }
+    if(confirming)MerchantOperationConfirmation(s,input,vm,
+        if(input.type==MerchantOperationType.MERGE)word("合并商户","お店を統合")else word("归入同名记录","同名の記録を取り込む"),
+        {confirming=false},{id->if(target!=null)onMerged(requireNotNull(id));onDismiss()},merge=input.type==MerchantOperationType.MERGE)
+}
+
+/** Keep the displayed preview fixed until confirmation; stale commits refresh instead of expanding scope. */
+@Composable private fun MerchantOperationConfirmation(s:BookSnapshot,initial:MerchantOperationInput,vm:AppViewModel,title:String,
+    onDismiss:()->Unit,onSaved:(String?)->Unit,merge:Boolean=false,delete:Boolean=false) {
+    val stable=remember(initial.type,initial.merchantId,initial.targetId,initial.name,initial.note){initial}
+    var base by remember(stable){mutableStateOf(s.prepareMerchantOperation(stable))}
+    val places=remember(base){base.after.recordedPlacesForEvents(base.pendingEventIds)}
+    val defaults=places.map{RecordedPlaceChoice(name=word("${it.latestDate} 记账处","${it.latestDate} の記録場所"),latitude=it.latitude,longitude=it.longitude)}
+    val choices=remember(base){mutableStateListOf<RecordedPlaceChoice>().apply{addAll(defaults)}}
+    var adjusting by remember(base){mutableStateOf<Int?>(null)}
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val decisions=places.mapIndexed{index,p->val c=choices[index];MerchantPlaceDecision(p.eventIds,
+        if(c.keep)MerchantPlaceInput(c.name,c.latitude,c.longitude,c.radius.toIntOrNull()?:0)else null)}
+    val prepared=runCatching{base.before.prepareMerchantOperation(stable.copy(places=decisions))}
+    if(adjusting==null)YSheet(title,onDismiss) {
+        val source=base.before.merchants.find{it.id==stable.merchantId}
+        val target=base.after.merchants.find{it.id==base.targetId}
+        if(delete) {
+            YText(word("删除「${source?.name}」及保存地点，保留记录文字与操作历史。此操作不能撤销；同名组如变为唯一商户，会重新归属。",
+                "「${source?.name}」と保存場所を削除し、記録の文字と操作履歴を保持します。取り消せません。同名のお店が一つになると再関連付けします。"),13)
+        }else {
+            stable.originalName?.let{YText(word("来源原名组：$it","元の名前グループ：$it"),13)}
+            YText(word("最终商户：${target?.name} · ${if(target?.active==true)"启用"else"停用"}",
+                "保存先：${target?.name} · ${if(target?.active==true)"有効"else"停止"}"),14,Modifier.testTag(if(merge)"merchant-merge-message"else"merchant-adoption-message"))
+            if(merge)YText(word("来源「${source?.name}」会被删除，全部地点迁移；备注去重后加入目标，保留目标启停。合并后不能拆开。",
+                "統合元「${source?.name}」を削除し、場所をすべて移動します。重複を除いたメモを追加し、統合先の有効状態を保持します。分離できません。"),13)
+            if(stable.type==MerchantOperationType.ASSIGN_ORIGINAL_NAME)YText(word("填写的备注及保留地点加入目标；目标名称和启停不变。","入力したメモと保存する場所を追加し、保存先の名前と有効状態を保持します。"),13)
+        }
+        prepared.getOrNull()?.let{MerchantImpact(it.preview)
+            if(it.preview.duplicateLocationIds.isNotEmpty())YText(word("有 ${it.preview.duplicateLocationIds.size} 个完全重复地点，全部保留，可稍后整理。","完全に重複する場所が ${it.preview.duplicateLocationIds.size} 件あります。すべて保持します。"),12)}
+        places.forEachIndexed { index,p->val choice=choices[index]
+            Panel(Modifier.testTag("recorded-place-$index")) {
+                YText(base.after.merchants.find{it.id==p.merchantId}?.name.orEmpty(),13)
+                YToggle(word("保留地点","場所を保存"),choice.keep,{choices[index]=choice.copy(keep=it)})
+                YField(word("地点名称","場所の名前"),choice.name,{choices[index]=choices[index].copy(name=it)})
+                YText(word("记了 ${p.count} 次；关闭保留即放弃这些临时位置。","${p.count} 回記録。保存をオフにすると一時位置を破棄します。"),11)
+                YLink(word("在地图上调整","地図で調整"),{adjusting=index})
+            }
+        }
+        prepared.exceptionOrNull()?.message?.let{YText(it,12)}
+        YButton(if(delete)word("确认删除商户","お店の削除を確定")else if(merge)word("合并","統合")else if(stable.type==MerchantOperationType.ORGANIZE_LOCATIONS)word("完成位置整理","場所の整理を完了")else word("确认归入并保存","取り込んで保存"),{
+            val review=prepared.getOrThrow();var result:String?=null
+            var refreshed:PreparedMerchantOperation?=null;var failed=false
+            vm.execute(onSuccess={vm.syncMerchantOperationDraft(review);vm.haptic(Haptic.Done);onSaved(result)},onComplete={
+                refreshed?.let{base=it}?:run{if(failed)onDismiss()}
+            }){
+                try { result=vm.repository.commitMerchantEdits(review) }
+                catch(error:kotlinx.coroutines.CancellationException){throw error}
+                catch(error:Exception) {
+                    failed=true
+                    refreshed=runCatching{vm.repository.previewMerchantOperation(s.book.id,stable)}.getOrNull()
+                    throw error
                 }
             }
-        }
-        YButton(word("保存商户资料","お店の情報を保存"),{
-            val renamed=old==null||normalizedMerchantName(old.name)!=normalizedMerchantName(name)
-            val duplicate=s.merchants.firstOrNull{it.id!=old?.id&&normalizedMerchantName(it.name)==normalizedMerchantName(name)}
-            when {
-                renamed&&duplicate!=null&&old!=null->merge=duplicate
-                renamed&&duplicate!=null->save() // Repository supplies the bilingual duplicate error.
-                old!=null&&adopted.isNotEmpty()->adoption=true
-                else->save()
-            }
-        },Modifier.testTag("merchant-save"),primary=true,enabled=!busy)
+        },Modifier.testTag(if(delete)"merchant-delete-confirm"else if(merge)"merchant-merge-confirm"else"merchant-adoption-confirm"),primary=true,enabled=!busy&&prepared.isSuccess)
+        YButton(word("取消","キャンセル"),onDismiss,Modifier.testTag(if(merge)"merchant-merge-cancel"else"merchant-adoption-cancel"))
     }
-    if(adoption)YSheet(word("归入同名记录","同名の記録を取り込む"),{adoption=false}) {
-        YText(word("有 ${adopted.size} 条记录的商户写的是「${name.trim()}」。改名后它们会归到这个商户，并统一名称；支出会正式关联。","${adopted.size} 件の記録に「${name.trim()}」と書かれています。変更するとこのお店に取り込み、名前を揃え、支出を関連付けます。"),14,Modifier.testTag("merchant-adoption-message"))
-        YButton(word("确认归入并保存","取り込んで保存"),{save(true)},Modifier.testTag("merchant-adoption-confirm"),primary=true,enabled=!busy)
-        YButton(word("取消","キャンセル"),{adoption=false},Modifier.testTag("merchant-adoption-cancel"))
-    }
-    merge?.let{target->if(old!=null)MerchantMergeConfirmation(s,old,target,!busy,{merge=null},collision=true) {
-        vm.execute(onSuccess={vm.syncMerchantDraft(old.id,target.id,target.name);vm.syncMerchantDraft(target.id,target.id,target.name);onMerged(target.id);onDismiss();vm.haptic(Haptic.Done)}) {
-            vm.repository.mergeMerchants(s.book.id,old.id,target.id,sourceNote=note,sourceActive=active)
-        }
-    }}
-    adjusting?.let{index->
-        val choice=choices[index]
+    adjusting?.let{index->val choice=choices[index]
         YSheet(word("调整地点","場所を調整"),{adjusting=null}) {
             PlacePicker(vm,choice.latitude,choice.longitude,choice.radius,{choices[index]=choices[index].copy(radius=it)}){lat,lon->choices[index]=choices[index].copy(latitude=lat,longitude=lon)}
             YButton(word("完成","完了"),{adjusting=null},primary=true)
         }
-    }
-}
-@Composable private fun MerchantMergeConfirmation(s:BookSnapshot,source:MerchantEntity,target:MerchantEntity,enabled:Boolean,onDismiss:()->Unit,collision:Boolean=false,onConfirm:()->Unit) {
-    YSheet(word("合并商户","お店を統合"),onDismiss) {
-        if(collision)YText(word("已有同名商户「${target.name}」。要把这两个商户合并吗？","同名のお店「${target.name}」があります。この2つのお店を統合しますか？"),14)
-        val count=s.merchantMergeCount(source.id,target.id)
-        val places=s.merchantLocations.count{it.merchantId==source.id}
-        YText(word("把「${source.name}」并入「${target.name}」：$count 条记录、$places 个地点会归到「${target.name}」，记录上的商户名改为「${target.name}」，「${source.name}」会被删除，合并后不能拆开。","「${source.name}」を「${target.name}」に統合：${count} 件の記録と ${places} か所を「${target.name}」に移し、記録のお店名も「${target.name}」に変更します。「${source.name}」は削除され、統合後は分離できません。"),14,Modifier.testTag("merchant-merge-message"))
-        YButton(word("合并","統合"),onConfirm,Modifier.testTag("merchant-merge-confirm"),primary=true,enabled=enabled)
-        YButton(word("取消","キャンセル"),onDismiss,Modifier.testTag("merchant-merge-cancel"))
     }
 }
 

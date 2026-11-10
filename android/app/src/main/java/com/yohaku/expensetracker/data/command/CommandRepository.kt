@@ -164,6 +164,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
                     if(done.undoOf==null)recordReceipt(done) else {
                         val original=plan(done.undoOf)
                         check(original.status=="EXECUTED")
+                        ledger.recordMerchantCloudUndoInTransaction(original.bookId,original.planId,original.localId,done.planId)
                         dao.update(original.copy(status="UNDONE",undoneAt=done.executedAt))
                     }
                     done

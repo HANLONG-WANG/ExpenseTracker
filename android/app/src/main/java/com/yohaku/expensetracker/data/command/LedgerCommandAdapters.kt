@@ -3,6 +3,8 @@ package com.yohaku.expensetracker.data.command
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.category.CategoryIconChoice
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.MerchantOperationSource
+import com.yohaku.expensetracker.domain.merchant.MerchantObjectType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.time.LocalDate
@@ -60,13 +62,13 @@ internal class BookAdapter(private val action:String):LedgerAdapter() {
 
 @Serializable internal data class ActiveInput(val target:JsonElement,val active:Boolean)
 internal class ActiveAdapter(private val type:String):LedgerAdapter() {
-    override val capability=ledgerCapability("$type.setActive",patchSchema(descriptorSchema(ActiveInput.serializer().descriptor),mapOf("target" to referenceSchema(type))),defaults="Both target and active required; no toggle/default inference.",prerequisites=when(type){"account"->"Target must be an account in plan.book_id. There is no dependency block: deactivating keeps the balance, debt, financial plans, bills and history unchanged and still counted; it does not settle or delete anything. No account trash exists.";"merchant"->"Target must be a merchant in plan.book_id; saved name, note and locations are retained. Saving also synchronizes owned record names and linked templates/recurrences/drafts, and formally links name-matched expenses.";else->"Target must be a friend in plan.book_id; name and participation history are retained."},description="Enable/disable this $type without deleting it. The target accepts only a $type ID or a preceding $type output.",example="""{"target":"$type-id","active":false}""")
+    override val capability=ledgerCapability("$type.setActive",patchSchema(descriptorSchema(ActiveInput.serializer().descriptor),mapOf("target" to referenceSchema(type))),defaults="Both target and active required; no toggle/default inference.",prerequisites=when(type){"account"->"Target must be an account in plan.book_id. There is no dependency block: deactivating keeps the balance, debt, financial plans, bills and history unchanged and still counted; it does not settle or delete anything. No account trash exists.";"merchant"->"Target must be a merchant in plan.book_id. Only active changes; names, notes, record links, templates, rules, drafts and pending locations are retained.";else->"Target must be a friend in plan.book_id; name and participation history are retained."},description="Enable/disable this $type without deleting it. The target accepts only a $type ID or a preceding $type output.",example="""{"target":"$type-id","active":false}""")
     override fun validate(input:JsonObject){commandJson.decodeFromJsonElement<ActiveInput>(input)}
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val v=commandJson.decodeFromJsonElement<ActiveInput>(step.input);val id=run.resolve(v.target);val before=run.state();val r=run.ledger
         when(type) {
             "account"->{val old=before.ledger.accounts.single{it.id==id};if(old.active!=v.active)check(r.commitAccountOperation(r.previewAccountOperation(run.bookId,id,if(v.active)AccountOperation.ACTIVATE else AccountOperation.DEACTIVATE)))}
-            "merchant"->{val old=before.ledger.merchants.single{it.id==id};r.saveMerchant(run.bookId,old.name,old.note,id,v.active)}
+            "merchant"->r.setMerchantActive(run.bookId,id,v.active,run.merchantHistoryContext(step))
             "friend"->r.setFriendActive(run.bookId,id,v.active)
         }
         return effect(step,run,before,if(type=="account")setOf(id)else emptySet())
@@ -105,6 +107,34 @@ internal class CategoryAdapter(private val action:String):LedgerAdapter() {
     }
 }
 
+private fun CommandRun.merchantHistoryContext(step:CommandStep)=MerchantHistoryContext(MerchantOperationSource.CLOUD,
+    planId.takeIf{it.isNotEmpty()},localId.takeIf{it.isNotEmpty()},step.id)
+
+/** Bind unchanged dependencies too (notably pending coordinates and duplicate-name candidates).
+ * Normalize generated IDs/audit fields using the command engine before hashing, so simulation and
+ * execution of a multi-step plan compare the same business state. This is not an undo journal write.
+ */
+private fun CommandRun.merchantScopeBasis(review:PreparedMerchantOperation):String {
+    val ids=review.preview.basis.dependencies.groupBy{it.type}.mapValues{(_,states)->states.map{it.id}.toSet()}
+    val events=ids[MerchantObjectType.EVENT].orEmpty()+ids[MerchantObjectType.REFUND].orEmpty()
+    val rows=CommandUndoJournal(ledger,bookId).snapshot().values.filter{(table,row)->
+        val id=row["id"]?.jsonPrimitive?.contentOrNull
+        val event=row["eventId"]?.jsonPrimitive?.contentOrNull
+        when(table) {
+            "merchants"->id in ids[MerchantObjectType.MERCHANT].orEmpty()
+            "events"->id in events
+            "event_merchants","settlements"->event in events
+            "entry_templates"->id in ids[MerchantObjectType.TEMPLATE].orEmpty()
+            "recurrences"->id in ids[MerchantObjectType.RECURRENCE].orEmpty()
+            "merchant_locations"->id in ids[MerchantObjectType.SAVED_LOCATION].orEmpty()
+            "event_places"->event in ids[MerchantObjectType.PENDING_PLACE].orEmpty()
+            "drafts"->ids[MerchantObjectType.DRAFT].orEmpty().isNotEmpty()
+            else->false
+        }
+    }.map{(table,row)->semantic(buildJsonObject{put("table",table);put("row",commandLedgerRow(table,row))})}
+    return "merchant-scope-v1:"+digest(JsonArray(rows.sortedBy{canonical(it).toString()}))
+}
+
 @Serializable internal data class MerchantSaveInput(val name:String,val merchant:JsonElement?=null,val note:String?=null)
 @Serializable internal data class LocationSaveInput(val merchant:JsonElement,val name:String,val location:JsonElement?=null,val latitude:Double?=null,val longitude:Double?=null,@SchemaRange(minimum=1) val radiusMeters:Int=100)
 @Serializable internal data class FriendSaveInput(val name:String,val friend:JsonElement?=null)
@@ -112,17 +142,29 @@ internal class ContactAdapter(private val type:String):LedgerAdapter() {
     override val capability=ledgerCapability("$type.save",patchSchema(when(type){"merchant"->descriptorSchema(MerchantSaveInput.serializer().descriptor);"merchantLocation"->descriptorSchema(LocationSaveInput.serializer().descriptor);else->descriptorSchema(FriendSaveInput.serializer().descriptor)},when(type){"merchantLocation"->mapOf("merchant" to referenceSchema("merchant"),"location" to nullableSchema(referenceSchema("merchantLocation")));else->mapOf(type to nullableSchema(referenceSchema(type)))}),mapOf(type to type),
         when(type){"merchant"->"name required; merchant omitted/null creates; active state preserved. note omitted/null preserves (new empty), empty string clears.";"friend"->"name required; friend omitted/null creates; existing active state preserved.";else->"merchant/name required; location omitted/null creates. Full save: latitude/longitude default null (unknown), radiusMeters=100; null coordinates must be paired."},
         when(type){"merchant"->"Nonblank name; existing merchant ID must belong to this book. Names match after trim, case and width normalization. A new or renamed merchant cannot duplicate another saved merchant; merge in the app instead. Existing historical duplicates may be saved without changing the normalized name.";"friend"->"Nonblank name; existing friend ID must belong to this book.";else->"Nonblank name; merchant and optional existing location belong to this book; existing location cannot change merchant; valid paired latitude/longitude and radius."},
-        when(type){"merchant"->"Create or edit a merchant. Synchronize owned record names (including trash), linked templates, recurrences and drafts. Name-matched unlinked expenses become linked; Ordinary income/transfer text is not owned by name; explicitly linked income follows the merchant. Refund ownership and display text follow the original expense, including recoverable refunds, without independent links. A new name matching unlinked records adopts those records automatically. The name on a record is a reference to the merchant: synchronization writes no entry revision and the previous name is not kept. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion and merging are only available in the app, never through cloud commands.";"friend"->"Create or rename a friend. Disable with friend.setActive; deletion is permanently forbidden.";else->"Create or edit a saved location of a merchant (name, coordinates, radius); may reference a merchant created by an earlier step. Location removal is permanently forbidden; edit it or disable the merchant."},
+        when(type){"merchant"->"Create or rename a merchant and synchronize explicit ownership plus uniquely adoptable expense name groups, including recoverable trash, templates, rules and new drafts. Note-only saves change only the note. Name-matched unlinked expenses become linked; Ordinary income/transfer text is not owned by name; explicitly linked income follows the merchant. Refund ownership and display text follow the original expense, including recoverable refunds, without independent links. A new name matching unlinked records adopts those records automatically. Recompute affected old/new name groups after the operation. Preview separates new links, name changes, trash, refunds, templates, rules and locations. Pending captured locations remain until explicitly organized in the app. Synchronization writes independent merchant history with old/new names and IDs, without entry revisions or save-order changes. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion and merging are only available in the app, never through cloud commands.";"friend"->"Create or rename a friend. Disable with friend.setActive; deletion is permanently forbidden.";else->"Create or edit a saved location of a merchant (name, coordinates, radius); may reference a merchant created by an earlier step. Location removal is permanently forbidden; edit it or disable the merchant."},
         if(type=="merchantLocation")"""{"merchant":"merchant-id","name":"车站店","latitude":35.68,"longitude":139.76}"""else """{"name":"${if(type=="friend")"小林"else"咖啡店"}"}""")
     override fun validate(input:JsonObject){when(type){"merchant"->commandJson.decodeFromJsonElement<MerchantSaveInput>(input);"merchantLocation"->commandJson.decodeFromJsonElement<LocationSaveInput>(input);else->commandJson.decodeFromJsonElement<FriendSaveInput>(input)}}
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val before=run.state();val r=run.ledger;val id:String;val old:String?
+        var merchantImpact:ObjectEffect?=null
+        var merchantBasis:String?=null
         when(type){
-            "merchant"->{val v=commandJson.decodeFromJsonElement<MerchantSaveInput>(step.input);old=v.merchant?.let(run::resolve);val prior=old?.let{x->before.ledger.merchants.single{it.id==x}};id=r.saveMerchantWithLocations(run.bookId,v.name,v.note?:prior?.note.orEmpty(),old,prior?.active?:true,confirmAdoption=true)}
+            "merchant"->{val v=commandJson.decodeFromJsonElement<MerchantSaveInput>(step.input);old=v.merchant?.let(run::resolve);val prior=old?.let{x->before.ledger.merchants.single{it.id==x}};val review=r.previewMerchantOperation(run.bookId,merchantSaveInput(v.name,v.note?:prior?.note.orEmpty(),prior,prior?.active?:true))
+                merchantBasis=run.merchantScopeBasis(review)
+                id=requireNotNull(r.commitMerchantOperation(review,run.merchantHistoryContext(step)))
+                val c=review.preview.counts
+                merchantImpact=ObjectEffect("merchantImpact",id,JsonNull,buildJsonObject {
+                    put("affectedRecords",c.affectedRecords);put("normalRecords",c.affectedRecords-c.trashedRecords);put("newlyLinkedRecords",c.newlyLinkedRecords);put("renamedRecords",c.renamedRecords)
+                    put("trashedRecords",c.trashedRecords);put("linkedRefunds",c.linkedRefunds);put("templates",c.templates);put("recurrenceRules",c.recurrenceRules)
+                    put("savedLocations",c.savedLocations);put("pendingPlaces",c.pendingPlaces);put("drafts",c.drafts)
+                })}
             "merchantLocation"->{val v=commandJson.decodeFromJsonElement<LocationSaveInput>(step.input);old=v.location?.let(run::resolve);id=r.saveMerchantLocation(run.bookId,run.resolve(v.merchant),v.name,v.latitude,v.longitude,v.radiusMeters,old)}
             else->{val v=commandJson.decodeFromJsonElement<FriendSaveInput>(step.input);old=v.friend?.let(run::resolve);id=r.saveFriend(run.bookId,v.name,old)}
         }
-        run.output(step.id,type,id,old==null);return effect(step,run,before)
+        run.output(step.id,type,id,old==null)
+        val scope=merchantBasis?.let{ObjectEffect("merchantScope",id,JsonPrimitive(it),JsonPrimitive(it))}
+        return effect(step,run,before).let{it.copy(objects=it.objects+listOfNotNull(merchantImpact,scope))}
     }
 }
 

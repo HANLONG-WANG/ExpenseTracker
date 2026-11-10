@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.junit.*
@@ -96,6 +97,10 @@ class AnalysisProjectionTest {
         assertEquals(before.recurrences.single().copy(merchantId=null),after.recurrences.single{it.id==rule})
         assertEquals(draft.copy(merchantId=null,merchantLocated=false),after.draft)
         assertEquals("",after.merchantLabel("id:$shop"))
+        val deletion=db.merchantHistoryDao().page(book,100).single{it.type==MerchantOperationType.DELETE}
+        assertEquals(shop,deletion.sourceMerchantId);assertEquals("原名",deletion.sourceMerchantName);assertNull(deletion.targetMerchantId)
+        val detached=db.merchantHistoryDao().impacts(book,deletion.id,100).single{it.objectType==MerchantObjectType.EVENT&&it.objectId==event}
+        assertEquals(shop,detached.oldMerchantId);assertNull(detached.newMerchantId);assertEquals("原名",detached.newMerchantName)
         // A queued old form save must not reintroduce a dangling draft reference.
         repo.saveDraft(book,draft)
         assertEquals(after.draft,snapshot().draft)
@@ -122,7 +127,8 @@ class AnalysisProjectionTest {
         repo.dao.clearEventMerchant(book,legacy)
         repo.dao.putEvent(repo.dao.event(book,legacy)!!.copy(merchant=" cafe "))
         val before=snapshot()
-        assertEquals(setOf(linked,legacy,refund,trashed),before.merchantEvents(shop).map{it.id}.toSet())
+        // The batch scope explicitly claims the unique old-name group; the link-only helper does not.
+        assertEquals(setOf(linked,trashed),before.merchantEvents(shop).map{it.id}.toSet())
         repo.saveMerchant(book,"New cafe",id=shop)
         val after=snapshot()
         assertTrue(after.events.filter{it.id !in setOf(income,transfer)}.all{it.merchant=="New cafe"})
@@ -159,15 +165,19 @@ class AnalysisProjectionTest {
         assertEquals(setOf(sourceEvent,adopted),snapshot().merchantEvents(source).map{it.id}.toSet())
         assertEquals(source,snapshot().eventMerchants.single{it.eventId==adopted}.merchantId)
         repo.saveDraft(book,EntryDraft(merchant="new",merchantId=source)) // Saving an entry clears the draft, so store it last.
-        repo.mergeMerchants(book,source,target,sourceNote="编辑后的备注",sourceActive=true)
+        repo.mergeMerchants(book,source,target,sourceNote="编辑后的备注")
         val after=snapshot()
-        assertEquals(target,after.merchants.single().id);assertEquals("目标备注\n编辑后的备注",after.merchants.single().note);assertTrue(after.merchants.single().active)
+        assertEquals(target,after.merchants.single().id);assertEquals("目标备注\n编辑后的备注",after.merchants.single().note);assertFalse(after.merchants.single().active)
         assertEquals(setOf(sourceEvent,targetEvent,adopted),after.merchantEvents(target).map{it.id}.toSet())
         assertTrue(after.events.all{it.merchant=="ＴＡＲＧＥＴ"});assertTrue(after.eventMerchants.all{it.merchantId==target})
         assertEquals(target,after.merchantLocations.single().merchantId)
         assertEquals(target,after.templates.single().merchantId);assertEquals("ＴＡＲＧＥＴ",after.templates.single().merchant)
         assertEquals(target,after.recurrences.single().merchantId);assertEquals("ＴＡＲＧＥＴ",after.recurrences.single().merchant)
         assertEquals(target,after.draft!!.merchantId);assertEquals("ＴＡＲＧＥＴ",after.draft!!.merchant)
+        val merge=db.merchantHistoryDao().page(book,100).single{it.type==MerchantOperationType.MERGE}
+        assertEquals(source,merge.sourceMerchantId);assertEquals("new",merge.sourceMerchantName)
+        assertEquals(target,merge.targetMerchantId);assertFalse(merge.targetAfter!!.active);assertNull(merge.sourceAfter)
+        assertEquals(source,db.merchantHistoryDao().impacts(book,merge.id,100).single{it.objectType==MerchantObjectType.EVENT&&it.objectId==sourceEvent}.oldMerchantId)
     }
     @Test fun historicalDuplicatesRemainAmbiguousUntilMerged()=runBlocking {
         val first=repo.saveMerchant(book,"Cafe")
@@ -251,7 +261,7 @@ class AnalysisProjectionTest {
         // Historical wrong refund copies cannot steal ownership back to A, even with original in trash.
         repo.dao.putEvent(repo.dao.event(book,confirmed)!!.copy(merchant="A"))
         s=snapshot();assertEquals("id:$b",s.merchantKey(s.events.single{it.id==confirmed}))
-        assertTrue(s.merchantAdoptions("A",null).isEmpty())
+        assertEquals(0,s.prepareMerchantOperation(MerchantOperationInput(MerchantOperationType.RENAME,a,name="A2")).preview.counts.linkedRefunds)
         repo.deleteEntry(book,purchase)
         s=snapshot();assertEquals("id:$b",s.merchantKey(s.events.single{it.id==confirmed}))
         // Renaming A must not select that stale copy; renaming B follows its original instead.
@@ -267,5 +277,59 @@ class AnalysisProjectionTest {
         assertEquals(1,report.facts.map{it.merchantKey}.distinct().size)
         assertEquals(s.merchantKey(s.events.single{it.id==one}),s.merchantKey(s.events.single{it.id==two}))
         assertEquals(300L,report.total)
+    }
+
+    @Test fun originalGroupPreviewCommitLocationsAndHistoryAreOneTransaction()=runBlocking {
+        val raw=expense("100","2026-10-14",merchant="星巴克咖啡")
+        repo.dao.putEventPlace(EventPlaceEntity(book,raw,35.0,139.0,5.0))
+        val trash=expense("100","2026-10-13",merchant="星巴克咖啡");repo.deleteEntry(book,trash)
+        val final=expense("100","2026-10-12",merchant="星巴克")
+        val refund=repo.saveRefund(book,RefundInput(raw,Money(Currency.JPY,20),account,Money(Currency.JPY,20),Money(Currency.JPY,20),"2026-10-14",true))
+        repo.deleteEntry(book,refund)
+        repo.saveTemplate(book,TemplateInput("咖啡",EntryKind.EXPENSE,parent,account,Currency.JPY,merchant="星巴克咖啡"))
+        repo.saveRecurrence(book,RecurrenceInput("星巴克咖啡",account,parent,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-10-14"))
+        repo.saveDraft(book,EntryDraft(merchant="星巴克咖啡"))
+        val before=snapshot()
+        val input=MerchantOperationInput(MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,name="星巴克",originalName="星巴克咖啡",
+            places=listOf(MerchantPlaceDecision(setOf(raw),MerchantPlaceInput("入口",35.0,139.0))))
+        val preview=repo.previewMerchantOperation(book,input)
+        assertEquals(3,preview.preview.counts.newlyLinkedRecords);assertEquals(1,preview.preview.counts.trashedRecords)
+        assertTrue(db.merchantHistoryDao().page(book,100).isEmpty())
+        val id=repo.commitMerchantOperation(preview)!!
+        val after=snapshot()
+        assertEquals(setOf(raw,trash,final),after.eventMerchants.map{it.eventId}.toSet())
+        assertTrue(after.events.all{it.merchant=="星巴克"});assertTrue(after.eventPlaces.isEmpty())
+        assertEquals(id,after.merchantLocations.single().merchantId);assertEquals(id,after.templates.single().merchantId)
+        assertEquals(id,after.recurrences.single().merchantId);assertEquals(id,after.draft!!.merchantId)
+        assertEquals(before.eventSaveTimes,after.eventSaveTimes);assertEquals(before.postings,after.postings)
+        assertEquals(before.events.map{it.id to it.revision},after.events.map{it.id to it.revision})
+        val operation=db.merchantHistoryDao().page(book,100).single()
+        assertEquals(MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,operation.type);assertEquals("星巴克咖啡",operation.originalName)
+        val impacts=db.merchantHistoryDao().impacts(book,operation.id,100)
+        assertEquals("星巴克咖啡",impacts.single{it.objectId==raw&&it.objectType==MerchantObjectType.EVENT}.oldMerchantName)
+        assertEquals(id,impacts.single{it.objectId==raw&&it.objectType==MerchantObjectType.EVENT}.newMerchantId)
+        assertEquals("星巴克",impacts.single{it.objectId==refund}.newMerchantName)
+        val unchanged=repo.previewMerchantOperation(book,MerchantOperationInput(MerchantOperationType.CHANGE_NOTE,id,note=""))
+        repo.commitMerchantOperation(unchanged);assertEquals(1,db.merchantHistoryDao().page(book,100).size)
+        val stale=repo.previewMerchantOperation(book,MerchantOperationInput(MerchantOperationType.RENAME,id,name="新名字"))
+        expense("100","2026-10-14",merchant="新名字")
+        assertThrows(IllegalStateException::class.java){runBlocking{repo.commitMerchantOperation(stale)}}
+        assertEquals("星巴克",repo.dao.merchant(book,id)!!.name);assertEquals(1,db.merchantHistoryDao().page(book,100).size)
+    }
+
+    @Test fun linkedPendingPlacesSurviveProfileAndOrdinaryEntrySavesUntilOrganized()=runBlocking {
+        val event=expense("100","2026-10-14",merchant="原名")
+        repo.dao.putEventPlace(EventPlaceEntity(book,event,35.0,139.0,5.0))
+        val shop=repo.saveMerchant(book,"原名") // No place decision: capture remains pending.
+        assertEquals(1,snapshot().recordedPlaces("原名").size)
+        repo.changeMerchantNote(book,shop,"仅备注");repo.setMerchantActive(book,shop,false)
+        val before=snapshot()
+        repo.saveEntry(book,before.editingEntryDraft(before.events.single()).copy(note="普通记录编辑"))
+        assertEquals(before.eventPlaces,snapshot().eventPlaces)
+        val input=MerchantOperationInput(MerchantOperationType.ORGANIZE_LOCATIONS,shop,
+            places=listOf(MerchantPlaceDecision(setOf(event),null)))
+        repo.commitMerchantOperation(repo.previewMerchantOperation(book,input))
+        assertTrue(snapshot().eventPlaces.isEmpty());assertTrue(snapshot().merchantLocations.isEmpty())
+        assertEquals(listOf(MerchantOperationType.CREATE,MerchantOperationType.CHANGE_NOTE,MerchantOperationType.CHANGE_ACTIVE,MerchantOperationType.ORGANIZE_LOCATIONS).toSet(),db.merchantHistoryDao().page(book,100).map{it.type}.toSet())
     }
 }

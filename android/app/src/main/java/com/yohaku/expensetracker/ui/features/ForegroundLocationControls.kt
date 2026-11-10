@@ -72,7 +72,7 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
 @Composable private fun LocationStatus(state:LocationRead) {
     val context=LocalContext.current
     val text=when(state) {
-        LocationRead.Idle->word("今天新记的未保存商户支出会暂存位置；保存为商户后删除。","今日の新規支出で未保存のお店の位置を一時保存。お店を保存すると削除します。")
+        LocationRead.Idle->word("今天新记且未关联商户的支出会暂存位置；确认保留或放弃后才清除。","今日の新規支出で未関連のお店の位置を一時保存。保存・破棄を確認してから消去します。")
         LocationRead.Locating->word("正在定位，仍可手动填写并保存。","現在地を取得中。手入力・保存もできます。")
         is LocationRead.Ready->word("定位精度约 ${state.fix.accuracyMeters.toInt()} 米，用于匹配本账本保存地点。","位置精度は約${state.fix.accuracyMeters.toInt()}m。この帳簿の保存場所と照合します。")
         is LocationRead.Failure->when(state.reason) {

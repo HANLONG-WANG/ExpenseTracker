@@ -1,6 +1,5 @@
 package com.yohaku.expensetracker.data.repository
 
-import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.model.*
 import kotlin.math.*
@@ -14,27 +13,29 @@ internal fun distanceMeters(latitude:Double,longitude:Double,lat:Double,lon:Doub
     val a=sin(dLat/2).pow(2)+cos(Math.toRadians(latitude))*cos(Math.toRadians(lat))*sin(dLon/2).pow(2)
     return 6371000.0*2*atan2(sqrt(a),sqrt((1-a).coerceAtLeast(0.0)))
 }
-data class RecordedPlace(val key:String,val latitude:Double,val longitude:Double,val count:Int,val latestDate:String)
-fun BookSnapshot.recordedPlaces(name:String):List<RecordedPlace> {
-    if(name.isBlank())return emptyList()
+data class RecordedPlace(val key:String,val latitude:Double,val longitude:Double,val count:Int,val latestDate:String,
+    val eventIds:Set<String> = emptySet(),val merchantId:String?=null)
+/** Also exposes captured positions retained after legacy/cloud linking, including recoverable rows. */
+fun BookSnapshot.recordedPlaces(name:String):List<RecordedPlace> = recordedPlacesForEvents(events.filter {
+    it.kind==EntryKind.EXPENSE.name&&it.purgedAt==null&&normalizedMerchantName(it.merchant)==normalizedMerchantName(name)
+}.map{it.id}.toSet())
+fun BookSnapshot.recordedPlacesForEvents(ids:Set<String>):List<RecordedPlace> {
     val places=eventPlaces.associateBy{it.eventId}
-    val linked=eventMerchants.map{it.eventId}.toSet()
-    val points=visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&normalizedMerchantName(it.merchant)==normalizedMerchantName(name)&&it.id !in linked}
-        .sortedWith(compareByDescending<EventEntity>{it.date}.thenByDescending{it.createdAt}.thenBy{it.id})
+    val points=events.filter{it.id in ids}.sortedWith(compareByDescending<EventEntity>{it.date}.thenByDescending{it.createdAt}.thenBy{it.id})
         .mapNotNull{event->places[event.id]?.let{event to it}}
     val clusters=mutableListOf<MutableList<Pair<EventEntity,EventPlaceEntity>>>()
     for(point in points) {
-        val cluster=clusters.firstOrNull{val anchor=it.first().second;distanceMeters(anchor.latitude,anchor.longitude,point.second.latitude,point.second.longitude)<=100.0}
+        val cluster=clusters.firstOrNull {
+            val anchor=it.first()
+            merchantByEvent[anchor.first.id]==merchantByEvent[point.first.id]&&
+                distanceMeters(anchor.second.latitude,anchor.second.longitude,point.second.latitude,point.second.longitude)<=100.0
+        }
         if(cluster==null)clusters.add(mutableListOf(point))else cluster.add(point)
     }
-    return clusters.map{cluster->
+    return clusters.map { cluster->
         val best=cluster.minBy{it.second.accuracyMeters}.second
-        RecordedPlace(cluster.first().first.id,best.latitude,best.longitude,cluster.size,cluster.first().first.date)
+        RecordedPlace(cluster.first().first.id,best.latitude,best.longitude,cluster.size,cluster.first().first.date,
+            cluster.map{it.first.id}.toSet(),merchantByEvent[cluster.first().first.id])
     }
 }
 data class MerchantPlaceInput(val name:String,val latitude:Double,val longitude:Double,val radiusMeters:Int=100)
-suspend fun LedgerRepository.saveMerchantWithLocations(bookId:String,name:String,note:String="",id:String?=null,active:Boolean=true,places:List<MerchantPlaceInput> = emptyList(),confirmAdoption:Boolean=false):String=db.withTransaction {
-    val merchantId=saveMerchant(bookId,name,note,id,active,confirmAdoption)
-    places.forEach{saveMerchantLocation(bookId,merchantId,it.name,it.latitude,it.longitude,it.radiusMeters)}
-    merchantId
-}

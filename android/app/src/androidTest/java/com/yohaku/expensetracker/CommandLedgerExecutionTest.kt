@@ -9,6 +9,7 @@ import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.csv.CsvParser
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
@@ -36,16 +37,51 @@ class CommandLedgerExecutionTest {
         val plan=CommandPlan("yohaku.command-plan",1,UUID.randomUUID().toString(),book,commands.registry.catalogDigest,r.commandExports(book,RecordScope()).context.contextDigest,message="基础账本组合",steps=steps)
         return commands.receive(commandClaim(plan),"https://example.test",plan.context_digest)
     }
+    private suspend fun execute(book:String,steps:List<CommandStep>):CommandPlanEntity {
+        val row=receive(book,steps);val preview=commands.preview(row.planId)
+        assertTrue(preview.executable)
+        return commands.confirm(row.planId,commandChecks(preview))
+    }
+    private suspend fun assertUndoConflict(row:CommandPlanEntity,reason:String) {
+        val business=CommandUndoJournal(r,row.bookId).snapshot()
+        val history=db.merchantHistoryDao().page(row.bookId,1000)
+        val undo=commands.prepareUndo(row.planId);val preview=commands.preview(undo.planId)
+        assertFalse(preview.executable)
+        assertTrue(preview.conflicts.toString(),preview.conflicts.any{it.field.contains(reason)})
+        assertThrows(IllegalStateException::class.java){runBlocking{commands.confirm(undo.planId,commandChecks(preview))}}
+        assertEquals(business,CommandUndoJournal(r,row.bookId).snapshot())
+        assertEquals(history,db.merchantHistoryDao().page(row.bookId,1000))
+        assertEquals("EXECUTED",commands.plan(row.planId).status)
+    }
     private suspend fun cycle(book:String,steps:List<CommandStep>,verify:suspend (ConfirmationModel,BookSnapshot)->Unit) {
-        val before=CommandUndoJournal(r,book).snapshot();val row=receive(book,steps)
+        val before=CommandUndoJournal(r,book).snapshot();val historyBefore=db.merchantHistoryDao().page(book,1000);val row=receive(book,steps)
         val preview=commands.preview(row.planId);assertTrue(preview.executable);assertTrue(preview.steps.all{it.undo.available})
         assertEquals(before,CommandUndoJournal(r,book).snapshot())
+        assertEquals(historyBefore,db.merchantHistoryDao().page(book,1000))
         now=now.plusSeconds(2) // Generated timestamps and IDs must not invalidate a real confirmation.
         assertNull(CommandConfirmationComparator.firstDifference(preview,commands.preview(row.planId)))
         commands.confirm(row.planId,commandChecks(preview));verify(preview,snapshot(book))
+        val historyExecuted=db.merchantHistoryDao().page(book,1000)
+        val originals=historyExecuted.filter{it.cloudPlanId==row.planId&&it.cloudExecutionId==row.localId}
         val executed=CommandUndoJournal(r,book).snapshot();val undoRow=commands.prepareUndo(row.planId);val undo=commands.preview(undoRow.planId)
-        assertTrue(undo.executable);assertEquals(executed,CommandUndoJournal(r,book).snapshot())
+        assertTrue(undo.conflicts.toString(),undo.executable);assertEquals(executed,CommandUndoJournal(r,book).snapshot())
+        assertEquals(historyExecuted,db.merchantHistoryDao().page(book,1000))
         commands.confirm(undoRow.planId,commandChecks(undo))
+        val historyUndone=db.merchantHistoryDao().page(book,1000)
+        assertEquals(historyExecuted.size+originals.size,historyUndone.size)
+        for(original in originals) {
+            val retained=historyUndone.single{it.id==original.id}
+            val inverse=historyUndone.single{it.undoOfOperationId==original.id}
+            assertEquals(MerchantOperationType.CLOUD_UNDO,inverse.type)
+            assertEquals(inverse.id,retained.undoneByOperationId);assertEquals(inverse.timestamp,retained.undoneAt)
+            assertEquals(original,retained.copy(undoneByOperationId=null,undoneAt=null))
+            assertEquals(undoRow.planId,inverse.cloudPlanId)
+            assertEquals(original.targetMerchantId,inverse.sourceMerchantId);assertEquals(original.sourceMerchantId,inverse.targetMerchantId)
+            assertEquals(original.targetAfter,inverse.sourceBefore);assertEquals(original.targetBefore,inverse.sourceAfter)
+            assertEquals(original.sourceAfter,inverse.targetBefore);assertEquals(original.sourceBefore,inverse.targetAfter)
+            val impacts=db.merchantHistoryDao().undoImpacts(book,original.id)
+            assertEquals(impacts.map{it.copy(operationId=inverse.id,oldMerchantName=it.newMerchantName,newMerchantName=it.oldMerchantName,oldMerchantId=it.newMerchantId,newMerchantId=it.oldMerchantId)},db.merchantHistoryDao().undoImpacts(book,inverse.id))
+        }
         fun business(rows:Map<String,Pair<String,JsonObject>>)=rows.filterValues{it.first!="revisions"}.mapValues{(_,p)->p.first to JsonObject(p.second.filterKeys{it!="revision"||p.first!="events"})}
         assertEquals(business(before),business(CommandUndoJournal(r,book).snapshot()))
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
@@ -134,6 +170,48 @@ class CommandLedgerExecutionTest {
         assertTrue(assertThrows(IllegalArgumentException::class.java){runBlocking{commands.preview(row.planId)}}.message!!.contains("应用内合并"))
         assertEquals(before,CommandUndoJournal(r,book).snapshot());assertNotNull(r.dao.merchant(book,other))
     }
+    @Test fun merchantProfileAndRenameUseSharedScopesAndWriteCloudHistoryOnlyOnCommit()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"食事",EntryKind.EXPENSE,null)
+        val shop=r.saveMerchant(book,"Cafe")
+        val linked=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",date="2026-11-02",merchantId=shop))
+        val raw=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",date="2026-11-02",merchant="Next",capturedPlace=CapturedPlace(35.0,139.0,5.0)))
+        r.dao.putEvent(r.dao.event(book,linked)!!.copy(merchant="legacy display"))
+        val before=snapshot(book)
+        val profiles=receive(book,listOf(step("note","merchant.save","""{"merchant":"$shop","name":"Cafe","note":"memo"}"""),
+            step("stop","merchant.setActive","""{"target":"$shop","active":false}""")))
+        val historyBefore=db.merchantHistoryDao().page(book,100)
+        val profilePreview=commands.preview(profiles.planId)
+        assertEquals(historyBefore,db.merchantHistoryDao().page(book,100))
+        commands.confirm(profiles.planId,commandChecks(profilePreview))
+        assertEquals(before.events,snapshot(book).events);assertEquals(before.eventPlaces,snapshot(book).eventPlaces)
+        assertEquals(before.eventMerchants,snapshot(book).eventMerchants)
+        val profileHistory=db.merchantHistoryDao().page(book,100).filter{it.source==MerchantOperationSource.CLOUD}
+        assertEquals(setOf(MerchantOperationType.CHANGE_NOTE,MerchantOperationType.CHANGE_ACTIVE),profileHistory.map{it.type}.toSet())
+        assertTrue(profileHistory.all{it.cloudPlanId==profiles.planId&&it.cloudExecutionId==profiles.localId})
+        assertEquals(setOf("note","stop"),profileHistory.map{it.cloudCommandId}.toSet())
+        val row=receive(book,listOf(step("rename","merchant.save","""{"merchant":"$shop","name":"Next"}""")))
+        val preview=commands.preview(row.planId)
+        val counts=preview.steps.single().objects.single{it.type=="merchantImpact"}.after.jsonObject
+        assertEquals(JsonPrimitive(1),counts["newlyLinkedRecords"]);assertEquals(JsonPrimitive(1),counts["pendingPlaces"])
+        assertEquals(JsonPrimitive(1),counts["renamedRecords"])
+        assertEquals(3,db.merchantHistoryDao().page(book,100).size)
+        // Same count, different pending coordinates must still invalidate cloud confirmation.
+        val capture=before.eventPlaces.single()
+        r.dao.putEventPlace(capture.copy(latitude=36.0))
+        assertNotNull(CommandConfirmationComparator.firstDifference(preview,commands.preview(row.planId)))
+        r.dao.putEventPlace(capture)
+        val restored=commands.preview(row.planId)
+        assertNull(CommandConfirmationComparator.firstDifference(preview,restored))
+        commands.confirm(row.planId,commandChecks(restored))
+        val after=snapshot(book)
+        assertTrue(after.events.all{it.merchant=="Next"});assertEquals(shop,after.eventMerchants.single{it.eventId==raw}.merchantId)
+        assertEquals(before.eventPlaces,after.eventPlaces);assertEquals(before.eventSaveTimes,after.eventSaveTimes)
+        assertEquals(4,db.merchantHistoryDao().page(book,100).size)
+        assertEquals("legacy display",db.merchantHistoryDao().forObject(book,MerchantObjectType.EVENT,linked,100).single().let {
+            db.merchantHistoryDao().impacts(book,it.id,100).single{impact->impact.objectType==MerchantObjectType.EVENT&&impact.objectId==linked}.oldMerchantName
+        })
+    }
+
     @Test fun merchantLocationAndFriend()=runBlocking<Unit> {
         val (book,_)=setup()
         cycle(book,listOf(
@@ -147,6 +225,87 @@ class CommandLedgerExecutionTest {
             assertEquals("西口",s.merchantLocations.single().name);assertFalse(s.merchants.single().active);assertFalse(s.friends.single().active)
             assertTrue(m.net.any{it.type=="merchantLocation"&&it.after.jsonObject["radiusMeters"]==JsonPrimitive(80)})
         }
+    }
+    @Test fun merchantUndoRejectsNewUniqueNameAndDuplicateName()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        val event=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",merchant="X"))
+        val edit=execute(book,listOf(step("rename","entry.update","""{"targets":{"ids":["$event"]},"set":{"merchant":"Y"}}""")))
+        r.saveMerchant(book,"ｘ",active=false)
+        assertUndoConflict(edit,"未关联的唯一同名支出")
+        val a=r.saveMerchant(book,"A")
+        val rename=execute(book,listOf(step("rename","merchant.save","""{"merchant":"$a","name":"B"}""")))
+        r.saveMerchant(book,"Ａ")
+        assertUndoConflict(rename,"规范化重名")
+    }
+    @Test fun merchantUndoIgnoresUnchangedLegacyViolationsButRejectsRestoringRepairedOnes()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        val a=r.saveMerchant(book,"A");val duplicate=r.saveMerchant(book,"Other")
+        r.dao.putMerchant(r.dao.merchant(book,duplicate)!!.copy(name="ａ"))
+        val event=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",merchantId=a))
+        r.dao.putEvent(r.dao.event(book,event)!!.copy(merchant="legacy display"))
+        val raw=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",merchant="raw"))
+        val unique=r.saveMerchant(book,"Unique",active=false)
+        r.dao.putEvent(r.dao.event(book,raw)!!.copy(merchant="unique"))
+        val refund=r.saveRefund(book,RefundInput(event,Money(Currency.JPY,10),bank,Money(Currency.JPY,10),Money(Currency.JPY,10),"2026-11-02",true))
+        r.dao.putEvent(r.dao.event(book,refund)!!.copy(merchant="old refund"))
+        r.saveTemplate(book,TemplateInput("Broken",EntryKind.EXPENSE,category,bank,Currency.JPY,merchantId=unique))
+        db.openHelper.writableDatabase.execSQL("UPDATE entry_templates SET merchantId='missing' WHERE bookId=?",arrayOf(book))
+        // Include a merchant business row so the full consistency checker actually runs.
+        cycle(book,listOf(step("stop","merchant.setActive","""{"target":"$a","active":false}"""))) {_,s->assertFalse(s.merchants.single{it.id==a}.active)}
+        // Repairing old data is allowed; undo must not reintroduce its now-absent defects.
+        val repair=execute(book,listOf(step("rename","merchant.save","""{"merchant":"$a","name":"Fixed"}""")))
+        assertUndoConflict(repair,"记录名称与关联商户不一致")
+        val preview=commands.preview(commands.prepareUndo(repair.planId).planId)
+        assertTrue(preview.conflicts.any{it.field.contains("退款名称与原消费不一致")})
+    }
+    @Test fun merchantUndoKeepsLiveReferenceAndLaterModificationGuards()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        val create=execute(book,listOf(step("shop","merchant.save","""{"name":"Shop"}""")))
+        val shop=snapshot(book).merchants.single().id
+        r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",merchantId=shop))
+        assertUndoConflict(create,"merchantId")
+        val note=execute(book,listOf(step("note","merchant.save","""{"merchant":"$shop","name":"Shop","note":"cloud"}""")))
+        val undo=commands.prepareUndo(note.planId);val preview=commands.preview(undo.planId)
+        assertTrue(preview.executable)
+        r.saveMerchant(book,"Shop",note="later",id=shop)
+        val history=db.merchantHistoryDao().page(book,1000)
+        assertThrows(CommandRepreviewRequired::class.java){runBlocking{commands.confirm(undo.planId,commandChecks(preview))}}
+        assertEquals(history,db.merchantHistoryDao().page(book,1000))
+        assertEquals("later",r.dao.merchant(book,shop)!!.note)
+        assertUndoConflict(note,"note")
+    }
+    @Test fun merchantUndoRejectsMissingTemplateAndRecurrenceReferences()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        val shop=r.saveMerchant(book,"Shop")
+        r.saveTemplate(book,TemplateInput("Daily",EntryKind.EXPENSE,category,bank,Currency.JPY,merchantId=shop))
+        r.saveRecurrence(book,RecurrenceInput("Daily",bank,category,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-11-02",merchantId=shop))
+        val s=snapshot(book)
+        val edit=execute(book,listOf(
+            step("template","template.save","""{"template":"${s.templates.single().id}","name":"Daily","kind":"EXPENSE","category":"$category","account":"$bank","currency":"JPY","merchant":"Elsewhere"}"""),
+            step("rule","recurrence.save","""{"recurrence":"${s.recurrences.single().id}","name":"Daily","account":"$bank","category":"$category","frequency":"MONTHLY","anchorDate":"2026-11-02","amount":{"currency":"JPY","minor":100},"merchant":"Elsewhere"}""")))
+        r.deleteMerchant(book,shop)
+        assertUndoConflict(edit,"失效的商户引用")
+        val preview=commands.preview(commands.prepareUndo(edit.planId).planId)
+        assertEquals(setOf("entry_templates","recurrences"),preview.conflicts.filter{it.field.contains("失效的商户引用")}.map{it.type}.toSet())
+    }
+    @Test fun merchantUndoHistoryRollsBackWithFailedCommit()=runBlocking<Unit> {
+        val (book,_)=setup()
+        val original=execute(book,listOf(step("shop","merchant.save","""{"name":"Shop"}""")))
+        val undo=commands.prepareUndo(original.planId);val preview=commands.preview(undo.planId)
+        assertTrue(preview.executable)
+        val before=CommandUndoJournal(r,book).snapshot();val history=db.merchantHistoryDao().page(book,1000)
+        // Fail after markUndone/inverse history insertion, exercising the real outer transaction.
+        val sql=db.openHelper.writableDatabase
+        sql.execSQL("CREATE TEMP TRIGGER fail_undo_commit BEFORE UPDATE OF status ON command_plans WHEN NEW.status='UNDONE' BEGIN SELECT RAISE(ABORT,'test undo commit failure'); END")
+        try {
+            assertThrows(android.database.sqlite.SQLiteConstraintException::class.java){runBlocking{commands.confirm(undo.planId,commandChecks(preview))}}
+        } finally { sql.execSQL("DROP TRIGGER fail_undo_commit") }
+        assertEquals(before,CommandUndoJournal(r,book).snapshot());assertEquals(history,db.merchantHistoryDao().page(book,1000))
+        assertEquals("EXECUTED",commands.plan(original.planId).status)
+        val retry=commands.preview(undo.planId);assertTrue(retry.executable)
+        commands.confirm(undo.planId,commandChecks(retry))
+        assertTrue(snapshot(book).merchants.isEmpty())
+        assertEquals(2,db.merchantHistoryDao().page(book,1000).size)
     }
     @Test fun transferRefundForeignActualAndFullEdit()=runBlocking<Unit> {
         val (book,bank)=setup();val category=r.saveCategory(book,"食事",EntryKind.EXPENSE,null)

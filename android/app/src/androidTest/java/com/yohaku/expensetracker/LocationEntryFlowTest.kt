@@ -14,6 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.MerchantOperationType
 import com.yohaku.expensetracker.platform.*
 import com.yohaku.expensetracker.ui.features.*
 import kotlinx.coroutines.*
@@ -208,28 +209,32 @@ class LocationEntryFlowTest {
             assertTrue(saved.merchants.isEmpty());assertEquals(35.0,saved.eventPlaces.single().latitude,0.0)
             ui.runOnIdle{vm.navigate("merchants")}
             ui.onNode(hasText("新店") and hasClickAction()).performScrollTo().performClick()
-            ui.onNodeWithText("记账时的位置").assertExists()
-            ui.onNodeWithTag("recorded-place-0").assertExists()
-            ui.onNodeWithText("记了 1 次").assertExists()
-            ui.onNodeWithTag("recorded-place-0").performScrollTo();shot("recorded-place")
+            ui.onNodeWithTag("merchant-original-group").assertTextContains("新店",substring=true)
             visible("merchant-save").performClick()
+            ui.onNodeWithTag("recorded-place-0").assertExists()
+            ui.onNodeWithText("记了 1 次；关闭保留即放弃这些临时位置。").assertExists()
+            ui.onNodeWithTag("recorded-place-0").performScrollTo();shot("recorded-place")
+            visible("merchant-adoption-confirm").performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchants?.size==1&&!vm.busy.value}
             val result=repo.snapshot(repo.dao.book(b)!!).first()
             assertTrue(result.eventPlaces.isEmpty())
             assertEquals(35.0,result.merchantLocations.single().latitude!!,0.0)
             assertEquals(139.0,result.merchantLocations.single().longitude!!,0.0)
             assertEquals(100,result.merchantLocations.single().radiusMeters)
-            // A failed place write must roll back both the merchant and the cleanup.
+            // Invalid location input must leave both merchant data and pending captures untouched.
             val second=repo.saveEntry(b,EntryDraft(accountId=a,categoryId=c,amount="100",merchant="別店",capturedPlace=CapturedPlace(36.0,140.0,5.0)))
             try {
-                repo.saveMerchantWithLocations(b,"別店",places=listOf(MerchantPlaceInput("",36.0,140.0)))
+                repo.commitMerchantOperation(repo.previewMerchantOperation(b,MerchantOperationInput(MerchantOperationType.CREATE,name="別店",places=listOf(MerchantPlaceDecision(setOf(second),MerchantPlaceInput("",36.0,140.0))))))
                 fail("Expected invalid place name")
             }catch(expected:IllegalArgumentException) { }
             val rolledBack=repo.snapshot(repo.dao.book(b)!!).first()
             assertFalse(rolledBack.merchants.any{it.name=="別店"})
             assertEquals(second,rolledBack.eventPlaces.single().eventId)
-            repo.saveMerchantWithLocations(b,"別店")
-            assertTrue(repo.snapshot(repo.dao.book(b)!!).first().eventPlaces.isEmpty())
+            repo.saveMerchant(b,"別店")
+            // No explicit keep/discard decision was supplied, so the linked capture stays visible.
+            val pending=repo.snapshot(repo.dao.book(b)!!).first()
+            assertEquals(second,pending.eventPlaces.single().eventId)
+            assertEquals(1,pending.recordedPlaces("別店").size)
         }finally{vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
     }
 

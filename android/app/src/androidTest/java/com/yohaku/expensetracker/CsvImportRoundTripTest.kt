@@ -1,6 +1,8 @@
 package com.yohaku.expensetracker
 
 import com.yohaku.expensetracker.ui.haptics.Haptic
+import androidx.room.withTransaction
+import com.yohaku.expensetracker.data.command.*
 import androidx.room.Room
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -167,6 +169,8 @@ class CsvImportRoundTripTest {
             val book=repo.createBook("CSV source",Currency.JPY,startDate="2026-01-01")
             val account=repo.saveAccount(book,"Cash",AccountType.CASH,Currency.JPY,Money(Currency.JPY,1000),"2026-01-01")
             val shop=repo.saveMerchant(book,"Ｃａｆｅ",active=false)
+            // Keep the saved CSV category mapping outside the import-owned row set.
+            repo.saveCategory(book,"Food",EntryKind.EXPENSE,null)
             val bytes="日期,金额,类别,商户,备注\n2026-10-01,100,Food,cafe,original note\n2026-10-01,100,Food,cafe,original note".toByteArray()
             val document=CsvParser.read(bytes)
             val settings=CsvParser.guess(document).copy(accountId=account,noteAsMerchant=false,columns=mapOf("date" to 0,"amount" to 1,"category" to 2,"merchant" to 3,"note" to 4),rule="EXPENSE")
@@ -186,6 +190,18 @@ class CsvImportRoundTripTest {
             assertTrue(links.all{it.after["sourceMatchKey"]==kotlinx.serialization.json.JsonPrimitive(expected)})
             // This batch captures source only; duplicate preview still compares current values until F.
             assertFalse(repo.csvPreview(book,document,settings,emptyMap()).rows.any{it.duplicate})
+            val record=UndoRecord(emptyList(),emptyList(),emptyList(),rows=journal.changes(before),version=3)
+            db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey='later source' WHERE bookId=?",arrayOf(book))
+            assertTrue(journal.conflicts(record).any{it.type=="csv_batch_events"&&it.field=="sourceMatchKey"})
+            db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey=? WHERE bookId=?",arrayOf(expected,book))
+            db.withTransaction {
+                assertTrue(journal.conflicts(record).toString(),journal.conflicts(record).isEmpty())
+                assertTrue(journal.merchantConflicts(record).toString(),journal.merchantConflicts(record).isEmpty())
+                journal.restore(CommandRun(repo,book,ExecutionContext("2026-11-02","Asia/Tokyo","2027-11-02"),record))
+            }
+            assertEquals(before,CommandUndoJournal(repo,book).snapshot())
+            db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM csv_batch_events WHERE bookId=?",arrayOf(book)).use{c->c.moveToFirst();assertEquals(0,c.getInt(0))}
+
         }finally{db.close()}
     }
 }

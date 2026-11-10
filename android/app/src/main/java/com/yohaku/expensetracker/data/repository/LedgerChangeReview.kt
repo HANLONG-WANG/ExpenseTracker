@@ -22,7 +22,6 @@ internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,cl
     val merchantId=merchant?.id
     val beforeDetails=change.before?.let{LedgerDetails(dao.settlement(e.bookId,e.id),dao.transfer(e.bookId,e.id),dao.components(e.bookId,e.id),dao.eventActivity(e.bookId,e.id)?.activityId,dao.eventOccurrences(e.bookId,e.id).firstOrNull{it.status in listOf("PENDING","COMPLETED")}?.id,dao.reserveUses(e.bookId,e.id),dao.eventTreat(e.bookId,e.id),dao.eventTreat(e.bookId,e.id)?.let{t->dao.allocations(e.bookId,t.id)}.orEmpty(),dao.eventMerchant(e.bookId,e.id)?.merchantId,dao.attachments(e.bookId,e.id).map{a->a.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=db.financialDao().fundingContract(e.bookId,e.id),repayment=db.financialDao().repayment(e.bookId,e.id),repaymentAllocations=db.financialDao().repaymentAllocations(e.bookId,e.id),postings=dao.eventPostings(e.bookId,e.id))}
     dao.putEvent(e)
-    if(merchantId!=null)dao.clearEventPlace(e.bookId,e.id)
     if(merchantId==null)change.eventPlace?.let{dao.putEventPlace(it)}
     if(e.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name)||change.before?.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name)) {
         dao.clearEventMerchant(e.bookId,e.id)

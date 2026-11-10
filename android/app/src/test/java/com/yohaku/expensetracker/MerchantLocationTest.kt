@@ -57,6 +57,9 @@ class MerchantLocationTest {
         assertEquals(2,clusters[0].count);assertEquals("2026-11-03",clusters[0].latestDate)
         assertEquals(35.00045,clusters[0].latitude,0.0);assertEquals(139.0,clusters[0].longitude,0.0)
         assertEquals(1,clusters[1].count)
-        assertEquals(1,s.copy(eventMerchants=listOf(EventMerchantEntity("b","e0","m"),EventMerchantEntity("b","e1","m"))).recordedPlaces("新店").size)
+        val linked=s.copy(eventMerchants=listOf(EventMerchantEntity("b","e0","m"),EventMerchantEntity("b","e1","m"))).recordedPlaces("新店")
+        // e0/e1 are still one pending cluster; explicit ownership no longer hides their positions.
+        assertEquals(2,linked.size);assertEquals(setOf("e0","e1"),linked.first().eventIds)
+        assertEquals("m",linked.first().merchantId);assertEquals(setOf("e2"),linked.last().eventIds)
     }
 }

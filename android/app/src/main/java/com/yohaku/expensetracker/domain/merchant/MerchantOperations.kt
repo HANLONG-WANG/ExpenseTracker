@@ -5,7 +5,7 @@ import java.security.MessageDigest
 // Names are stored in Room history; keep existing values stable when adding future operations.
 enum class MerchantOperationType {
     CREATE, CREATE_FROM_ORIGINAL_NAME, ASSIGN_ORIGINAL_NAME, RENAME, MERGE,
-    CHANGE_NOTE, CHANGE_ACTIVE, DELETE, HISTORY_CLEANUP, CLOUD_UNDO
+    CHANGE_NOTE, CHANGE_ACTIVE, ORGANIZE_LOCATIONS, DELETE, HISTORY_CLEANUP, CLOUD_UNDO
 }
 enum class MerchantOperationSource { LOCAL, CLOUD, UPGRADE }
 enum class MerchantObjectType { MERCHANT, EVENT, REFUND, TEMPLATE, RECURRENCE, SAVED_LOCATION, PENDING_PLACE, DRAFT }

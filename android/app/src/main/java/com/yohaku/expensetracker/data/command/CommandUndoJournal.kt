@@ -17,6 +17,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         "financial_repayments","debt_contracts","financial_bills","financial_plans","financial_rules","credit_limit_configs",
         "statement_decisions","expected_incomes","activity_reserves","occurrences","treats","expense_components","transfers","settlements","postings","events",
         "entry_templates","activity_budgets","activity_participants","book_features","recurrences","activities","merchant_locations","merchants","friends","budgets","categories","accounts","books")
+    private val merchantHistoryTables=setOf("merchant_operations","merchant_operation_impacts")
     private data class Table(val name:String,val columns:List<String>,val primary:List<String>)
     private val tables by lazy {
         sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").use{c->buildList{while(c.moveToNext())add(c.getString(0))}}.map{name->
@@ -101,7 +102,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
     }
     // A batch can touch thousands of instances. Load relationship tables once per final-state
     // guard pass, not once per instance; CommandRun invalidates this cache on a state refresh.
-    private val relationRows by lazy {tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&it.name!="monthly_reviews"}.associate{it.name to readRows(it.name)}}
+    private val relationRows by lazy {tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&it.name !in merchantHistoryTables&&it.name!="monthly_reviews"}.associate{it.name to readRows(it.name)}}
     fun planningRelations(type:String,id:String):JsonObject {
         val fields=when(type) {
             "activity"->setOf("activityId","activeActivityId")
@@ -119,7 +120,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
             is JsonPrimitive->value.isString&&value.content==id
             else->false
         }
-        for(t in tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&it.name!="monthly_reviews"}) {
+        for(t in tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&it.name !in merchantHistoryTables&&it.name!="monthly_reviews"}) {
             val columns=t.columns.filter{it in fields}
             val jsonColumns=t.columns.filter{it.endsWith("Json")||it=="json"}
             if(columns.isEmpty()&&jsonColumns.isEmpty())continue
@@ -165,7 +166,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
             (change.after["number"]?:change.after["version"])?.jsonPrimitive?.intOrNull)}
     }
     // Local merchant deletion detaches live references without rewriting historical journals.
-    // Apply the same projection to conflict expectations and restored rows; all other fields
+    // Project conflict expectations after local deletion; business restoration is checked separately. Other fields
     // still participate in exact conflict checks.
     private val availableMerchants by lazy {readRows("merchants").map{it.getValue("id").jsonPrimitive.content}.toSet()}
     private fun restorableRow(table:String,row:JsonObject):JsonObject? {
@@ -190,6 +191,21 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         }
         return expected
     }
+    private fun restoredBefore(change:UndoRowChange):JsonObject? = change.before?.let {
+        // Draft synchronization remains under the existing deletion policy (batch D).
+        if(change.table=="drafts")restorableRow(change.table,it)else it
+    }
+    fun merchantConflicts(record:UndoRecord):List<UndoConflict> {
+        val relevant=setOf("merchants","events","event_merchants","settlements","entry_templates","recurrences","merchant_locations")
+        if(record.rows.none{it.table in relevant})return emptyList()
+        val before=relevant.associateWith{table->readRows(table).associateBy{identity(table,it)}.toMutableMap()}
+        val after=before.mapValues{(_,rows)->rows.toMutableMap()}
+        for(change in record.rows.filter{it.table in relevant}) {
+            val rows=after.getValue(change.table);val id=identity(change.table,change.after)
+            restoredBefore(change)?.let{rows[id]=it}?:rows.remove(id)
+        }
+        return newMerchantUndoConflicts(before.mapValues{it.value.values.toList()},after.mapValues{it.value.values.toList()})
+    }
     fun conflicts(record:UndoRecord):List<UndoConflict> = record.rows.flatMap{change->
         undoDifferences(change.table,objectKey(change.table,change.after),if(change.removed)JsonNull else restorableRow(change.table,change.after)?:JsonNull,read(change)?:JsonNull)
     }+record.rows.filter{it.table in setOf("books","events")&&it.before?.get("deletedAt")==JsonNull&&it.after["deletedAt"]!=JsonNull&&it.after["deletedAt"]?.jsonPrimitive?.longOrNull?.let{time->time<=ledger.clock.millis()-recoveryDuration.toMillis()}==true}.map{change->
@@ -207,12 +223,15 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         val byId=created.mapNotNull{row->row.after["id"]?.jsonPrimitive?.content?.let{it to row}}.toMap()
         val foreignKeys=ledger.scopedForeignKeys().filter{it.parent in byTable}
         fun jsonColumn(name:String)=name.endsWith("Json")||name in setOf("json","encoded","sourceProof")
-        val sources=tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&
+        val sources=tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&it.name !in merchantHistoryTables&&
             (it.columns.any(::jsonColumn)||it.columns.any{column->column.endsWith("Id")}||foreignKeys.any{fk->fk.table==it.name})}
+        // History is never restored or scanned for snapshot IDs. Its real book FK still
+        // prevents removing a book with later history (book lifecycle/purge owns that cleanup).
+        val historyBookSources=if("books" in byTable)tables.values.filter{it.name in merchantHistoryTables}else emptyList()
         val names=names().toMutableMap()
         val conflicts=mutableListOf<UndoConflict>()
         val scopes=(listOf(bookId)+created.filter{it.table=="books"}.map{it.after.getValue("id").jsonPrimitive.content}).distinct()
-        for(table in sources)for(row in readRows(table.name,"bookId IN ("+scopes.joinToString{ "?" }+")",scopes.toTypedArray())) {
+        for(table in sources+historyBookSources)for(row in readRows(table.name,"bookId IN ("+scopes.joinToString{ "?" }+")",scopes.toTypedArray())) {
             val sourceKey=identity(table.name,row)
             row["id"]?.jsonPrimitive?.content?.let{names[it]=name(row,names)}
             if(sourceKey in allowed)continue
@@ -220,6 +239,10 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
                 val sourceName=name(row,names);val targetName=name(target.after,names)
                 conflicts+=UndoConflict("externalReference",objectKey(target.table,target.after),field,JsonNull,JsonPrimitive(sourceName),
                     UndoReference(table.name,sourceKey,sourceName,targetName))
+            }
+            if(table.name in merchantHistoryTables) {
+                byTable["books"].orEmpty().filter{it.after["id"]==row["bookId"]}.forEach{found(it,"bookId")}
+                continue
             }
             // Logical associations such as template.merchantId deliberately have no Room FK.
             for(column in table.columns.filter{it.endsWith("Id")})row[column]?.jsonPrimitive?.contentOrNull?.let{id->byId[id]?.let{found(it,column)}}
@@ -272,7 +295,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         // restored; the final FK check is mandatory. No broad cascade deletion is used.
         sql.execSQL("PRAGMA defer_foreign_keys=ON")
         for(change in rows.filter{it.before!=null}.sortedByDescending{deleteOrder.indexOf(it.table)}) {
-            val before=restorableRow(change.table,requireNotNull(change.before))
+            val before=restoredBefore(change)
             if(before==null) {
                 sql.execSQL("DELETE FROM `${change.table}` WHERE "+clause(change.key),values(change.key))
                 continue

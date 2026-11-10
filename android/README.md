@@ -38,7 +38,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 真实附件/小票多选、内部副本、图片预览、音频播放、外部只读打开；每个文件严格小于100 MB。
 - 云端返回的流水JSON整体校验/预览、一对一核对、独立人工差异、按类型正式补记；小票多图ZIP/已保存字节校验、云端商品结果回填/替换/修订与商品编辑；银行流水核对与小票商品回填不自动写账，无OCR/银行连接；这两种云端转换不提供本地导出或手动选文件导入。
 - 五类重要事项的真实通知、非精确AlarmManager调度、持久去重、修改撤销、重启/升级/时区变化重建；金额优先展示，点击进入所属账本和目标月份。用户保存开启时才申请通知权限，拒绝仍能记账。后台时机受Android及厂商省电策略影响。
-- 仅今天的新建支出主动前台单次定位、保存地点匹配、默认100米、精度/唯一候选控制自动填入；多个候选手选，手改/清空/旧记录优先。离开前台取消，不申请后台位置权限、不记录轨迹；只有今天新记、有定位且非空名称在解析后仍无正式关联的支出会留下当时的位置，存为商户后删除。
+- 仅今天的新建支出主动前台单次定位、保存地点匹配、默认100米、精度/唯一候选控制自动填入；多个候选手选，手改/清空/旧记录优先。离开前台取消，不申请后台位置权限、不记录轨迹；只有今天新记、有定位且非空名称在解析后仍无正式关联的支出会留下当时的位置，保留或明确放弃位置后才删除；未处理的已关联位置仍可在商户资料中整理。
 - 云端分析交接：导入网页生成的连接配置（Keystore加密），把所选小票图片ZIP或银行资料交给私人分析台；中断后按同一份内部文件整份重传（无断点续传）、领取结果核验大小/SHA后走原有预览确认，回执独立重试。
 - 整本归档/回收/恢复/永久清理；账户停用/启用/无引用删除；分类（含二级）归档/取消归档/改父级/明确迁移；活动删除影响与历史保留；记录关联组回收/恢复/永久清空及文件最后引用清理。
 
@@ -51,7 +51,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 新建分类页与转账页共用支出/收入/转账三等分标签；编辑、周期确认和退款不显示类型切换。切换保留日期、备注、附件会话及普通附件/小票，保留原返回目标。
 - 付款账户按同账本同类型最后一次保存记忆（修订时间优先于交易日期）；转账记住上次两端，账户页显式指定优先。停用或不适用的账户回退到可用账户。信用卡付款方式按卡跨支出/转账记忆：分期带回期数，指定月只带回方式，月份与费用重新填写；编辑沿用已保存方式。
 - 现金/银行/交通 IC/信用卡可转出，只有资金账户可转入，贷款不可转账。信用卡充值增加该卡欠款，转出总额（含已包含的费用）进入付款方式、账单预测、额度和リボ余额池；本金不计消费，明确手续费仍计支出。账单规则不足时沿用既有待补规则，不自动假设一次付。
-- 商户详情支持确认后永久删除（无撤销/回收站）：删除保存地点和记录关联，模板、周期规则及草稿清空商户 ID，保留商户文字。历史记录（含回收站）及修订快照文字不变；命令撤销恢复时跳过已删除商户的关联。云端禁止 `merchant.delete`，可用 `merchant.setActive false` 停用。
+- 商户详情支持确认后永久删除（无撤销/回收站）：删除保存地点和记录关联，模板、周期规则及草稿清空商户 ID，保留商户文字。删除保留记录文字并重算旧名称组；若剩余唯一同名商户，则重新关联并使用其正式显示名称。修订快照不改；云端撤销保留商户历史并标记已撤销，拒绝新增商户归属不一致。云端禁止 `merchant.delete`，可用 `merchant.setActive false` 停用。
 - 支出商户输入提供最多5个启用商户的联想及可搜索一览，忽略大小写和全半角，名称完整匹配且同名商户唯一时关联商户（含停用，并提示将关联到已停用商户；保存事务再次解析）；可清除或修改。候选出现或键盘弹出时自动滚到可见位置。非今天记录不请求当前位置、不显示位置候选，日期改为非今天时清除定位自动带入的商户，保留手填/手选。
 - 保存前使用同一份变更预览检查余额：资金账户余额减少且变为负数时先确认，确认后再进入原保存/影响审核流程；债务账户不提示。详情回收后替换当前路由，返回不会重开已回收记录。
 - 顶栏账本名按全屏宽度居中，并按两侧实测宽度限宽；首页最近支出显示5笔。
@@ -256,13 +256,14 @@ adb shell settings put system font_scale 1.0
 ## 商户同步、合并与紧凑目录（2026-11-10）
 
 - 商户同名统一 trim + NFKC + 忽略大小写。新建重名拒绝，编辑撞名可明确确认合并；旧数据重名不迁移，不改规范化名称仍能保存，未关联记录不任意选择一个商户。
-- 每次保存（含备注或启停）按改名前的正式关联/唯一同名归属统一记录商户名，未关联支出正式关联；普通收入和转账不按同名归属；明确关联收入跟随同步；退款沿原消费归属且仅同步显示文字，不独立关联或按同名认领。回收站同样处理，彻底清除记录不动。模板、周期规则、持久化及打开的未保存草稿同步。记录上的商户文字视为对商户的引用：同步不递增记录 revision、不写修改历史，旧名不保留；因此不改变「最近保存」默认值（默认账户、记住的刷卡付款方式）的排序。
-- 改成仅在记录中出现的名字，编辑器显示归入数量并确认；新建同名商户正常归入。编辑器撞名或详情页「合并到其他商户」都可合并：记录/地点/模板/周期/草稿迁移，备注去重换行拼接，启用状态取 OR，来源删除；合并不能拆开。详情、目录及删除确认均按可见归属记录计数，退款也使用同一归属判断。
+- 创建、原名创建/归入、改名、合并与删除分别计算明确关联和待认领集合，完整覆盖可恢复记录及退款、模板/周期、新建草稿，按最终状态重算受影响名称组。备注/启停仅改资料。普通收入/转账同名不动，明确关联收入跟随；退款沿原消费同步。来源原名组不会随输入丢失，目标唯一时可直接归入，多匹配须先在管理中区分。
+- 预览分类展示正常/回收站、新关联/改名/退款、引用和地点，提交事务重算并核对指纹。合并保留目标 ID、名称和启停，备注去重加入、全部地点迁移、来源删除，完全重复地点提示后保留；保存或明确放弃后才清理临时位置。商户资料有待整理位置入口。
+- 实际变化同事务写独立商户历史及影响明细，保留旧名/ID/资料；不增加 event revision 或改变最近保存、小票和金融事实。商户历史 UI 留 H，编辑已有记录草稿基线留 D。
 - 商户与原名目录均为两列、同行等高：最多两行名称、一行笔数/地点摘要及停用标记；已保存商户名称旁有「+ / −」展开标记。单项展开在该行下方显示全部地点、备注及操作，重复点击收起。杂志为细线双栏（展开项顶线加粗为强调色），手账为手写账目栏/虚线（展开项浅底），小物为带撕口的小票（展开项强调色描边）；确认弹层和选择器沿用主题 `YSheet`。定位说明/设置位于目录后。
-- 云端 `merchant.save` 自动同步并允许归入新名称的未关联记录；重名拒绝并提示应用内合并，云端无合并命令。`merchant.setActive` 复用保存，修复旧名记录。撤销日志已覆盖连带记录、关联、临时位置、模板、周期和草稿，新增逐行还原断言。
-- 退款商户文字由原消费复制；只在 `merchantKey` 归属时同步。记录 revision、图片/小票版本都不改，已导出的小票结果和远端 `inputRevision` 不受影响。
+- 云端 `merchant.save` 复用共享创建/改名/备注业务与分类预览，`merchant.setActive` 仅改启停，未处理位置保留；正式合并/删除仍禁止云端。C2 已排除历史 ID 活引用，撤销保留并标记历史、追加对应撤销记录；整批检查只拒绝新增商户不一致。
+- 退款显示文字在消费修改或商户业务事务中同步，读取 `merchantKey` 只沿原消费判断归属，不写数据。
 
-已在专用模拟器运行 `AnalysisProjectionTest`、`CommandLedgerExecutionTest`、`AnalysisFlowTest`、`LocationEntryFlowTest` 与 `MerchantFlowTest`；`MerchantFlowTest` 另以 `looks=all visual=true` 在标准 390dp、S24 Ultra 基准（`captureSuffix=-s24`）与 320dp/fontScale 1.3（`captureSuffix=-narrow`）下运行，并检查了三主题×中日文的列表、展开、归入/合并确认及编辑器截图。无数据库迁移。能力产物通过 `CommandCapabilitiesTest -Dyohaku.updateCapabilities=true` 生成；协议的正式格式、交接包和 assets 副本同步。
+旧版本的 `AnalysisProjectionTest`、`CommandLedgerExecutionTest`、`AnalysisFlowTest`、`LocationEntryFlowTest` 与 `MerchantFlowTest` 以及标准/S24/窄屏截图曾完成验证；这些结果不代表 C1 的新行为与弹层已通过设备验证。本批仅运行 JVM 和 APK 构建，不启动模拟器；新增仪器方法及截图清单见本文末尾「商户改造 C1 验证」。能力产物通过生成测试更新，协议三份副本保持一致。
 
 设备验证（在 `android/` 执行，Gradle 任务串行；仅构建测试 APK 不会启动模拟器）：
 
@@ -324,7 +325,7 @@ UI 正常布局以 S24 Ultra `1080×2340 / density 450` 为准，结束恢复本
 ## 新商户记账位置与地图选点（2026-11-01 源码更新）
 
 - 账本开启定位时，今天新建的支出若非空商户名称在保存解析后仍未正式关联，保存时把那次定位（坐标、精度）存在这笔记录上；不自动建商户。选了已保存商户、补录、编辑旧记录都不存。改日期离开今天会丢掉暂存的定位；只打开记账页不输入，离开不提示未保存。
-- 商户页「记录中出现过的原名」点进去（或手动新建同名商户）时出现「记账时的位置」：同名记录的位置相距100米内合并为一条，显示次数，默认名「MM/dd 记账处」、半径100米，可去掉、改名或在地图上调整。保存时商户和保留的地点一次写入；新建商户后这些记录上的位置全部删除。
+- 商户页从原名创建/归入、改名吸收或合并时，确认页显示相关临时位置；同一最终商户下100米内聚合，显示次数，默认名「YYYY-MM-DD 记账处」、半径100米，可明确放弃、改名或地图调整。关联与保留地点同事务写入，仅清除已明确处理的位置；云端等未处理的位置继续留在商户资料中待整理。
 - 地点编辑改为地图选点：MapLibre Android 13.7.1（OpenGL 版）+ OpenFreeMap Liberty 底图，不用密钥；请求带 `Yohaku/<版本> (Android; com.yohaku.expensetracker)` 标识，保留 OSM/OpenFreeMap 署名（ⓘ）。地图中央固定图钉，圈出匹配半径，下方显示坐标；「回到当前位置」不依赖地图。新地点打开时先定位当前位置，失败则显示日本全境。地图需要网络，加载失败会提示。旧的只有名称的地点仍可显示。
 - 三主题各自重绘底图颜色（地名/店名只显示当地写法，隐藏道路编号）：杂志是灰绿印刷底图、细线十字和方块图钉；手账是米色纸、胶带、红色虚线圈和红叉；小物是圆角窗口、柔和彩色和水滴图钉。
 - 正式包只打 arm64-v8a，debug 保留全部架构；扫描依赖、正式包体积及预热说明见 [小票扫描依赖与运行](#小票扫描依赖与运行)。
@@ -774,3 +775,38 @@ adb shell rm -rf "$rt"
 阶段8没有UI改动或新增命令，继续使用已有CommandFlowTest的全部相关三主题×中日文截图入口（`looks=all visual=true`，目录`cloud-command-stage-1/`）。本轮新增工具不作为截图验收。首轮独立助手发现建卡过度追问和源文件未上传两处问题；返工说明见阶段8记录，本轮修复后的新线程复验仍由用户执行。离线HTTP替身不能代替真实网站/Work往返。阶段8实现与静态核对见[记录](../docs/plans/cloud-command-stage-8.md)，覆盖计数见[审计](../docs/plans/cloud-command-coverage.md)。
 
 助手往返首轮返工的复验入口：`CommandExecutionTest.protocolCurrentDebtFreeCardExamplePreviewsWithUnknownLimitPolicies`读取协议里的完整建卡示例并预览，验证0欠款/未知额度政策可保存且仍要求手机事实勾选；`CommandProtocolTest.exportedTargetsSchemaMatchesExclusiveSelectionAndSizeLimits`核对oneOf、null语义和数组限制。先重生成能力样例、编译，再按上面的清理步骤重新export，交给新的独立助手；不要手动替换旧方案digest冒充复验。
+
+### 商户改造 C1 验证（2026-11-10）
+
+C1 接入共享商户操作预览/指纹提交、来源原名创建或归入、名称组重算、资料独立修改、目标状态合并、位置整理、独立历史写入及云端同业务调用。详情见 `docs/implementation-spec.md` §1.9。首轮实现未运行设备测试；用户复核所列六组共 38 项，仅 `CommandLedgerExecutionTest#merchantLocationAndFriend` 的 C2 已知撤销问题失败。C1 返工的设备验证见下文。C2 撤销适配、D 编辑草稿基线、E/F/G/H 后续工作不在本批验收范围。
+
+- JVM：`MerchantFoundationTest`（来源/最终组、退款/回收站/引用/草稿、资料无副作用、歧义重算、合并、位置选择和指纹）、`MerchantLocationTest`（已关联待整理点聚合），并跑全量 `testDebugUnitTest`。
+- 数据/流程：`AnalysisProjectionTest` 全类，尤其 `originalGroupPreviewCommitLocationsAndHistoryAreOneTransaction`、`linkedPendingPlacesSurviveProfileAndOrdinaryEntrySavesUntilOrganized`、`renameSynchronizesLegacyLinkedTrashRefundAndReusableReferences`、`adoptionRequiresConfirmationAndDuplicateNamesRequireExplicitMerge`、`historicalDuplicatesRemainAmbiguousUntilMerged`；`CommandLedgerExecutionTest#merchantProfileAndRenameUseSharedScopesAndWriteCloudHistoryOnlyOnCommit`。
+- `CommandLedgerExecutionTest#merchantRenameAdoptionAndActivationUndoRestoreEveryOwnedRow` 可检查已有商户改名/启停业务恢复；C2 已修复历史 ID 活引用误判，完整撤销回归结果见下方 C2 验证记录。
+- UI：`MerchantFlowTest#compactDirectoryAdoptionAndBothMergeEntrances`、`#legacyHistoryLocationsAndMerchantShortcutSynchronizeNamesAndProtectDrafts`、`#originalNameAssignmentAndPendingLocationReviewAcrossLooks`，用 `looks=all visual=true`；截图在设备外部 files 的 `phase-b-p12-merchants{captureSuffix}/`。新增文件为 `{theme}-{language}-original-group-editor.png`、`-original-assignment-places.png`、`-pending-place-review.png`，既有 `-adoption-confirm.png`、`-merge-confirm.png`、`-delete-confirm.png` 一并查看。
+- 云端 UI：`CommandFlowTest#ledgerCombinationPreviewAcrossLooks` 用 `looks=all visual=true`，新增截图 `cloud-command-stage-1/{theme}-{language}-merchant-scope-preview.png`，核对分类数量及待整理说明。
+- 位置 UI：`LocationEntryFlowTest#newMerchantKeepsCapturedLocationUntilSavedFromOriginalName`，`visual=true`，截图 `phase-e-location-entry/recorded-place.png`；此方法固定中文单一外观，三主题/中日文位置确认由前述 MerchantFlowTest 新方法覆盖。
+- 正常布局用 S24 Ultra `1080×2340 / density 450`；新确认弹层补看 `320dp / fontScale 1.3`，最后按本文原配置恢复。截图拉取到 `android/verification/merchant-c1-{standard,narrow}/` 后人工查看，不以 APK 编译代替视觉验证。
+
+C1 返工验证（2026-11-10）：串行全量 JVM 190 项（189 通过、1 既有跳过），应用及仪器测试 APK 构建成功。使用 `/tmp/yohaku-desktop-gradle` 可写缓存，依赖来自本机缓存。在已运行的 `emulator-5580` 上以 S24 `1080×2340 / density 450`、`looks=all visual=true captureSuffix=-s24` 执行 `compactDirectoryAdoptionAndBothMergeEntrances` 和 `originalNameAssignmentAndPendingLocationReviewAcrossLooks`，三主题×中日文均通过。首轮新增文案断言遗漏两处保存地点的名称快照影响，按现有计数口径修正后前一方法重跑通过。
+
+截图过渡问题来自 Compose 空闲未覆盖 Android 窗口淡入淡出/IME 过渡；编辑器与确认在代码中互斥，稳定后没有双弹层残影。测试等待旧编辑器节点消失、唯一新弹层标题可见，并等待连续三帧内容像素一致才保存截图，不用固定 sleep。补充非零分类、全零说明及取消后保留输入断言；云端预览仍保留全部数据字段。42 张本轮截图已查看，其中四类确认/位置弹层共 24 张，路径为设备外部 files 的 `phase-b-p12-merchants-s24/{theme}-{language}-{scene}.png`，本机副本在 `/tmp/yohaku-merchant-c1-review/phase-b-p12-merchants-s24/`。已恢复 `1170×2532 / density 480`。本轮未重跑窄屏矩阵或 C2 撤销用例。
+
+串行执行（如默认缓存只读，可用已有依赖的可写 `GRADLE_USER_HOME`）：
+```bash
+./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:testDebugUnitTest
+./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:assembleDebugAndroidTest
+```
+能力描述有更新时用 `CommandCapabilitiesTest -Dyohaku.updateCapabilities=true` 生成能力样例；三份协议同步，C1 不添加云端输入字段。
+
+### 商户改造 C2 验证（2026-11-10）
+
+C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用检查中排除、同事务标记原商户历史并追加一对一 `CLOUD_UNDO`、整批最终状态的新增一致性违反检查，以及 CSV 来源键整行冲突/删除验证。实现与取舍见 `docs/implementation-spec.md` §1.12。旧撤销日志迁移兼容留 E，草稿基线留 D，历史 UI 留 H。
+
+- 串行使用 `GRADLE_USER_HOME=/tmp/yohaku-desktop-gradle` 执行 `./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:testDebugUnitTest`：190 项，189 通过、1 项既有跳过，0 失败。
+- 然后执行同参数 `:app:installDebug :app:installDebugAndroidTest`：构建并安装成功。未使用会卸载应用的 `connectedDebugAndroidTest`。
+- `emulator-5580` 通过 `am instrument` 默认参数运行 `CommandLedgerExecutionTest`（17）、`CsvImportRoundTripTest`（3）、`BackupRoundTripTest`（1）、`MerchantFlowTest`（4）、`AnalysisProjectionTest`（12）：**37/37 通过，66.864 秒**。模拟器尺寸/密度未改动。
+- `cycle()` 同时核对正向/撤销预览不留历史、业务行精确恢复、原历史保留且标记已撤销、逆向历史及影响明细。新增用例覆盖未关联唯一同名（停用/全半角）、新增重名、原有重名和旧不一致不阻断无关撤销、修复后不得重引入记录/退款不一致、失效模板/周期引用、后续修改与活引用冲突，以及在撤销历史已写入之后故意让事务提交失败、验证全部回滚并可重试。
+- CSV 用例确认 `sourceMatchKey` 修改会阻止整行删除，原值恢复后来源键与导入关系行一起删除。首轮新增断言曾因夹具同时新建分类、其 CSV 保存配置保留真实引用而失败；改用预先存在的分类后通过，未放宽生产引用检查。
+- 补充定向回归 `CommandExecutionTest#undoEntryEditAfterMerchantDeletionKeepsTextWithoutRestoringMissingLink`、`CommandWorkflowExecutionTest#csvBatchTrashRetainsLaterEditsAndUndoRestoresExactRows`：**2/2 通过，2.767 秒**；输出 `/tmp/yohaku-c2-regression.log`。结束时核对模拟器仍为 `1170×2532 / density 480`。
+- 三份协议逐字一致。本批未改能力定义/命令输入 schema，未手改或重生成能力 JSON。最终全量仪器输出见 `/tmp/yohaku-c2-instrumentation-final.log`，构建日志 `/tmp/yohaku-c2-unit-final.log`、`/tmp/yohaku-c2-install-final.log`。

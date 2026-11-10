@@ -58,7 +58,10 @@ internal fun undoDifferences(type:String,key:String,expected:JsonElement,current
 internal suspend fun CommandRun.undoConflicts(record:UndoRecord):List<UndoConflict> = buildList {
     val journal=CommandUndoJournal(ledger,bookId)
     for(guard in record.guards)addAll(undoDifferences(guard.type,guard.key,if(guard.type=="preference")completeCommandPreference(guard.key,guard.after)else journal.restorableGuard(guard),undoValue(guard.type,guard.key)))
-    if(record.version in 2..3)addAll(journal.conflicts(record))
+    if(record.version in 2..3) {
+        addAll(journal.conflicts(record))
+        if(isEmpty())addAll(journal.merchantConflicts(record))
+    }
 }
 
 internal class RestoreEntryCategoryAdapter:CommandAdapter {

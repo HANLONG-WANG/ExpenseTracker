@@ -69,6 +69,11 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         entry.value=entry.value?.synced()
         entryBaseline=entryBaseline?.synced()
     }
+    internal fun syncMerchantOperationDraft(prepared:PreparedMerchantOperation) {
+        fun EntryDraft.synced():EntryDraft = prepared.before.copy(draft=this).prepareMerchantOperation(prepared.input).after.draft!!
+        entry.value=entry.value?.synced()
+        entryBaseline=entryBaseline?.synced()
+    }
     fun markEntryBaseline(){entryBaseline=entry.value}
     private fun openDraft(bookId:String){persistDraft(bookId);markEntryBaseline()}
     private val backStack=mutableListOf<String>()

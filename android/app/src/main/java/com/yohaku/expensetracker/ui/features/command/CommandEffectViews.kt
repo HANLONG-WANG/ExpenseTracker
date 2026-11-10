@@ -25,6 +25,7 @@ import kotlinx.serialization.json.*
     if(step.command=="entry.prepareDraft"){CommandDraftPreview(step,s,model);return}
     if(step.command in setOf("financialRepayment.save","financialRepayment.confirm")&&step.objects.any{it.type=="entry"&&it.after is JsonObject}){CommandRepaymentSummary(step,s,model);CommandFinancialChanges(step,s,model);return}
     CommandFinancialChanges(step,s,model)
+    step.objects.filter{it.type=="merchantImpact"}.forEach{EffectSummary(it,s,model)}
     val changed=step.objects.filter{it.before!=it.after}
     val restoredCategories=if(step.command in setOf("local.restoreExecution","local.entry.restoreCategory"))changed.filter {
         it.type=="entry"&&it.before is JsonObject&&it.after is JsonObject&&it.before["categoryId"]!=it.after["categoryId"]
@@ -53,6 +54,12 @@ import kotlinx.serialization.json.*
 
 @Composable internal fun EffectSummary(effect:ObjectEffect,s:BookSnapshot,model:ConfirmationModel) {
     if(effect.type in workflowTypes){WorkflowSummary(effect,s,model);return}
+    if(effect.type=="merchantImpact") {
+        YText(word("商户整理范围","お店の整理範囲"),14)
+        (effect.after as? JsonObject)?.forEach{(key,value)->YText(fieldName(key)+"："+value.jsonPrimitive.content,12)}
+        YText(word("临时位置保留待整理，可在商户资料中保存或放弃。","一時位置は保持します。お店の情報から保存・破棄してください。"),11)
+        return
+    }
     val before=effect.before as? JsonObject;val after=effect.after as? JsonObject
     val title=effectTitle(effect,s,model)
     val currency=(after?.get("currency")?:before?.get("currency"))?.jsonPrimitive?.contentOrNull?:s.book.currency
@@ -151,7 +158,10 @@ import kotlinx.serialization.json.*
         YText(word("显示绝对值；左侧为操作前，右侧为操作后。未变化的相关值也参与确认。","絶対値で表示します。左は変更前、右は変更後。変わらない関連値も確定時に照合します。"),11)
         effects.drop(page*12).take(12).forEach{effect->Panel {
             YText(effectTitle(effect,s,model),17)
-            if(effect.type=="revolvingBatchArchive") {
+            if(effect.type=="merchantScope") {
+                YText(word("确认时还会核对名称组、关联、退款、引用及待整理位置；即使数量相同，内容变化也需要刷新预览。",
+                    "確定時に名前グループ・関連付け・返金・参照・未整理の位置も照合します。件数が同じでも内容が変わると再確認が必要です。"),12)
+            } else if(effect.type=="revolvingBatchArchive") {
                 FinancialBatchSummary(commandJson.decodeFromJsonElement(com.yohaku.expensetracker.data.repository.BatchRestorationFacts.serializer(),effect.before))
             } else {
             if(effect.type=="creditLimit") {
@@ -302,7 +312,7 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
 }
 @Composable private fun effectTitle(e:ObjectEffect,s:BookSnapshot,model:ConfirmationModel):String {
     val origin=((e.after as? JsonObject)?:e.before as? JsonObject)?.get("origin")?.jsonPrimitive?.contentOrNull
-    val kind=financeObjectLabel(e.type)?:if(e.type=="prediction"&&origin=="POOL")word("循环还款计划","リボ・循環返済プラン")else if(e.type=="prediction"&&origin=="MANUAL")word("手工逐期计划","手入力の各回予定")else when(e.type){"monthlyPlan"->word("月度计划","月の計画");"preference"->word("偏好设置","設定");"analysisPreference"->word("分析设置","分析設定");"statementAssociation","statementRow"->word("流水核对","明細の照合");"receiptProducts"->word("商品明细","商品明細");"receipt","receiptSource","receiptImage"->word("小票来源","レシートの出典");"attachment"->word("附件","添付");"entryDraft"->word("待补完草稿","補完待ちの下書き");"followup"->word("后续步骤","後続の処理");"csvBatch","csvEntry"->word("CSV 导入批次","CSV取込バッチ");"attachment_links"->word("记录附件关联","記録の添付関係");"receipts"->word("本地小票","端末のレシート");"receipt_images"->word("小票图片关联","レシート画像の関連");"activity"->word("活动","シーン");"activityBalance"->word("活动余量","シーンの残額");"reserve"->word("活动预留","シーンの確保");"treat"->word("他人请客","友達のごちそう");"recurrence"->word("周期规则","定期ルール");"occurrence"->word("周期实例","定期予定");"expectedIncome"->word("预计收入","収入予定");"activityMode"->word("活动模式","シーンモード");"activityBudget"->word("活动分类预算","シーンのカテゴリ予算");"activityParticipant"->word("活动参与人","シーンの参加者");"treat_allocations"->word("请客份额","ごちそうの取り分");"reserve_uses"->word("预留使用","確保の使用");"drafts"->word("记账草稿","記録の下書き");"draft_media"->word("草稿暂存附件","下書きの添付資料");"book"->word("账本","帳簿");"merchant"->word("商户","お店");"merchantLocation"->word("保存地点","保存した場所");"friend"->word("朋友","友達");"template"->word("记账模板","記録テンプレート");"budgetSetting"->word("预算设置","予算設定");"event_places"->word("记录地点","記録の場所");"settlements"->word("结算","決済");"transfers"->word("转账两端","振替の両側");"expense_components"->word("手续费","手数料");"postings"->word("入账","計上");"account"->word("账户","口座");"balance"->word("余额 / 欠款","残高・残債");"entry"->word("记录","記録");"entryDetails"->word("结算与关联资料","決済・関連情報");"entryCategory","category"->word("分类","カテゴリ");"budget","budgetForecast"->word("预算与预测","予算・予測");"rule"->word("金融规则","金融条件");"prediction"->word("预测计划","予測プラン");"predictionFacts"->word("预测依据","予測の根拠");"bill"->word("逐期付款","各回の支払");"cashForecast"->word("资金预测","資金予測");"creditLimit","creditLimitGroup"->word("信用额度","利用枠");"saveOrder","entryDefaults"->word("保存顺序 / 默认值依据","保存順・初期値の根拠");"unknownRuleFields"->word("规则缺项","条件の不足項目");else->word("连带影响","関連する影響")}
+    val kind=financeObjectLabel(e.type)?:if(e.type=="prediction"&&origin=="POOL")word("循环还款计划","リボ・循環返済プラン")else if(e.type=="prediction"&&origin=="MANUAL")word("手工逐期计划","手入力の各回予定")else when(e.type){"merchantScope"->word("商户确认依据","お店の確認内容");"merchantImpact"->word("商户整理范围","お店の整理範囲");"monthlyPlan"->word("月度计划","月の計画");"preference"->word("偏好设置","設定");"analysisPreference"->word("分析设置","分析設定");"statementAssociation","statementRow"->word("流水核对","明細の照合");"receiptProducts"->word("商品明细","商品明細");"receipt","receiptSource","receiptImage"->word("小票来源","レシートの出典");"attachment"->word("附件","添付");"entryDraft"->word("待补完草稿","補完待ちの下書き");"followup"->word("后续步骤","後続の処理");"csvBatch","csvEntry"->word("CSV 导入批次","CSV取込バッチ");"attachment_links"->word("记录附件关联","記録の添付関係");"receipts"->word("本地小票","端末のレシート");"receipt_images"->word("小票图片关联","レシート画像の関連");"activity"->word("活动","シーン");"activityBalance"->word("活动余量","シーンの残額");"reserve"->word("活动预留","シーンの確保");"treat"->word("他人请客","友達のごちそう");"recurrence"->word("周期规则","定期ルール");"occurrence"->word("周期实例","定期予定");"expectedIncome"->word("预计收入","収入予定");"activityMode"->word("活动模式","シーンモード");"activityBudget"->word("活动分类预算","シーンのカテゴリ予算");"activityParticipant"->word("活动参与人","シーンの参加者");"treat_allocations"->word("请客份额","ごちそうの取り分");"reserve_uses"->word("预留使用","確保の使用");"drafts"->word("记账草稿","記録の下書き");"draft_media"->word("草稿暂存附件","下書きの添付資料");"book"->word("账本","帳簿");"merchant"->word("商户","お店");"merchantLocation"->word("保存地点","保存した場所");"friend"->word("朋友","友達");"template"->word("记账模板","記録テンプレート");"budgetSetting"->word("预算设置","予算設定");"event_places"->word("记录地点","記録の場所");"settlements"->word("结算","決済");"transfers"->word("转账两端","振替の両側");"expense_components"->word("手续费","手数料");"postings"->word("入账","計上");"account"->word("账户","口座");"balance"->word("余额 / 欠款","残高・残債");"entry"->word("记录","記録");"entryDetails"->word("结算与关联资料","決済・関連情報");"entryCategory","category"->word("分类","カテゴリ");"budget","budgetForecast"->word("预算与预测","予算・予測");"rule"->word("金融规则","金融条件");"prediction"->word("预测计划","予測プラン");"predictionFacts"->word("预测依据","予測の根拠");"bill"->word("逐期付款","各回の支払");"cashForecast"->word("资金预测","資金予測");"creditLimit","creditLimitGroup"->word("信用额度","利用枠");"saveOrder","entryDefaults"->word("保存顺序 / 默认值依据","保存順・初期値の根拠");"unknownRuleFields"->word("规则缺项","条件の不足項目");else->word("连带影响","関連する影響")}
     val name=resolveName(e.key,s,model)
     // Opaque row IDs are available in the protocol, not useful as UI headings.
     return if(name!=e.key)"$kind · $name"else kind
@@ -311,6 +321,9 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
 @Composable internal fun fieldName(key:String):String {
     if(key.toIntOrNull()!=null)return word("第 $key 项","$key 件目")
     val names=mapOf(
+        "normalRecords" to ("正常记录" to "通常の記録"),"affectedRecords" to ("受影响记录" to "対象記録"),"newlyLinkedRecords" to ("新关联记录" to "新規関連の記録"),"renamedRecords" to ("改名记录" to "名前を変更する記録"),
+        "trashedRecords" to ("其中回收站记录" to "うちごみ箱の記録"),"linkedRefunds" to ("关联退款" to "関連する返金"),"templates" to ("模板" to "テンプレート"),
+        "recurrenceRules" to ("周期规则" to "定期ルール"),"savedLocations" to ("保存地点" to "保存場所"),"pendingPlaces" to ("待整理位置" to "未整理の位置"),"drafts" to ("草稿" to "下書き"),
         "endDate" to ("结束日期" to "終了日"),"anchorDate" to ("首次安排日期" to "最初の予定日"),"excludeMonthly" to ("不计入月预算" to "月予算から独立"),"ended" to ("已结束" to "終了済み"),"activityMode" to ("活动模式" to "シーンモード"),"activeActivityId" to ("当前活动" to "現在のシーン"),"recurrenceId" to ("周期规则" to "定期ルール"),"reserveId" to ("预留" to "確保"),"releasedMinor" to ("已释放金额" to "解放済み額"),"payerFriendId" to ("请客的朋友" to "ごちそうした友達"),"accountEstimateJson" to ("预计到账换算依据" to "入金見込の換算根拠"),"categoryBudgets" to ("分类预算" to "カテゴリ予算"),"friendBalances" to ("互请往来" to "ごちそうのやり取り"),"iGiveMinor" to ("我请对方" to "自分からのおごり"),"theyGiveMinor" to ("对方请我" to "相手からのおごり"),"differenceMinor" to ("互请差额" to "ごちそうの差額"),"receiptId" to ("小票" to "レシート"),"sessionId" to ("附件所属草稿" to "添付先の下書き"),"fileId" to ("附件" to "添付資料"),"mediaSession" to ("草稿附件会话" to "下書きの添付先"),
         "original" to ("原对象" to "元の対象"),"settlements" to ("相关结算" to "関連する決済"),"plans" to ("关联计划" to "関連プラン"),"bills" to ("关联账期" to "関連する請求"),"occurrences" to ("关联周期实例" to "関連する定期予定"),"statementDecisions" to ("流水关联" to "明細との関連"),"postingJson" to ("入账核对依据" to "計上照合の根拠"),"status" to ("状态" to "状態"),"recoveryDeadline" to ("恢复期限" to "復元期限"),"accounts" to ("账户数" to "口座数"),"records" to ("记录数" to "記録数"),"files" to ("文件数" to "ファイル数"),"financialPlans" to ("金融计划数" to "金融プラン数"),"statements" to ("流水批次数" to "明細の件数"),"theme" to ("主题" to "テーマ"),"language" to ("语言" to "言語"),"startDate" to ("开始日期" to "開始日"),"budgetMinor" to ("预算金额" to "予算額"),"initialized" to ("已完成设置" to "設定完了"),"setupStep" to ("设置步骤" to "設定ステップ"),"archived" to ("已归档" to "アーカイブ済み"),
         "latitude" to ("纬度" to "緯度"),"longitude" to ("经度" to "経度"),"radiusMeters" to ("匹配半径（米）" to "選択半径（m）"),"accuracyMeters" to ("定位精度（米）" to "測位精度（m）"),"sortOrder" to ("排序位置" to "並び順"),

@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "673f031d4bad2f79e61edf77331af6d9af6e8ba46fc4c1ea94d1a69b212127e0",
+    "catalogDigest": "7d37a8159dcb7492c98e67d86f8b9f47452a4b975e8e9867fffe34879fc7c77d",
     "commands": [
         {
             "comparisonFields": [
@@ -2398,7 +2398,7 @@
                 "RISK"
             ],
             "defaults": "name required; merchant omitted/null creates; active state preserved. note omitted/null preserves (new empty), empty string clears.",
-            "description": "Create or edit a merchant. Synchronize owned record names (including trash), linked templates, recurrences and drafts. Name-matched unlinked expenses become linked; Ordinary income/transfer text is not owned by name; explicitly linked income follows the merchant. Refund ownership and display text follow the original expense, including recoverable refunds, without independent links. A new name matching unlinked records adopts those records automatically. The name on a record is a reference to the merchant: synchronization writes no entry revision and the previous name is not kept. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion and merging are only available in the app, never through cloud commands.",
+            "description": "Create or rename a merchant and synchronize explicit ownership plus uniquely adoptable expense name groups, including recoverable trash, templates, rules and new drafts. Note-only saves change only the note. Name-matched unlinked expenses become linked; Ordinary income/transfer text is not owned by name; explicitly linked income follows the merchant. Refund ownership and display text follow the original expense, including recoverable refunds, without independent links. A new name matching unlinked records adopts those records automatically. Recompute affected old/new name groups after the operation. Preview separates new links, name changes, trash, refunds, templates, rules and locations. Pending captured locations remain until explicitly organized in the app. Synchronization writes independent merchant history with old/new names and IDs, without entry revisions or save-order changes. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion and merging are only available in the app, never through cloud commands.",
             "example": {
                 "name": "咖啡店"
             },
@@ -2655,7 +2655,7 @@
             "mode": "transactional",
             "name": "merchant.setActive",
             "outputs": {},
-            "prerequisites": "Target must be a merchant in plan.book_id; saved name, note and locations are retained. Saving also synchronizes owned record names and linked templates/recurrences/drafts, and formally links name-matched expenses.",
+            "prerequisites": "Target must be a merchant in plan.book_id. Only active changes; names, notes, record links, templates, rules, drafts and pending locations are retained.",
             "unavailable": "Reject the whole batch if this command's input or prerequisites fail; no step is skipped.",
             "undo": "Restore exact recorded existing rows; remove only execution-owned new objects and dependent rows, if unchanged and without external FK/JSON/draft references. Full row/relationship conflicts block the entire undo.",
             "version": 1

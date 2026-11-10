@@ -26,7 +26,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YIcon("leaf",Modifier.size(24.dp),t.accent)
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp)) {
             YText(word("记住，常去的地方","いつもの場所を覚えて"),if(t.id=="journal")16 else 12)
-            YText(word("开启定位后，今天新记的未保存商户支出会暂存位置；把原名存为商户后删除这些位置。","位置情報をオンにすると、今日の新規支出で未保存のお店の位置を一時保存。元の名前をお店として保存すると削除します。"),if(t.id=="journal")11 else 10,color=t.muted,lineHeightMultiplier=1.8f)
+            YText(word("开启定位后，今天新记且未关联商户的支出会暂存位置；整理时可保留或放弃，确认后才清除临时位置。","位置情報をオンにすると、今日の新規支出で未関連のお店の位置を一時保存。場所の保存・破棄を確認してから一時位置を消去します。"),if(t.id=="journal")11 else 10,color=t.muted,lineHeightMultiplier=1.8f)
         }
     }
 }

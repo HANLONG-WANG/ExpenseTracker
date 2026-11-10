@@ -105,31 +105,32 @@
 ### 1.8 新商户记账位置与地图选点（2026-11-01）
 
 - `EntryDraft.capturedPlace`（纬度/经度/精度）：`EntryLocation` 定位成功且为今天的新建支出时写入；`changeEntry` 在日期非今天或非支出时清空；`hasManualInput` 忽略它。
-- `placeForNewEntry`：先在保存事务解析商户，再判断新建、支出、最终 `merchantId==null`、商户非空、日期为今天且有暂存定位时，`PreparedLedgerChange.eventPlace` 在同一事务写入 `event_places`。保存时关联了已保存商户则删除该记录的位置；永久清理沿用级联表清理。
-- `recordedPlaces(name)`：未关联商户且 `normalizedMerchantName` 相同的支出，按日期从新到旧，以簇首点100米内贪心合并；坐标取精度最好的点。`saveMerchantWithLocations` 在一个事务里保存商户和地点；正式关联支出时删除其临时位置。距离统一用 `distanceMeters`（haversine）。
+- `placeForNewEntry`：先在保存事务解析商户，再判断新建、支出、最终 `merchantId==null`、商户非空、日期为今天且有暂存定位时，`PreparedLedgerChange.eventPlace` 在同一事务写入 `event_places`。新建时若已解析为正式商户就不新增临时位置；已有待整理位置不会被普通保存删除，永久清理沿用级联表清理。
+- `recordedPlaces(name)`：`normalizedMerchantName` 相同且仍有临时位置的支出，包含已关联及可恢复回收站，按日期从新到旧，以簇首点100米内贪心合并，且不跨最终商户；坐标取精度最好的点。C1 用 `MerchantPlaceDecision` + `commitMerchantOperation` 在一个事务里完成位置保留/放弃、商户关联与对应临时位置清理；旧的 `saveMerchantWithLocations` 已移除。距离统一用 `distanceMeters`（haversine）。
 - `PlacePicker`：`AndroidView(MapView)`，转发生命周期；中心图钉、半径圈为 Compose 叠加层（像素半径 = 米 / `getMetersPerPixelAtLatitude`），相机停下回调中心坐标；MapView 在按下时请求父级不拦截，防止外层滚动抢走拖动。`applyPlaceTheme` 在 Liberty 样式加载后按图层 id 重设颜色、隐藏 3D 建筑和道路编号、文字只用 `name`。`YohakuApplication` 初始化 MapLibre，用 OkHttp 拦截器设置专用 User-Agent。
 
-### 1.9 商户同步与合并（2026-11-10）
+### 1.9 商户业务操作、位置与历史（批次 C1，2026-11-10）
 
-本节记录当前商户批量操作：批次 B 已修正收入/转账边界及退款跟随原消费；批量操作拆分、名称组重算、位置整理和历史调用仍待 C，不能以批次 0 的其余行为代替最终计划。
-
-- `MerchantUpdates.kt` 集中 `saveMerchant` / `mergeMerchants` / 归入及文字变更数量预览。事务内读取一个 `BookSnapshot`，按改名前 `merchantKey` 归属选记录；快照包含回收站、排除 `purgedAt`，不需数据库迁移。
-- `normalizedMerchantName`（trim + NFKC + lowercase）统一保存查重、`merchantsByName` / `merchantKey` 回退、输入关联、原名目录及 `recordedPlaces`。历史重复名称不自动选择任意 ID；原名称规范化未改变时允许保存。新建/改名撞名由仓库双语拒绝，提示应用内合并。
-- 改名吸收新名字的未关联记录需要 `confirmAdoption=true`；新建正常归入。UI 显示数量后确认，云端 `merchant.save` 显式开启归入并在 capability 声明。`merchant.setActive` 走同一保存函数，顺带修复旧文字/关联，不触发新名字归入。
-- 归属记录统一文字，仅未关联支出新增 `event_merchants`，并清除其临时位置；收入/转账/退款不新建关联。退款文字由 `prepareRefund` 复制原消费，归属通过 `settlements.originalEventId` 取原消费（包含回收站）；不独立按退款文字认领。普通收入/转账的同名说明不属于商户，只有明确关联收入跟随同步。所属记录的商户文字同步仅为引用更新：同步只改 `events.merchant` 与 `event_merchants`，不递增 revision、不写 `revisions`，旧名不保留。原因是修订时间决定 `eventSaveTimes`，写修订会让改名改变「最近保存」默认值（默认账户、记住的刷卡付款方式），并使已导出小票和按记录 revision 建立的金融事实过期。保存按 ID 同步模板、周期规则、持久化草稿；ViewModel 同步打开的草稿及其编辑基线，云端改名/撤销也通过快照名称变化同步。
-- 合并事务迁移 S/T 的归属记录、S 地点与全部引用，去重拼接非空备注、启用状态取 OR，删除 S。编辑器传入的备注/启停覆盖 S 后参与合并。历史重名在移除 S 后变为唯一的名字回退记录也正式归入 T，保证最终不变式。云端不提供合并命令。
-- `CommandUndoJournal` 已收集 events / event_merchants / event_places / templates / recurrences / drafts / merchants 的完整行变化，无需扩大日志表集；新增仪器测试逐行比较执行前与撤销后，包括记录文字、关联和临时位置。
-- 改名不更新记录 revision、图片、小票 revision 或远端提交内容：远端任务 `inputRevision`、已导出小票（不会成为 `staleExport`）和“最近保存”默认值排序都不受影响。
-- 目录两列紧凑、单项展开后在同行下方全宽显示操作。名称两行省略，摘要一行省略，操作用 `YActionRow` 换行。杂志细线双栏、手账边线/虚线、小物小票；复用三主题 `YSheet`。`merchant-card/entry/open-$id` 标签保留，展开语义双语；删除计数按可见归属记录。
+- `MerchantUpdates.kt` 用 `MerchantOperationInput` 明确区分创建、来源原名创建/归入、改名、备注、启停、合并、删除及待整理位置。`originalName` 固定来源组，`name`/`targetId` 表达最终商户；原名输入唯一匹配正式商户时确认归入，沿用目标 ID、名称和启停，新增备注去重加入目标；多匹配拒绝并提示先在管理中合并或改名。正式商户撞名只能明确合并；仅大小写/全半角变化仍保持自身 ID 并更新显示文字。
+- `BookSnapshot.prepareMerchantOperation` 是无写入的共享范围计算，返回 `PreparedMerchantOperation`（输入、前后状态、待整理位置 ID、`MerchantOperationPreview`）。不再通过 `merchantKey()` 选批量范围：明确关联优先；改名前唯一旧名称组可显式认领；来源原名组和最终唯一名称组纳入未关联支出。已经明确关联其他商户的记录不抢走。所有改变名称/存在性的操作按最终商户集合重算受影响旧/新名称组：两家 X 中一家移走/删除后，未关联 X 归剩下一家；三家只合并两家仍不认领。
+- 正常与可恢复回收站记录都处理，排除永久清理占位。退款沿 `originalEventId` 跟随原消费，不独立认领、不保存独立商户 ID；明确关联收入跟随，普通收入/转账不按同名更新。模板/周期按明确 ID 或本次认领的无 ID 名称组处理（周期使用 `merchant.ifBlank { name }`）；新建支出草稿按来源组跟随，明确 ID 草稿继续同步，退款草稿沿原消费。编辑已有记录的草稿基线、排队保存和模板/周期编辑器本地副本留 D。
+- 备注、启停各自只改资料。兼容 `saveMerchant` 按实际意图区分操作；在一次表单保存同时修改备注与启停时，同一事务分别写两条资料操作历史。改名可以一并保存表单资料；合并始终保留目标启停，不采纳来源开关。来源备注按去空白行/明显重复行去重后加入目标；所有保存地点原 ID 迁移，完全相同名称/坐标/半径通过 `duplicateLocationIds` 提示，绝不自动删地点。
+- 预览与提交共用同一计算。分类计数为受影响非退款记录、新关联、改名、其中回收站、退款、模板、周期、保存地点、待整理位置、草稿，不能直接相加。本机编辑器与确认只展示非零类别，全零显示「不影响其他记录」（中日双语）；云端预览继续输出完整字段。依赖包含旧/新名称组候选、资料、退款关系、回收状态与位置；意图包含来源/目标及地点保留/调整/放弃。提交事务重新计算并比对指纹；变化拒绝，UI 显示错误并刷新确认范围。
+- `EventPlaces.kt` 按 100m、最新锚点/最佳精度聚合临时位置，同一候选不跨最终商户归属。原名创建、归入、改名吸收、合并确认默认保留有效候选，可命名、地图调整或关闭保留以明确放弃。`MerchantPlaceDecision` 绑定具体记录 ID；保存地点与关联、清理在同一事务。没有决定的临时位置继续待整理，云端默认也保留。`recordedPlaces()` 包含仍有位置的已关联及可恢复记录；普通记账保存不再清除已有临时位置。商户详情提供「整理待处理位置」复用同一流程，未经确认的位置不参与定位推荐。
+- 预览范围查询使用 ID Map/Set，避免对记录与位置逐项嵌套扫描。`commitMerchantOperation` 按 ID 索引比对前后实体，仅写实际变化的业务行（只变关联不重写记录），并在同一事务调用 `writeMerchantOperationInTransaction`，一条操作主记录及各变化对象的旧/新文字和 ID 明细；保存时间、来源/目标资料快照、来源原名、分类数量以及 LOCAL/CLOUD 来源。云端附 planId、localId（作为可用执行标识）、step.id。预览和无变化操作不写；事务失败业务与历史全部回滚。合并/删除后来源快照仍保留；历史页面留 H。
+- 批量操作不增加 event revision、不写记账 revisions、不修改 `eventSaveTimes`、金额/分录、图片/小票版本或金融事实。单笔主动改商户仍仅写原记账历史。
+- `LedgerCommandAdapters.kt` 的 `merchant.save` 复用同一创建/改名/备注业务，按原有确认语义纳入可认领组；改名撞名拒绝，合并/删除仍禁止云端。`merchant.setActive` 只改启停。云端 `merchantImpact` 预览提供上述分类数量，中日文显示；`merchantScopeBasis` 把共享预览依赖对应的业务行按云端生成 ID/审计字段规则规范化后纳入确认摘要，数量不变但位置坐标等依赖变化也会拒绝旧确认。来源原名/目标商户的新协议字段留 G。
+- C2 已补齐商户历史与撤销协调及整批商户一致性检查，见 §1.12。旧撤销日志兼容、旧记账/模板数据整理及移除 `merchantKey()` 读取兜底仍留 E。
+- UI 沿用紧凑双列目录与各主题 `YSheet`，正式字段改称「商户名称 / お店の名前」，原名只用于来源记录组；归入、合并、删除与地点整理显示分类数量，合并明确最终启停。三主题精修及历史 UI 留 H。本批未运行设备/模拟器，视觉验证待用户按 README 清单执行。
 
 ### 1.10 商户改造批次 A：解析、预览与历史基础（2026-11-10）
 
 - `MerchantResolution.kt` 复用 `normalizedMerchantName`（trim、NFKC、Locale.ROOT 小写）。支出无 ID 时仅匹配同账本唯一正式商户，包含停用；多匹配返回 `Ambiguous`，无匹配返回 `None`。明确 ID 必须属于本账本并使用正式名称；非空名称与该名称规范化后不一致返回 `ID_NAME_MISMATCH`，不存在/跨账本 ID 返回 `INVALID_MERCHANT_ID`。收入仅支持明确 ID；转账等类型不按名称解析，也不接受独立商户 ID。退款必须传入原消费归属，尊重其有效 ID，不检查原消费旧显示副本、不解析退款自身文字、不建立退款独立关联。批次 B 已接入输入与各记账保存入口，见 1.11。明确本机选择以 ID 为准、保存正式名称；云端同时提交 ID 和矛盾文字时报错。
-- `MerchantOperations.kt` 定义创建、原名创建/归入、改名、合并、备注、启停、删除、历史整理、云端撤销及本机/云端/升级来源。预览包含受影响非退款记录总数（覆盖仅解除/改换 ID 的删除、同名合并），并区分新关联、改名、回收站、退款、模板、周期、保存地点、待整理位置和草稿；新关联/改名含可恢复的非退款记录，回收站是受影响非退款记录的子集，退款单列，各数不能直接求和。
-- 预览包含操作意图、对象前后状态、未变化但参与计算的依赖及 SHA-256 指纹。按对象和字段稳定排序，以长度前缀编码区分空值/分隔符；后续调用方须纳入旧/新名称组候选、来源/目标资料、退款关系、删除状态、相关地点资料和保留/修改/放弃选择，提交事务内重新计算整个集合，用 `requireCurrentMerchantPreview` 拒绝过期预览。本批未替换旧预览/执行路径。
+- `MerchantOperations.kt` 定义创建、原名创建/归入、改名、合并、备注、启停、待整理位置、删除、历史整理、云端撤销及本机/云端/升级来源。预览包含受影响非退款记录总数（覆盖仅解除/改换 ID 的删除、同名合并），并区分新关联、改名、回收站、退款、模板、周期、保存地点、待整理位置和草稿；新关联/改名含可恢复的非退款记录，回收站是受影响非退款记录的子集，退款单列，各数不能直接求和。
+- 预览包含操作意图、对象前后状态、未变化但参与计算的依赖及 SHA-256 指纹。按对象和字段稳定排序，以长度前缀编码区分空值/分隔符；后续调用方须纳入旧/新名称组候选、来源/目标资料、退款关系、删除状态、相关地点资料和保留/修改/放弃选择，提交事务内重新计算整个集合，用 `requireCurrentMerchantPreview` 拒绝过期预览。C1 已接入共享预览/提交路径，见 1.9。
 - Room **39→40**：`merchant_operations` 主键 `(bookId,id)`，字段包括时间、类型、来源、来源/目标 ID 与名称快照、来源原名、来源/目标各自前后资料（name/note/active）、上述总数及九类数量、cloudPlanId/cloudExecutionId/cloudCommandId、undoOfOperationId/undoneByOperationId/undoneAt。索引覆盖账本时间顺序、来源/目标商户、云端执行标识。
 - `merchant_operation_impacts` 主键 `(bookId,operationId,objectType,objectId)`，保存必要的旧/新商户文字和 ID；对象包括商户、记录、退款、模板、周期、保存地点、临时位置、草稿。`(objectType,objectId)` 和 `(bookId,objectType,objectId)` 索引供追溯，主键前缀供操作明细分页。主表只引用账本、明细只引用操作，不对 merchants/events 建外键；商户/记录删除保留历史，整本永久清理显式先删明细再删主表。
-- `MerchantHistoryDao` 按账本/商户/对象分页，明细亦分页，不进入 BookGraph/BookSnapshot。`writeMerchantOperationInTransaction` 仅在实际业务写入后、调用方已有事务内调用，`changed=false` 不写，预览不调用，失败传播使业务和历史一起回滚。当前商户操作尚未写历史；云端历史排除/一致性检查由 C 接入、旧日志兼容由 E 接入，本批次 A 的基础结构不改变命令；批次 B 的记账语义已同步协议与生成能力产物。
+- `MerchantHistoryDao` 按账本/商户/对象分页，明细亦分页，不进入 BookGraph/BookSnapshot。`writeMerchantOperationInTransaction` 仅在实际业务写入后、调用方已有事务内调用，`changed=false` 不写，纯商户预览不调用；云端模拟执行可在必回滚的外层事务内调用，失败传播使业务和历史一起回滚。C1 已为实际商户操作写入历史；C2 已实现云端历史排除/撤销关系及一致性检查，旧日志兼容与迁移整理留 E。能力产物随实际语义生成。
 - `csv_batch_events.sourceMatchKey` 为可空来源判重键，旧行 NULL；B 已捕获原始导入值，F 再回填旧批次并接入判重预览。迁移结构 SQL 后调用暂为空的 `organizeMerchantHistoryV40`，供 E 增加一次性整理。备份为完整数据库文件，版本跟随 `DATABASE_VERSION`，`prepareRestore` 在暂存副本通过 `ALL_MIGRATIONS` 升级，无表白名单需要补充。迁移及备份仪器测试已补充新表、来源列、事务回滚、历史保留和整本清理覆盖。
 
 
@@ -138,9 +139,20 @@
 - 本机 `prepareEntry`、CSV、模板记账、周期付款、云端 `writeEntryBatchInTransaction` 共用 `resolveMerchant`。提交 `writeChange` 时再次解析；预览提交仍先检查快照是否变化。分类/备注轻量更新和实际到账确认也补齐当前记录的商户关联与正式名称。支出无 ID 时按最终名称唯一匹配，包含停用；无匹配/重名歧义保留原文、不创建商户。明确 ID 校验本账本并保存正式名称；普通收入、转账不按文字关联，收入支持明确 ID。
 - `merchantInput` 使用同一解析器，改文字会丢弃旧选择。唯一同名停用商户自动选中，在现有三主题 `LocatedMerchantChip` 显示中日文提示；下拉联想、一览与定位候选仍仅含启用商户。云端 `entry`/模板/周期输入同时给出矛盾 ID 和名称时明确拒绝，名称单独补丁重新解析。
 - `saveTemplate`、`saveRecurrence` 在事务内解析并持久化 ID/正式名称；周期最终名称为 `merchant.ifBlank { name }`。商户停用不影响模板校验与可用性、周期保存或付款；存在且属于本账本即可。删除/跨账本引用仍拒绝。
-- 新支出先解析，再决定临时位置：仅今天新建、有定位、非空名称且最终无正式关联时写 `event_places`。`recordedPlaces` 和已关联记录保存时的现有清理行为本批未改，待 C 处理旧位置。
-- 退款不保存独立商户关联。读取归属沿原消费，忽略退款旧显示文字；修改消费会同步全部未永久清理退款（含可恢复退款）的显示文字。现有商户同步也改为沿选中原消费带上退款；原名认领仅选支出，改名计数包含这些消费带动的退款。商户详情继续用三主题现有退款行显示待到账/已到账；分析净额仅扣已确认且未回收退款。原名分析键按规范化名称归组，显示仍保留原文；`BookSnapshot.merchantNameLabels` 按快照 lazy 建立原名键到首条可见支出显示文字的映射，列表和筛选调用 `merchantLabel` 时直接查表。
+- 新支出先解析，再决定临时位置：仅今天新建、有定位、非空名称且最终无正式关联时写 `event_places`。C1 已改为保留未明确处理的旧位置，已关联记录也可查询和整理，见 1.9。
+- 退款不保存独立商户关联。读取归属沿原消费，忽略退款旧显示文字；修改消费会同步全部未永久清理退款（含可恢复退款）的显示文字。现有商户同步也改为沿选中原消费带上退款；原名认领仅选支出，C1 的改名计数只计非退款记录，关联退款单列。商户详情继续用三主题现有退款行显示待到账/已到账；分析净额仅扣已确认且未回收退款。原名分析键按规范化名称归组，显示仍保留原文；`BookSnapshot.merchantNameLabels` 按快照 lazy 建立原名键到首条可见支出显示文字的映射，列表和筛选调用 `merchantLabel` 时直接查表。
 - CSV 在 `prepareEntry` 改写名称之前捕获 `sourceMatchKey`：JSON 字符串数组 `[解析后日期, 收支类型, 本位币最小单位金额的十进制字符串, 原始备注, 原始商户文字]`，与 `CsvParser.duplicateKey` 字段一致，不增加账户、不规范化文字。判重预览暂不读取它，同文件相同行仍分别保存。`CommandUndoJournal` 对 `csv_batch_events` 使用完整行快照，自动包含新列；新增行撤销按整行删除，无需改日志表集。旧键回填及判重接入留 F。
+
+### 1.12 商户改造批次 C2：云端撤销（2026-11-10）
+
+- `CommandUndoJournal` 仅对业务表清单采集、恢复或删除行。`merchant_operations` / `merchant_operation_impacts` 不参与行日志、规划/金融关系守卫及历史 ID 扫描。真实账本外键仍保留：已有后续历史的账本不能因撤销创建而被删除；永久清理仍按账本生命周期处理。
+- 撤销确认通过整批冲突与确认比较后，在同一 Room 事务按原 `cloudPlanId` + `cloudExecutionId` 找原操作，逐条插入 `CLOUD_UNDO`，反转资料/影响明细，并调用 `markUndone`。一对一复用 `undoOfOperationId` / `undoneByOperationId` / `undoneAt`，原历史与明细完整保留，无需新增关联表；本机撤销用撤销计划 ID 作为执行标识。撤销记录描述原操作的逆向影响，不扩展业务写入范围。
+- 普通预览及撤销预览均在真实数据库事务执行，`TrialRollback` 在最外层捕获后仅保存预览结果。原操作模拟历史随事务回滚；撤销历史只在确认成功路径写入，任何后续异常/事务回滚同时撤回历史与业务。
+- 在原有后续修改/活引用检查通过后，内存合成整批撤销后的 `merchants`、未永久清理的 `events`（含回收站）、`event_merchants`、`settlements`、模板、周期及地点。检查未关联唯一同名支出（含停用商户）、规范化重名、明确关联支出/收入名称、退款文字及失效引用。使用与实际恢复相同的原始业务行，不再在恢复时静默清除缺失商户的业务关联；草稿沿用既有删除投影，基线另属 D。
+- “新违反”是撤销后违规集合减去撤销前集合：按对象身份、问题类型及问题相关的名称/引用值比较，忽略金额/备注等无关字段；重名按规范化名称和商户 ID 对比较，新增第三个同名商户也会被识别，原有且未变化的历史重名/旧数据不一致不阻断无关撤销。整个批次一次检查，不按恢复中间态误报；已修正的问题也不能被撤销重新引入。冲突复用现有撤销冲突展示，原因中日双语；拒绝时不自动补关联或扩大整理范围。
+- `csv_batch_events` 已在业务恢复/删除顺序中，`SELECT *` 捕获并精确比较 `sourceMatchKey`，后续更改该列同样阻止整行删除；成功撤销随导入关系行删除。`commandExports` 显式导出业务结构，不导出商户历史为可编辑数据，coverage/三份协议说明只读历史与当前关联的区别。本批没有改变能力定义或命令输入 schema，无需重生成能力 JSON。
+
+### 2.1 协议通用约定
 
 - 统一 UTF-8 JSON，首版版本号1；不同用途使用不同 `kind`。正式协议与 HTML 示例区分，不把示例账本/账户ID当真实ID。
 - 货币采用 `{ "currency": "JPY", "amount": "15230" }` 这样的明确结构，金额为十进制字符串；CNY/USD规范为两位小数。交易资金方向单列，实际金额通常为正数。

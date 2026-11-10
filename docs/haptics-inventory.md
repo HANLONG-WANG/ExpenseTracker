@@ -603,7 +603,7 @@
 | MERCHANTS-LOCATION-003 | `ui/features/MerchantsScreen.kt:32` | ＋ 保存商户 | `{newName="";editing=""}` | none | — | 导航/打开/关闭 |
 | MERCHANTS-LOCATION-004 | `ui/features/MerchantsScreen.kt:35` | name | `{newName=name;editing=""}` | none | — | 导航/打开/关闭 |
 | MERCHANTS-LOCATION-005 | `ui/features/MerchantsScreen.kt:37` | 全部商户 | `{selected=null}` | none | — | 导航/打开 |
-| MERCHANTS-LOCATION-006 | `ui/features/MerchantsScreen.kt:41` | 编辑原名与备注 | `{editing=merchant.id}` | none | — | 导航/打开/关闭 |
+| MERCHANTS-LOCATION-006 | `ui/features/MerchantsScreen.kt:41` | 编辑名称与备注 | `{editing=merchant.id}` | none | — | 导航/打开/关闭 |
 | MERCHANTS-LOCATION-007 | `ui/features/MerchantsScreen.kt:44` | 删除商户 | `{deleting=true}` | none | — | 打开删除审阅 |
 | MERCHANTS-LOCATION-008 | `ui/features/MerchantsScreen.kt:45` | 删除商户 | `{deleting=false}` | none | — | 关闭/返回不加触感 |
 | MERCHANTS-LOCATION-009 | `ui/features/MerchantsScreen.kt:50` | 确认删除商户 | `{vm.execute(onSuccess={ vm.entry.value?.takeIf{it.merchantId` | none | Removed |  |
@@ -613,7 +613,7 @@
 | MERCHANTS-LOCATION-013 | `ui/features/MerchantsScreen.kt:69` | EventRow | `{onRecord(e)}` | none | — | 导航/打开/关闭 |
 | MERCHANTS-LOCATION-014 | `ui/features/MerchantsScreen.kt:72` | EventRow | `{onRecord(e)}` | none | — | 导航/打开/关闭 |
 | MERCHANTS-LOCATION-015 | `ui/features/MerchantsScreen.kt:88` | 商户资料 | `onDismiss` | none | — | 关闭/返回不加触感 |
-| MERCHANTS-LOCATION-016 | `ui/features/MerchantsScreen.kt:89` | 商户原名 | `{name=it}` | none | — | 系统输入法负责逐键反馈 |
+| MERCHANTS-LOCATION-016 | `ui/features/MerchantsScreen.kt:89` | 商户名称 | `{name=it}` | none | — | 系统输入法负责逐键反馈 |
 | MERCHANTS-LOCATION-017 | `ui/features/MerchantsScreen.kt:90` | 备注 | `{note=it}` | none | — | 系统输入法负责逐键反馈 |
 | MERCHANTS-LOCATION-018 | `ui/features/MerchantsScreen.kt:91` | 启用候选选择 | `{active=it}` | ToggleOn/ToggleOff | — | 组件内置 |
 | MERCHANTS-LOCATION-019 | `ui/features/MerchantsScreen.kt:97` | 保留地点 | `{choices[index]=choices[index].copy(keep=it)}` | ToggleOn/ToggleOff | — | 组件内置 |

@@ -53,13 +53,41 @@ class MerchantFlowTest {
         ui.waitForIdle();return node
     }
     private fun imeVisible()=android.view.inspector.WindowInspector.getGlobalWindowViews().any{view->androidx.core.view.ViewCompat.getRootWindowInsets(view)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}
+    private fun waitForSheet(title:String,editorAbsent:Boolean=false) {
+        ui.waitUntil(10000){
+            ui.onAllNodesWithTag("theme-sheet").fetchSemanticsNodes().size==1&&
+                ui.onAllNodes(hasTestTag("sheet-title") and hasText(title)).fetchSemanticsNodes().size==1&&
+                (!editorAbsent||ui.onAllNodesWithTag("merchant-save").fetchSemanticsNodes().isEmpty())
+        }
+        ui.onNodeWithTag("sheet-title").assertIsDisplayed()
+    }
     private fun shot(name:String){
         if (!visualEnabled()) return
-        ui.waitForIdle();val automation=InstrumentationRegistry.getInstrumentation().uiAutomation;automation.waitForIdle(100,5000)
-        val bitmap=automation.takeScreenshot();val context=InstrumentationRegistry.getInstrumentation().targetContext
-        val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix").orEmpty()
-        val file=File(context.getExternalFilesDir(null),"phase-b-p12-merchants$suffix/$name.png");file.parentFile!!.mkdirs()
-        file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+        ui.waitForIdle()
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val automation=instrumentation.uiAutomation
+        // Compose/accessibility idleness does not include WindowManager fades or IME movement.
+        // Wait for rendered pixels, not a fixed delay; exclude the system clock/navigation bar.
+        var previous:Bitmap?=null
+        var frame:Bitmap?=null
+        var identicalFrames=0
+        var samples=0
+        try {
+            ui.waitUntil(10000){
+                val next=automation.takeScreenshot()
+                val inset=(48*instrumentation.targetContext.resources.displayMetrics.density).toInt()
+                val content=Bitmap.createBitmap(next,0,inset,next.width,next.height-2*inset)
+                identicalFrames=if(previous?.sameAs(content)==true)identicalFrames+1 else 0
+                previous?.recycle();previous=content
+                frame?.recycle();frame=next;samples++
+                identicalFrames>=2
+            }
+            println("Merchant screenshot $name settled after $samples frames")
+            val context=instrumentation.targetContext
+            val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix").orEmpty()
+            val file=File(context.getExternalFilesDir(null),"phase-b-p12-merchants$suffix/$name.png");file.parentFile!!.mkdirs()
+            file.outputStream().use{requireNotNull(frame).compress(Bitmap.CompressFormat.PNG,100,it)}
+        }finally { previous?.recycle();frame?.recycle() }
     }
     @Test fun compactDirectoryAdoptionAndBothMergeEntrances() {
         for((theme,language) in testLooks(this@MerchantFlowTest)) {
@@ -91,22 +119,27 @@ class MerchantFlowTest {
             tag("merchant-card-$source").performScrollTo().performClick();tag("merchant-entry-$source").assertDoesNotExist()
             expand(target);expand(source);tag("merchant-expanded-$target").assertDoesNotExist()
             tag("merchant-open-$source").performScrollTo().performClick()
-            tap(text("编辑原名与备注","元の名前・メモを編集"))
-            val field="field-"+text("商户原名","お店の元の名前")
+            tap(text("编辑名称与备注","名前・メモを編集"))
+            val field="field-"+text("商户名称","お店の名前")
+            tag("merchant-name-impact").assertTextEquals(text("不影响其他记录","ほかの記録には影響しません"))
             clearHeader(tag(field)).performTextReplacement("新名字")
             // The adopted record already says 新名字; only the source record's text changes.
             tag("merchant-name-impact").assertTextContains("1",substring=true)
-            sheetTap("merchant-save");tag("merchant-adoption-message").assertTextContains("1",substring=true);shot("$theme-$language-adoption-confirm")
-            sheetTap("merchant-adoption-cancel");assertNotEquals("新名字",snapshot().merchants.single{it.id==source}.name)
+            sheetTap("merchant-save")
+            waitForSheet(text("归入同名记录","同名の記録を取り込む"),editorAbsent=true)
+            // The two saved locations also carry the renamed merchant in the impact snapshot.
+            tag("merchant-name-impact").assertTextEquals(text("正常记录 2\n新关联 1 · 改名 1\n保存地点 2","通常の記録 2\n新規関連 1 · 名前変更 1\n保存場所 2"))
+            shot("$theme-$language-adoption-confirm")
+            sheetTap("merchant-adoption-cancel");waitForSheet(text("商户资料","お店の情報"));tag(field).assertTextContains("新名字");assertNotEquals("新名字",snapshot().merchants.single{it.id==source}.name)
             sheetTap("merchant-save");sheetTap("merchant-adoption-confirm")
             ui.waitUntil(10000){!vm.busy.value&&snapshot().merchants.single{it.id==source}.name=="新名字"}
             tag("event-$event").assertTextContains("新名字",substring=true)
             assertEquals(source,snapshot().eventMerchants.single{it.eventId==adopted}.merchantId)
-            tap(text("编辑原名与备注","元の名前・メモを編集"))
+            tap(text("编辑名称与备注","名前・メモを編集"))
             clearHeader(tag(field)).performTextReplacement("ＴＡＲＧＥＴ ＣＡＦＥ")
             clearHeader(tag("field-"+text("备注","メモ"))).performTextReplacement("编辑后的备注")
-            sheetTap("merchant-save");shot("$theme-$language-merge-confirm")
-            sheetTap("merchant-merge-cancel");assertEquals(4,snapshot().merchants.size);assertEquals("新名字",snapshot().merchants.single{it.id==source}.name)
+            sheetTap("merchant-save");waitForSheet(text("合并商户","お店を統合"),editorAbsent=true);shot("$theme-$language-merge-confirm")
+            sheetTap("merchant-merge-cancel");waitForSheet(text("商户资料","お店の情報"));tag(field).assertTextContains("ＴＡＲＧＥＴ ＣＡＦＥ");assertEquals(4,snapshot().merchants.size);assertEquals("新名字",snapshot().merchants.single{it.id==source}.name)
             sheetTap("merchant-save");sheetTap("merchant-merge-confirm")
             ui.waitUntil(10000){!vm.busy.value&&snapshot().merchants.size==3}
             assertFalse(snapshot().merchants.any{it.id==source});assertEquals("编辑后的备注",snapshot().merchants.single{it.id==target}.note)
@@ -114,7 +147,7 @@ class MerchantFlowTest {
             tag("merchant-merge").performScrollTo().performClick()
             clearHeader(tag("field-"+text("搜索商户","お店を検索"))).performTextReplacement("书店")
             tag("merchant-merge-target-$target").assertDoesNotExist()
-            sheetTap("merchant-merge-target-$third");tag("merchant-merge-message").assertTextContains("2",substring=true)
+            sheetTap("merchant-merge-target-$third");tag("merchant-name-impact").assertTextContains("2",substring=true)
             sheetTap("merchant-merge-confirm")
             ui.waitUntil(10000){!vm.busy.value&&snapshot().merchants.size==2}
             tag("event-$event").assertTextContains("街角书店",substring=true)
@@ -199,8 +232,8 @@ class MerchantFlowTest {
             ui.runOnIdle{vm.navigate("merchants")}
             expand(merchant)
             ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
-            tap(text("编辑原名与备注","元の名前・メモを編集"))
-            ui.onNodeWithTag("field-"+text("商户原名","お店の元の名前")).performScrollTo().performTextReplacement("新资料名")
+            tap(text("编辑名称与备注","名前・メモを編集"))
+            ui.onNodeWithTag("field-"+text("商户名称","お店の名前")).performScrollTo().performTextReplacement("新资料名")
             if(keyboard)ui.waitUntil(10000){imeVisible()}
             InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(100,5000)
             val merchantSave=ui.onNodeWithTag("merchant-save")
@@ -226,7 +259,9 @@ class MerchantFlowTest {
             val editingDraft=after.editingEntryDraft(after.events.first{it.id!=event&&it.kind==EntryKind.EXPENSE.name})
             ui.runOnIdle{vm.entry.value=editingDraft}
             ui.onNodeWithTag("merchant-delete").performScrollTo().performClick()
-            ui.onNodeWithText(text("关联的 3 条记录会保留原来的商户文字，只是不再关联这个商户。","関連する 3 件の記録には元のお店名を残し、このお店との関連付けだけを解除します。")).assertExists()
+            // Two linked expenses lose their ID; the refund follows its purchase and is counted separately.
+            ui.onNodeWithTag("merchant-name-impact").assertTextContains(text("正常记录 2","通常の記録 2"),substring=true)
+            ui.onNodeWithTag("merchant-name-impact").assertTextContains(text("退款 1","返金 1"),substring=true)
             shot("$theme-$language-delete-confirm")
             clearHeader(ui.onNodeWithTag("merchant-delete-confirm")).assertIsEnabled().performClick()
             ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.merchants?.isEmpty()==true}
@@ -237,6 +272,50 @@ class MerchantFlowTest {
             shot("$theme-$language-deleted-list")
             ui.runOnIdle{vm.entry.value=null}
 
+        }
+    }
+
+    @Test fun originalNameAssignmentAndPendingLocationReviewAcrossLooks() {
+        for((theme,language) in testLooks(this@MerchantFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val ids=runBlocking {
+                val book=repo.createBook("原名 $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val account=repo.saveAccount(book,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+                val category=repo.saveCategory(book,"咖啡",EntryKind.EXPENSE,null)
+                val event=repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="100",date="2026-10-14",merchant="星巴克咖啡",capturedPlace=CapturedPlace(35.0,139.0,5.0)))
+                val target=repo.saveMerchant(book,"星巴克",note="目标备注",active=false)
+                vm.preferences.select(book);listOf(book,event,target)
+            }
+            val book=ids[0];val event=ids[1];val target=ids[2]
+            fun snapshot()=(vm.state.value as AppState.Ready).snapshot!!
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
+            ui.runOnIdle{vm.navigate("merchants")}
+            ui.onNodeWithTag("merchant-card-recorded-$event").performScrollTo().performClick()
+            clearHeader(ui.onNodeWithTag("field-"+text("商户名称","お店の名前"))).performTextReplacement("星巴克")
+            clearHeader(ui.onNodeWithTag("field-"+text("备注","メモ"))).performTextReplacement("来源备注")
+            ui.onNodeWithTag("merchant-original-group").assertTextContains("星巴克咖啡",substring=true)
+            shot("$theme-$language-original-group-editor")
+            clearHeader(ui.onNodeWithTag("merchant-save")).performClick()
+            waitForSheet(text("归入同名记录","同名の記録を取り込む"),editorAbsent=true)
+            ui.onNodeWithTag("merchant-adoption-message").assertTextContains(text("停用","停止"),substring=true)
+            ui.onNodeWithTag("recorded-place-0").performScrollTo();shot("$theme-$language-original-assignment-places")
+            clearHeader(ui.onNodeWithTag("merchant-adoption-confirm")).performClick()
+            ui.waitUntil(10000){!vm.busy.value&&snapshot().eventMerchants.any{it.eventId==event&&it.merchantId==target}}
+            assertEquals(1,snapshot().merchants.size);assertFalse(snapshot().merchants.single().active)
+            assertEquals("目标备注\n来源备注",snapshot().merchants.single().note)
+            assertEquals("星巴克",snapshot().events.single().merchant);assertTrue(snapshot().eventPlaces.isEmpty())
+            assertEquals(target,snapshot().merchantLocations.single().merchantId)
+            // A legacy linked capture is offered through the same place-review flow.
+            runBlocking{repo.dao.putEventPlace(EventPlaceEntity(book,event,35.01,139.01,5.0))}
+            ui.waitUntil(10000){snapshot().eventPlaces.isNotEmpty()}
+            ui.onNodeWithTag("merchant-organize-places").performScrollTo().performClick()
+            waitForSheet(text("整理待处理位置","未整理の場所を整理"),editorAbsent=true)
+            ui.onNodeWithTag("recorded-place-0").performScrollTo();shot("$theme-$language-pending-place-review")
+            clearHeader(ui.onNodeWithTag("toggle-"+text("保留地点","場所を保存"))).performClick()
+            clearHeader(ui.onNodeWithTag("merchant-adoption-confirm")).performClick()
+            ui.waitUntil(10000){!vm.busy.value&&snapshot().eventPlaces.isEmpty()}
+            assertEquals(1,snapshot().merchantLocations.size)
         }
     }
 
