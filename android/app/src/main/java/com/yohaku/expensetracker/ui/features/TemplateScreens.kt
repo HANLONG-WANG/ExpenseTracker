@@ -92,7 +92,7 @@ import com.yohaku.expensetracker.ui.theme.*
     YSheet(if(t==null)word("新建模板","テンプレートを作成")else word("编辑模板","テンプレートを編集"),onClose) {
         YField(word("模板名称","テンプレート名"),name,{name=it},Modifier.testTag("template-name"))
         YSelect(word("类型","種類"),d.kind,listOf(EntryKind.EXPENSE to word("支出","支出"),EntryKind.INCOME to word("收入","収入")),{kind->d=d.clearCardPayment().copy(kind=kind,budgetExcluded=false,categoryId=null,accountId=null,amount="",activityId=null)},Modifier.testTag("template-kind"))
-        YSelect(word("分类","カテゴリ"),d.categoryId,s.categories.filter{s.categoryEnabled(it.id)&&it.kind==d.kind.name}.map{it.id as String? to s.path(it.id)},{d=d.copy(categoryId=it)},Modifier.testTag("template-category"))
+        CategorySelectField(word("分类","カテゴリ"),s.categories.filter{it.kind==d.kind.name},s.categories.filter{s.categoryEnabled(it.id)&&it.kind==d.kind.name},d.categoryId,{d=d.copy(categoryId=it)},Modifier.testTag("template-category"))
         YSelect(word("账户","口座"),d.accountId,s.entryAccounts(d.kind).map{it.id as String? to it.name},{id->
             val next=s.accounts.first{it.id==id};d=d.clearCardPayment().copy(accountId=id,amount=if(next.currency!=account?.currency)""else d.amount)
         },Modifier.testTag("template-account"),columns=2)

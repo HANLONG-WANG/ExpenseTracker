@@ -187,7 +187,7 @@ class MerchantFlowTest {
             assertFinancialUnchanged()
             expand(source);tag("merchant-open-$source").performScrollTo().performClick()
             shot("$theme-$language-h2-created-profile")
-            tap(label("编辑名称与备注","名前・メモを編集"))
+            tap(label("编辑资料","情報を編集"))
             clearHeader(tag("field-"+label("商户名称","お店の名前"))).performTextReplacement("星巴克 中关村")
             settledSheetTap("merchant-save")
             waitForSheet(label("归入同名记录","同名の記録を取り込む"),editorAbsent=true)
@@ -196,7 +196,7 @@ class MerchantFlowTest {
             assertEquals(source,stored().merchants.single().id)
             val target=runBlocking{repo.saveMerchant(book,"目标咖啡",note="目标备注",active=false)}
             ui.waitUntil(10000){shown().merchants.size==2}
-            tap(label("编辑名称与备注","名前・メモを編集"))
+            tap(label("编辑资料","情報を編集"))
             clearHeader(tag("field-"+label("商户名称","お店の名前"))).performTextReplacement("目标咖啡")
             settledSheetTap("merchant-save")
             waitForSheet(label("合并商户","お店を統合"),editorAbsent=true)
@@ -345,7 +345,7 @@ class MerchantFlowTest {
             tag("merchant-card-$source").performScrollTo().performClick();tag("merchant-entry-$source").assertDoesNotExist()
             expand(target);expand(source);tag("merchant-expanded-$target").assertDoesNotExist()
             tag("merchant-open-$source").performScrollTo().performClick()
-            tap(text("编辑名称与备注","名前・メモを編集"))
+            tap(text("编辑资料","情報を編集"))
             val field="field-"+text("商户名称","お店の名前")
             tag("merchant-name-impact").assertTextEquals(text("不影响其他记录","ほかの記録には影響しません"))
             clearHeader(tag(field)).performTextReplacement("新名字")
@@ -361,7 +361,7 @@ class MerchantFlowTest {
             ui.waitUntil(10000){!vm.busy.value&&snapshot().merchants.single{it.id==source}.name=="新名字"}
             tag("event-$event").assertTextContains("新名字",substring=true)
             assertEquals(source,snapshot().eventMerchants.single{it.eventId==adopted}.merchantId)
-            tap(text("编辑名称与备注","名前・メモを編集"))
+            tap(text("编辑资料","情報を編集"))
             clearHeader(tag(field)).performTextReplacement("ＴＡＲＧＥＴ ＣＡＦＥ")
             clearHeader(tag("field-"+text("备注","メモ"))).performTextReplacement("编辑后的备注")
             sheetTap("merchant-save");waitForSheet(text("合并商户","お店を統合"),editorAbsent=true);shot("$theme-$language-merge-confirm")
@@ -403,7 +403,7 @@ class MerchantFlowTest {
             ui.runOnIdle{vm.navigate("merchants")}
             ui.onNodeWithTag("merchant-card-$merchant").performScrollTo();shot("$theme-$language-catalog")
             ui.onNodeWithTag("merchant-card-$merchant").performClick()
-            ui.onNodeWithTag("merchant-open-$merchant").performClick()
+            ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
             ui.onNodeWithTag("event-$event").assertExists()
             assertEquals(1,ui.onAllNodesWithTag("event-$refund").fetchSemanticsNodes().size)
             tap(text("编辑地点","場所を編集"))
@@ -459,7 +459,9 @@ class MerchantFlowTest {
             ui.runOnIdle{vm.navigate("merchants")}
             expand(merchant)
             ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
-            tap(text("编辑名称与备注","名前・メモを編集"))
+            ui.waitUntil(10000){ui.onAllNodesWithTag("theme-toast").fetchSemanticsNodes().isEmpty()}
+            ui.onNodeWithTag("merchant-delete").performScrollTo();shot("$theme-$language-detail-actions")
+            tap(text("编辑资料","情報を編集"))
             ui.onNodeWithTag("field-"+text("商户名称","お店の名前")).performScrollTo().performTextReplacement("新资料名")
             if(keyboard)ui.waitUntil(10000){imeVisible()}
             InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(100,5000)

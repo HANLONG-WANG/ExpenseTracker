@@ -20,6 +20,7 @@ import com.yohaku.expensetracker.domain.model.EntryDraft
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun EntryMerchantInput(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit) {
     var open by rememberSaveable(d.mediaSession){mutableStateOf(false)}
     var query by rememberSaveable(d.mediaSession){mutableStateOf("")}
@@ -45,8 +46,14 @@ import com.yohaku.expensetracker.ui.theme.*
     }
     if(open)YSheet(word("商户一览","お店の一覧"),{open=false}) {
         YSearch(word("搜索商户","お店を検索"),query,{query=it})
-        val matches=s.merchants.matchingMerchants(query)
-        if(matches.isEmpty())YText(word("没有匹配的商户","一致するお店はありません"),12,color=LocalYohaku.current.muted)
-        matches.forEach{m->LocatedMerchantChip(m.name,if(d.merchantId==m.id)word("已选中","選択済み")else word("选择商户","お店を選択"),{choose(m)},Modifier.fillMaxWidth().testTag("merchant-choice-${m.id}"))}
+        // Most used first: the list is for picking, so habitual merchants should not need a search.
+        val counts=remember(s.visibleEvents,s.merchants){s.visibleEvents.groupingBy{s.merchantKey(it)}.eachCount()}
+        val matches=s.merchants.matchingMerchants(query).sortedByDescending{counts["id:${it.id}"]?:0}
+        val t=LocalYohaku.current
+        YText(if(matches.isEmpty())if(query.isBlank())word("还没有保存的商户","保存済みのお店はまだありません")else word("没有匹配的商户","一致するお店はありません")
+            else if(query.isBlank())word("共 ${matches.size} 家 · 按使用次数排列，数字为记录笔数","全 ${matches.size} 店 · 利用回数順、数字は記録件数")else word("${matches.size} 家匹配","${matches.size} 店が一致"),if(t.id=="journal")12 else 10,Modifier.testTag("merchant-choice-count"),color=t.muted)
+        FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(if(t.id=="journal")18.dp else 8.dp),verticalArrangement=Arrangement.spacedBy(if(t.id=="journal")6.dp else 8.dp)) {
+            matches.forEach{m->MerchantChoiceChip(m.name,counts["id:${m.id}"]?:0,d.merchantId==m.id,{choose(m)},Modifier.testTag("merchant-choice-${m.id}"))}
+        }
     }
 }

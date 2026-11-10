@@ -697,4 +697,47 @@ class BudgetRecurrenceFlowTest {
         }
     }
 
+    @Test fun ruleEditorPicksGroupedCategoryAndMostUsedMerchantFromTheList(){
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            lateinit var child:String;lateinit var frequent:String
+            val book=runBlocking {
+                val id=repo.createBook("规则选择 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=50000,theme=theme,language=language)
+                repo.updateBook(repo.dao.book(id)!!.copy(initialized=true))
+                val account=repo.saveAccount(id,"支払銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,100000),"2026-10-01")
+                val home=repo.saveCategory(id,text("居住","住まい"),EntryKind.EXPENSE,null)
+                repo.saveCategory(id,text("房租","家賃"),EntryKind.EXPENSE,home);child=repo.saveCategory(id,text("水电燃气","水道光熱"),EntryKind.EXPENSE,home)
+                val food=repo.saveCategory(id,text("餐饮","食事"),EntryKind.EXPENSE,null)
+                listOf(text("咖啡","カフェ"),text("外食","外食"),text("便利店","コンビニ")).forEach{repo.saveCategory(id,it,EntryKind.EXPENSE,food)}
+                repo.saveCategory(id,text("订阅","サブスク"),EntryKind.EXPENSE,null)
+                listOf("セブン-イレブン 渋谷道玄坂上店","Suica","無印良品","スターバックス","ドトール","Amazon","ヨドバシカメラ","松屋","ユニクロ").forEach{repo.saveMerchant(id,it)};frequent=repo.saveMerchant(id,"東京ガス")
+                repo.saveMerchantLocation(id,repo.saveMerchant(id,"Blue Bottle"),text("清澄白河","清澄白河"),null,null)
+                repeat(2){repo.saveEntry(id,EntryDraft(accountId=account,categoryId=child,amount="4000",date="2026-10-0${it+2}",merchant="東京ガス",merchantId=frequent))}
+                vm.preferences.select(id);id
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
+            ui.runOnIdle{vm.navigate("recurring")}
+            ui.onNodeWithTag("recurrence-add").performScrollTo().performClick()
+            sheetTarget(ui.onNodeWithTag("field-名称")).performTextReplacement("ガス代")
+            val category=text("分类","カテゴリ")
+            sheetTarget(ui.onNodeWithTag("select-trigger-$category")).performClick()
+            sheetTarget(ui.onNodeWithTag("category-select-picker"));shot("$theme-$language-rule-editor-category-picker",true,false)
+            sheetTarget(ui.onNodeWithTag("category-select-option-$child")).performClick()
+            ui.onNodeWithTag("category-select-picker").assertDoesNotExist()
+            sheetTarget(ui.onNodeWithTag("select-trigger-$category")).assertTextContains(text("水电燃气","水道光熱"),substring=true)
+            shot("$theme-$language-rule-editor-category-chosen",true,false)
+            sheetTarget(ui.onNodeWithTag("entry-merchant-list")).performClick()
+            // Two records put the gas company ahead of the merchants saved before it.
+            ui.onNodeWithTag("merchant-choice-count").assertTextContains("11",substring=true)
+            val first=ui.onNodeWithTag("merchant-choice-$frequent").getUnclippedBoundsInRoot();val later=ui.onNodeWithText("Blue Bottle").getUnclippedBoundsInRoot()
+            assertTrue(first.top<later.top||first.top==later.top&&first.left<later.left)
+            shot("$theme-$language-rule-editor-merchant-list",true,false)
+            ui.onNodeWithTag("merchant-choice-$frequent").performClick()
+            sheetTarget(ui.onNodeWithTag("recurrence-save")).performClick()
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.recurrences?.size==1&&!vm.busy.value}
+            val rule=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}.recurrences.single()
+            assertEquals(child,rule.categoryId);assertEquals(frequent,rule.merchantId)
+        }
+    }
+
 }

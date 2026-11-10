@@ -97,6 +97,27 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
+/** Chip of the merchant list sheet, several per line: boxed editorial tag / ticked notebook word / rounded drawer label. */
+@Composable internal fun MerchantChoiceChip(name:String,count:Int,chosen:Boolean,onClick:()->Unit,modifier:Modifier=Modifier) {
+    val t=LocalYohaku.current
+    val objects=t.id=="objects";val journal=t.id=="journal"
+    val shape=RoundedCornerShape(11.dp)
+    val frame=when(t.id) {
+        "magazine"->Modifier.background(if(chosen)t.ink else Color.Transparent).border(1.dp,if(chosen)t.ink else t.line).padding(horizontal=10.dp,vertical=8.dp)
+        "journal"->Modifier.drawBehind {
+            drawLine(if(chosen)t.accent else t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx())))
+        }.padding(horizontal=2.dp,vertical=7.dp)
+        else->Modifier.drawBehind{drawRoundRect(Color(0x12c6ab80),Offset(0f,2.dp.toPx()),cornerRadius=androidx.compose.ui.geometry.CornerRadius(11.dp.toPx()))}
+            .background(if(chosen)Color(0xfff0e2ca)else Color(0xfffff7e7),shape).border(1.dp,if(chosen)t.accent else Color(0xffe0caa7),shape).padding(horizontal=11.dp,vertical=8.dp)
+    }
+    Row(modifier.semantics{selected=chosen}.clickable(role=Role.Button,onClick=onClick).then(frame),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+        if(journal)Box(Modifier.size(15.dp).rotate(-4f).background(if(chosen)Color(0xffdae1d3)else Color.Transparent,RoundedCornerShape(2.dp)).border(1.dp,t.accent,RoundedCornerShape(2.dp)),contentAlignment=Alignment.Center){if(chosen)YText("✓",12,color=t.accent,lineHeightMultiplier=1f)}
+        YText(name,if(journal)14 else 12,Modifier.weight(1f,fill=false),color=if(chosen)if(t.id=="magazine")t.surface else t.accent else t.ink,lineHeightMultiplier=1.4f,maxLines=1,overflow=TextOverflow.Ellipsis)
+        // Record count: tells apart habitual merchants and near-duplicates without a second line.
+        if(count>0)YText(count.toString(),if(journal)11 else 9,color=if(chosen&&t.id=="magazine")t.surface else if(t.id=="magazine")t.warm else t.muted,number=true,lineHeightMultiplier=1.4f)
+    }
+}
+
 /** Editorial index / notebook margin / receipt slip. Only list items receive numbers; sections use headings. */
 @Composable internal fun MerchantHistoryPaper(number:String?=null,modifier:Modifier=Modifier,heading:String?=null,content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current

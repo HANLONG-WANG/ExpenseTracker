@@ -108,14 +108,15 @@ import java.time.YearMonth
         Column(Modifier.fillMaxWidth().background(if(journal)Color(0xfffaf5e7) else if(objects)t.surface else Color.Transparent,shape).then(edge).padding(horizontal=if(journal)15.dp else if(objects)17.dp else 0.dp).padding(top=if(journal)19.dp else if(objects)20.dp else 22.dp,bottom=if(journal)19.dp else if(objects)20.dp else 7.dp),verticalArrangement=Arrangement.spacedBy(contentSpacing),content=content)
     }
 }
-/** [arrow] marks links that open another page, matching section-heading links. */
-@Composable fun YLink(label:String,onClick:()->Unit,modifier:Modifier=Modifier,arrow:Boolean=false,haptic:Haptic?=null) {
+/** [arrow] marks links that open another page, matching section-heading links; [back] marks links that return to the parent list. */
+@Composable fun YLink(label:String,onClick:()->Unit,modifier:Modifier=Modifier,arrow:Boolean=false,back:Boolean=false,haptic:Haptic?=null) {
     val haptics=LocalHaptics.current
     val link=modifier.defaultMinSize(minHeight=40.dp).clickable(onClick={haptic?.let{haptics.perform(it)};onClick()}).padding(vertical=8.dp)
-    if(!arrow)YText(label,12,link,color=LocalYohaku.current.accent)
+    if(!arrow&&!back)YText(label,12,link,color=LocalYohaku.current.accent)
     else Row(link,horizontalArrangement=Arrangement.spacedBy(4.dp)){
+        if(back)YText("←",12,Modifier.clearAndSetSemantics{},color=LocalYohaku.current.accent)
         YText(label,12,color=LocalYohaku.current.accent)
-        YText("→",12,Modifier.clearAndSetSemantics{},color=LocalYohaku.current.accent)
+        if(arrow)YText("→",12,Modifier.clearAndSetSemantics{},color=LocalYohaku.current.accent)
     }
 }
 /** Final field label metrics; ink marks belong to journal text/date fields only. */
@@ -169,25 +170,32 @@ import java.time.YearMonth
             decorationBox={inner->Box{if(value.isEmpty())YText(displayPlaceholder,size,color=t.muted,lineHeightMultiplier=inputLine/size,cssLineBox=true);inner()}})
     }
 }
+/** Label and themed trigger row shared by every inline select; the caller owns the menu below it. */
+@Composable fun YSelectTrigger(label:String,open:Boolean,onToggle:()->Unit,displayLabel:String=label,value:@Composable RowScope.()->Unit) {
+    val t=LocalYohaku.current
+    val objectTheme=t.id=="objects"
+    val stateLabel=if(open)word("已展开","展開中") else word("已收起","折りたたみ")
+    val focus=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    FieldLabel(displayLabel,Modifier.padding(bottom=if(t.id=="journal")6.dp else if(objectTheme)9.dp else 10.dp))
+    val trigger=if(objectTheme)Modifier.drawBehind{drawRoundRect(Color(0x18d6b991),topLeft=Offset(0f,2.dp.toPx()),size=this.size,cornerRadius=androidx.compose.ui.geometry.CornerRadius(13.dp.toPx()))}.background(Color(0xfff4ead8),RoundedCornerShape(13.dp)).border(1.dp,Color(0xffe5d0b0),RoundedCornerShape(13.dp)).padding(13.dp) else if(t.id=="journal")Modifier.padding(start=2.dp,end=2.dp,top=12.dp,bottom=8.dp) else Modifier.padding(vertical=13.dp)
+    Column(Modifier.testTag("select-trigger-"+label).fillMaxWidth().semantics{stateDescription=stateLabel}.clickable(role=Role.Button){if(!open){focus.clearFocus();keyboard?.hide()};onToggle()}) {
+        Row(Modifier.fillMaxWidth().then(trigger),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
+            value()
+            if(objectTheme)Box(Modifier.size(20.dp).background(Color(0xffdfc4a0),RoundedCornerShape(7.dp)),contentAlignment=Alignment.Center){YText(if(open)"−" else "＋",14,color=Color(0xffa1784d),lineHeightMultiplier=20f/14,cssLineBox=true)}
+            else YText(if(t.id=="journal")if(open)"↑" else "↓" else if(open)"⌃" else "⌄",if(t.id=="journal")18 else 13,color=if(t.id=="journal")t.warm else t.ink,lineHeightMultiplier=if(t.id=="journal")26f/18 else 19f/13,cssLineBox=true)
+        }
+        if(!objectTheme)Box(Modifier.fillMaxWidth().height(1.dp).background(if(t.id=="journal")t.accent else t.ink))
+    }
+}
 @Composable fun <T> YSelect(label:String,selected:T,options:List<Pair<T,String>>,onSelect:(T)->Unit,modifier:Modifier=Modifier,displayLabel:String=label,columns:Int=1) {
     val t=LocalYohaku.current
     var open by remember{mutableStateOf(false)}
-    val objectTheme=t.id=="objects"
-    val stateLabel=if(open)word("已展开","展開中") else word("已收起","折りたたみ")
     val menuRequester=remember{BringIntoViewRequester()}
-    val focus=LocalFocusManager.current
-    val keyboard=LocalSoftwareKeyboardController.current
     LaunchedEffect(open){if(open){withFrameNanos{};menuRequester.bringIntoView()}}
     Column(modifier.fillMaxWidth().testTag("select-field-"+label)) {
-        FieldLabel(displayLabel,Modifier.padding(bottom=if(t.id=="journal")6.dp else if(objectTheme)9.dp else 10.dp))
-        val trigger=if(objectTheme)Modifier.drawBehind{drawRoundRect(Color(0x18d6b991),topLeft=Offset(0f,2.dp.toPx()),size=this.size,cornerRadius=androidx.compose.ui.geometry.CornerRadius(13.dp.toPx()))}.background(Color(0xfff4ead8),RoundedCornerShape(13.dp)).border(1.dp,Color(0xffe5d0b0),RoundedCornerShape(13.dp)).padding(13.dp) else if(t.id=="journal")Modifier.padding(start=2.dp,end=2.dp,top=12.dp,bottom=8.dp) else Modifier.padding(vertical=13.dp)
-        Column(Modifier.testTag("select-trigger-"+label).fillMaxWidth().semantics{stateDescription=stateLabel}.clickable(role=Role.Button){if(!open){focus.clearFocus();keyboard?.hide()};open=!open}) {
-            Row(Modifier.fillMaxWidth().then(trigger),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
-                YText(options.find{it.first==selected}?.second.orEmpty(),if(t.id=="journal")14 else 12,Modifier.weight(1f),lineHeightMultiplier=if(t.id=="journal")20f/14 else 17f/12,cssLineBox=true)
-                if(objectTheme)Box(Modifier.size(20.dp).background(Color(0xffdfc4a0),RoundedCornerShape(7.dp)),contentAlignment=Alignment.Center){YText(if(open)"−" else "＋",14,color=Color(0xffa1784d),lineHeightMultiplier=20f/14,cssLineBox=true)}
-                else YText(if(t.id=="journal")if(open)"↑" else "↓" else if(open)"⌃" else "⌄",if(t.id=="journal")18 else 13,color=if(t.id=="journal")t.warm else t.ink,lineHeightMultiplier=if(t.id=="journal")26f/18 else 19f/13,cssLineBox=true)
-            }
-            if(!objectTheme)Box(Modifier.fillMaxWidth().height(1.dp).background(if(t.id=="journal")t.accent else t.ink))
+        YSelectTrigger(label,open,{open=!open},displayLabel) {
+            YText(options.find{it.first==selected}?.second.orEmpty(),if(t.id=="journal")14 else 12,Modifier.weight(1f),lineHeightMultiplier=if(t.id=="journal")20f/14 else 17f/12,cssLineBox=true)
         }
         if(open)ThemedSelectMenu(label,selected,options,{id->onSelect(id);open=false},Modifier.bringIntoViewRequester(menuRequester),displayLabel=displayLabel,columns=columns)
     }

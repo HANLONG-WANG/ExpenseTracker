@@ -32,7 +32,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
     YTitle(word("常去的地方，留下名字。","いつものお店を、その名前で。"),"PLACES OF EVERYDAY LIFE",pageFlow=true)
     val merchant=s.merchants.find{it.id==selected}
     if(merchant==null) {
-        YLink(word("操作历史","操作履歴"),{history=MerchantHistoryScope()},Modifier.testTag("merchant-history-open"))
+        YLink(word("操作历史","操作履歴"),{history=MerchantHistoryScope()},Modifier.testTag("merchant-history-open"),arrow=true)
         duplicateGroups.values.forEach { group->
             MerchantHistoryPaper(modifier=Modifier.testTag("merchant-duplicate-group"),heading=word("注意","注意")) {
                 YText(word("存在多个同名商户，需先合并或改名区分","同名のお店が複数あります。統合するか名前を変えて区別してください"),14)
@@ -74,16 +74,20 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         MerchantLocationNotice()
         MerchantLocationPreferences(s,vm,onEntry)
     }else {
-        YLink(word("全部商户","すべてのお店"),{selected=null})
-        YLink(word("相关历史","関連する履歴"),{history=MerchantHistoryScope(merchant.id,merchant.name)},Modifier.testTag("merchant-related-history"))
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+            YLink(word("全部商户","すべてのお店"),{selected=null},back=true)
+            YLink(word("相关历史","関連する履歴"),{history=MerchantHistoryScope(merchant.id,merchant.name)},Modifier.testTag("merchant-related-history"),arrow=true)
+        }
         YLead(merchant.name,word("改名后，名下记录、模板和周期账单会同步。","名前の変更は関連する記録・テンプレート・定期支払いにも反映します。"),"YOUR SAVED PLACES",pageFlow=true)
         Panel {
             YText(merchant.note.ifBlank{word("暂无备注","メモなし")},13)
-            YButton(word("编辑名称与备注","名前・メモを編集"),{editing=merchant.id})
             YText(word("改名会同步记录；只改备注或启停不会整理记录。","名前の変更は記録に反映します。メモ・有効状態だけの変更は記録を整理しません。"),11,color=LocalYohaku.current.muted)
         }
-        YButton(word("合并到其他商户","別のお店に統合"),{choosingMerge=true},Modifier.testTag("merchant-merge"),enabled=s.merchants.size>1)
-        YLink(word("删除商户","お店を削除"),{deleting=true},Modifier.testTag("merchant-delete"))
+        YActionRow {
+            YButton(word("编辑资料","情報を編集"),{editing=merchant.id},Modifier.testTag("merchant-edit"))
+            YButton(word("合并商户","お店を統合"),{choosingMerge=true},Modifier.testTag("merchant-merge"),enabled=s.merchants.size>1)
+            YLink(word("删除商户","お店を削除"),{deleting=true},Modifier.testTag("merchant-delete"))
+        }
         if(deleting)MerchantOperationConfirmation(s,MerchantOperationInput(MerchantOperationType.DELETE,merchant.id),vm,
             word("删除商户","お店を削除"),{deleting=false},{selected=null;deleting=false},delete=true)
         val pending=s.eventPlaces.count{p->s.merchantByEvent[p.eventId]==merchant.id}

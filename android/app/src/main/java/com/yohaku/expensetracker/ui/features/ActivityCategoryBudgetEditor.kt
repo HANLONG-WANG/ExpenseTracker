@@ -72,7 +72,8 @@ import kotlin.math.abs
             if(!pickerOpen){focus.clearFocus();keyboard?.hide()}
             onPicker(!pickerOpen)
         },Modifier.padding(top=if(objects)4.dp else 12.dp).testTag("activity-category-add"))
-        if(pickerOpen)ActivityCategoryPicker(s.categories,available,values.keys,{id->onValues(values+(id to ""));onPicker(false);onFocusCategory(id)},{onPicker(false)},pickerRequester)
+        if(pickerOpen)CategoryGroupPicker("activity-category",word("选一个分类，再填金额","カテゴリを選んで金額を入力"),s.categories,available,values.keys,false,
+            word("一级预算包含二级和未细分的消费；二级是其中的专项，不重复相加。","親予算は子カテゴリと内訳未分類の支出を含みます。子予算はその内訳で、二重加算しません。"),{id->onValues(values+(id to ""));onPicker(false);onFocusCategory(id)},{onPicker(false)},pickerRequester)
         if(rows.isNotEmpty())ActivityCategorySummary(s.categories,values,total,currency)
     }
 }
@@ -129,8 +130,38 @@ import kotlin.math.abs
     }
 }
 
+/** Single-choice category field: the form's select trigger opening the same grouped menu as activity budgets. */
+@Composable internal fun CategorySelectField(label:String,categories:List<CategoryEntity>,available:List<CategoryEntity>,selected:String?,onSelect:(String)->Unit,modifier:Modifier=Modifier) {
+    val t=LocalYohaku.current
+    val journal=t.id=="journal"
+    var open by remember{mutableStateOf(false)}
+    val requester=remember{BringIntoViewRequester()}
+    LaunchedEffect(open){if(open){withFrameNanos{};requester.bringIntoView()}}
+    val current=categories.find{it.id==selected}
+    Column(modifier.fillMaxWidth().testTag("select-field-$label")) {
+        YSelectTrigger(label,open,{open=!open}) {
+            Row(Modifier.weight(1f),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                if(current==null)YText(word("请选择分类","カテゴリを選択"),if(journal)14 else 12,color=t.muted)
+                else {
+                    CategoryIconBadge(resolveCategoryIcon(current.id,categories),CategoryBadge.SMALL)
+                    val parent=categories.find{it.id==current.parentId}
+                    Text(buildAnnotatedString {
+                        if(parent!=null)withStyle(SpanStyle(color=t.muted)){append(parent.name+" / ")}
+                        append(current.name)
+                    },Modifier.weight(1f),color=t.ink,fontFamily=t.body,fontSize=(if(journal)14 else 12).sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+                }
+            }
+        }
+        if(open) {
+            Spacer(Modifier.height(8.dp))
+            CategoryGroupPicker("category-select",word("选择分类","カテゴリを選択"),categories,available,setOfNotNull(selected),true,null,{onSelect(it);open=false},{open=false},requester)
+        }
+    }
+}
+
+/** Grouped category menu. Marked entries are already-budgeted (locked) or, when [selecting], the current choice. */
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun ActivityCategoryPicker(categories:List<CategoryEntity>,available:List<CategoryEntity>,used:Set<String>,onPick:(String)->Unit,onClose:()->Unit,requester:BringIntoViewRequester) {
+@Composable private fun CategoryGroupPicker(tag:String,heading:String,categories:List<CategoryEntity>,available:List<CategoryEntity>,marked:Set<String>,selecting:Boolean,footer:String?,onPick:(String)->Unit,onClose:()->Unit,requester:BringIntoViewRequester) {
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     val frame=when(t.id){
@@ -142,43 +173,46 @@ import kotlin.math.abs
         }.padding(start=14.dp,end=14.dp,top=18.dp,bottom=12.dp)
         else->Modifier.background(Color(0xfff3e7d2),RoundedCornerShape(18.dp)).padding(12.dp)
     }
-    Column(Modifier.fillMaxWidth().testTag("activity-category-picker").then(frame),verticalArrangement=Arrangement.spacedBy(if(objects)10.dp else 4.dp)) {
+    Column(Modifier.fillMaxWidth().testTag("$tag-picker").then(frame),verticalArrangement=Arrangement.spacedBy(if(objects)10.dp else 4.dp)) {
         // Bring the menu heading into view even when the complete menu exceeds the sheet viewport.
         Row(Modifier.fillMaxWidth().bringIntoViewRequester(requester).then(if(objects)Modifier else Modifier.bottomRule(t.line,journal)),verticalAlignment=Alignment.CenterVertically) {
-            YText(word("选一个分类，再填金额","カテゴリを選んで金額を入力"),if(journal)13 else if(objects)11 else 10,Modifier.weight(1f),color=if(journal)t.warm else t.muted)
-            YLink(word("收起","閉じる"),onClose,Modifier.testTag("activity-category-picker-close"))
+            YText(heading,if(journal)13 else if(objects)11 else 10,Modifier.weight(1f),color=if(journal)t.warm else t.muted)
+            YLink(word("收起","閉じる"),onClose,Modifier.testTag("$tag-picker-close"))
         }
-        categories.filter{it.parentId==null}.forEach{parent->
-            val children=available.filter{it.parentId==parent.id}
-            if(parent in available||children.isNotEmpty())Column(Modifier.fillMaxWidth().then(if(objects)Modifier.background(t.surface,RoundedCornerShape(14.dp)).padding(8.dp)else Modifier.bottomRule(t.line,journal).padding(vertical=4.dp))) {
-                if(parent in available)ActivityCategoryOption(parent,categories,parent.id in used,false,onPick)
+        val groups=categories.filter{it.parentId==null}.map{parent->parent to available.filter{it.parentId==parent.id}}.filter{(parent,children)->parent in available||children.isNotEmpty()}
+        groups.forEachIndexed{index,(parent,children)->
+            // The last group needs no rule when nothing follows it inside the frame.
+            val ruled=footer!=null||index<groups.lastIndex
+            Column(Modifier.fillMaxWidth().then(if(objects)Modifier.background(t.surface,RoundedCornerShape(14.dp)).padding(8.dp)else (if(ruled)Modifier.bottomRule(t.line,journal)else Modifier).padding(vertical=4.dp))) {
+                if(parent in available)CategoryGroupOption(tag,parent,categories,parent.id in marked,selecting,false,onPick)
                 else YText(parent.name,if(journal)16 else 13,Modifier.padding(vertical=8.dp),color=t.muted)
                 if(children.isNotEmpty()) {
                     if(t.id=="magazine")Column(Modifier.padding(start=30.dp)) {
                         children.chunked(2).forEach{pair->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                            pair.forEach{child->ActivityCategoryOption(child,categories,child.id in used,true,onPick,Modifier.weight(1f))}
+                            pair.forEach{child->CategoryGroupOption(tag,child,categories,child.id in marked,selecting,true,onPick,Modifier.weight(1f))}
                             if(pair.size==1)Spacer(Modifier.weight(1f))
                         }}
                     }else FlowRow(Modifier.padding(start=if(journal)22.dp else 4.dp,top=4.dp,bottom=2.dp),horizontalArrangement=Arrangement.spacedBy(if(journal)16.dp else 6.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                        children.forEach{child->ActivityCategoryOption(child,categories,child.id in used,true,onPick)}
+                        children.forEach{child->CategoryGroupOption(tag,child,categories,child.id in marked,selecting,true,onPick)}
                     }
                 }
             }
         }
-        YText(word("一级预算包含二级和未细分的消费；二级是其中的专项，不重复相加。","親予算は子カテゴリと内訳未分類の支出を含みます。子予算はその内訳で、二重加算しません。"),if(journal)12 else 10,Modifier.padding(top=6.dp,bottom=8.dp),color=t.muted,lineHeightMultiplier=1.8f)
+        if(footer!=null)YText(footer,if(journal)12 else 10,Modifier.padding(top=6.dp,bottom=8.dp),color=t.muted,lineHeightMultiplier=1.8f)
     }
 }
 
-@Composable private fun ActivityCategoryOption(c:CategoryEntity,categories:List<CategoryEntity>,disabled:Boolean,child:Boolean,onPick:(String)->Unit,modifier:Modifier=Modifier) {
+@Composable private fun CategoryGroupOption(tag:String,c:CategoryEntity,categories:List<CategoryEntity>,marked:Boolean,selecting:Boolean,child:Boolean,onPick:(String)->Unit,modifier:Modifier=Modifier) {
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
-    val added=word("已添加","選択済み")
-    val chip=if(objects&&child)Modifier.background(Color(0xfff7efdf),RoundedCornerShape(9.dp)).border(1.dp,Color(0xffe7d7bc),RoundedCornerShape(9.dp))else Modifier
-    Row(modifier.then(if(!child)Modifier.fillMaxWidth()else Modifier).alpha(if(disabled&&objects).45f else 1f).then(chip).testTag("activity-category-option-${c.id}").semantics{if(disabled)stateDescription=added}.clickable(enabled=!disabled,role=Role.Button){onPick(c.id)}.padding(horizontal=if(objects)if(child)9.dp else 4.dp else 0.dp,vertical=if(child)6.dp else 8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(child)5.dp else 8.dp)) {
-        if(journal)Box(Modifier.size(15.dp).rotate(-4f).background(if(disabled)Color(0xffdae1d3)else Color.Transparent,RoundedCornerShape(2.dp)).border(1.dp,if(disabled)t.muted else t.accent,RoundedCornerShape(2.dp)),contentAlignment=Alignment.Center){if(disabled)YText("✓",12,color=t.muted,lineHeightMultiplier=1f)}
+    val locked=marked&&!selecting;val chosen=marked&&selecting
+    val mark=if(selecting)word("已选","選択中")else word("已添加","選択済み")
+    val chip=if(objects&&child)Modifier.background(if(chosen)Color(0xfff0e2ca)else Color(0xfff7efdf),RoundedCornerShape(9.dp)).border(1.dp,if(chosen)t.accent else Color(0xffe7d7bc),RoundedCornerShape(9.dp))else Modifier
+    Row(modifier.then(if(!child)Modifier.fillMaxWidth()else Modifier).alpha(if(locked&&objects).45f else 1f).then(chip).testTag("$tag-option-${c.id}").semantics{if(locked)stateDescription=mark;if(selecting)selected=marked}.clickable(enabled=!locked,role=Role.Button){onPick(c.id)}.padding(horizontal=if(objects)if(child)9.dp else 4.dp else 0.dp,vertical=if(child)6.dp else 8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(child)5.dp else 8.dp)) {
+        if(journal)Box(Modifier.size(15.dp).rotate(-4f).background(if(marked)Color(0xffdae1d3)else Color.Transparent,RoundedCornerShape(2.dp)).border(1.dp,if(locked)t.muted else t.accent,RoundedCornerShape(2.dp)),contentAlignment=Alignment.Center){if(marked)YText("✓",12,color=if(locked)t.muted else t.accent,lineHeightMultiplier=1f)}
         else if(!child)CategoryIconBadge(resolveCategoryIcon(c.id,categories),CategoryBadge.SMALL)
-        YText(c.name,if(journal)if(child)14 else 16 else if(child)if(objects)11 else 12 else 13,if(!child||t.id=="magazine")Modifier.weight(1f)else Modifier,color=if(disabled)t.muted else t.ink)
-        if(disabled)YText(added,if(journal)11 else 9,color=t.warm)
+        YText(c.name,if(journal)if(child)14 else 16 else if(child)if(objects)11 else 12 else 13,if(!child||t.id=="magazine")Modifier.weight(1f)else Modifier,color=if(locked)t.muted else if(chosen)t.accent else t.ink)
+        if(marked)YText(mark,if(journal)11 else 9,color=t.warm)
     }
 }
 
