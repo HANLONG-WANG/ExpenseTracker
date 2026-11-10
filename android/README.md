@@ -52,7 +52,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 付款账户按同账本同类型最后一次保存记忆（修订时间优先于交易日期）；转账记住上次两端，账户页显式指定优先。停用或不适用的账户回退到可用账户。信用卡付款方式按卡跨支出/转账记忆：分期带回期数，指定月只带回方式，月份与费用重新填写；编辑沿用已保存方式。
 - 现金/银行/交通 IC/信用卡可转出，只有资金账户可转入，贷款不可转账。信用卡充值增加该卡欠款，转出总额（含已包含的费用）进入付款方式、账单预测、额度和リボ余额池；本金不计消费，明确手续费仍计支出。账单规则不足时沿用既有待补规则，不自动假设一次付。
 - 商户详情支持确认后永久删除（无撤销/回收站）：删除保存地点和记录关联，模板、周期规则及草稿清空商户 ID，保留商户文字。历史记录（含回收站）及修订快照文字不变；命令撤销恢复时跳过已删除商户的关联。云端禁止 `merchant.delete`，可用 `merchant.setActive false` 停用。
-- 支出商户输入提供最多5个启用商户的联想及可搜索一览，忽略大小写和全半角，名称完整匹配时关联商户；可清除或修改。候选出现或键盘弹出时自动滚到可见位置。非今天记录不请求当前位置、不显示位置候选，日期改为非今天时清除定位自动带入的商户，保留手填/手选。
+- 支出商户输入提供最多5个启用商户的联想及可搜索一览，忽略大小写和全半角，名称完整匹配且同名商户唯一时关联商户；可清除或修改。候选出现或键盘弹出时自动滚到可见位置。非今天记录不请求当前位置、不显示位置候选，日期改为非今天时清除定位自动带入的商户，保留手填/手选。
 - 保存前使用同一份变更预览检查余额：资金账户余额减少且变为负数时先确认，确认后再进入原保存/影响审核流程；债务账户不提示。详情回收后替换当前路由，返回不会重开已回收记录。
 - 顶栏账本名按全屏宽度居中，并按两侧实测宽度限宽；首页最近支出显示5笔。
 - 收支表单的保存区固定为弹层底栏（`entry-save-dock`，经 `LocalSheetFooter` 放在滚动区之外），表单在它上方滚动，可视区止于底栏；软键盘弹出期间底栏让出空间，保存区回到表单末尾。按钮文字附带本次账户币金额（如「保存记录  ¥680」，关联已有支出时不附带）。编辑时「取消」（`entry-cancel-edit`）为与保存同高的次要按钮，与「保存修改」同行。杂志为纸色实底加发丝线，手账与小物为纸色渐隐。转账、退款表单保持原样。仪器测试用 `entryAction(tag)`（`EntrySaveDock.kt`）定位保存/取消：先等软键盘状态稳定，在滚动区内（键盘弹出时）才滚动过去。
@@ -252,6 +252,59 @@ adb shell settings put system font_scale 1.0
 - `files/verification/receipt-media/{theme}-{language}-actions{captureSuffix}.png`：处理、删除、排序入口。
 
 相机核心视觉方法为 `staticReceiptShowsContourHintsAndAutomaticProgressAcrossLooks` 和 `permissionDenialPermanentDenialAndNoCameraShowActionableUi`；确认页为 `reviewAdjustmentMagnifierAndNoDetectionAcrossLooks` 和 `processingAndFailurePresentationAcrossLooks`。模拟器走 CPU，静态帧与权限注入不替代阶段 7 的 CameraX、传感器、QNN/HTP 缓存和真机小票验收。
+
+## 商户同步、合并与紧凑目录（2026-11-10）
+
+- 商户同名统一 trim + NFKC + 忽略大小写。新建重名拒绝，编辑撞名可明确确认合并；旧数据重名不迁移，不改规范化名称仍能保存，未关联记录不任意选择一个商户。
+- 每次保存（含备注或启停）按改名前的正式关联/唯一同名归属统一记录商户名，未关联支出正式关联；收入、转账和退款仅同步文字。回收站同样处理，彻底清除记录不动。模板、周期规则、持久化及打开的未保存草稿同步。记录上的商户文字视为对商户的引用：同步不递增记录 revision、不写修改历史，旧名不保留；因此不改变「最近保存」默认值（默认账户、记住的刷卡付款方式）的排序。
+- 改成仅在记录中出现的名字，编辑器显示归入数量并确认；新建同名商户正常归入。编辑器撞名或详情页「合并到其他商户」都可合并：记录/地点/模板/周期/草稿迁移，备注去重换行拼接，启用状态取 OR，来源删除；合并不能拆开。详情、目录及删除确认均按可见归属记录计数，退款也使用同一归属判断。
+- 商户与原名目录均为两列、同行等高：最多两行名称、一行笔数/地点摘要及停用标记；已保存商户名称旁有「+ / −」展开标记。单项展开在该行下方显示全部地点、备注及操作，重复点击收起。杂志为细线双栏（展开项顶线加粗为强调色），手账为手写账目栏/虚线（展开项浅底），小物为带撕口的小票（展开项强调色描边）；确认弹层和选择器沿用主题 `YSheet`。定位说明/设置位于目录后。
+- 云端 `merchant.save` 自动同步并允许归入新名称的未关联记录；重名拒绝并提示应用内合并，云端无合并命令。`merchant.setActive` 复用保存，修复旧名记录。撤销日志已覆盖连带记录、关联、临时位置、模板、周期和草稿，新增逐行还原断言。
+- 退款商户文字由原消费复制；只在 `merchantKey` 归属时同步。记录 revision、图片/小票版本都不改，已导出的小票结果和远端 `inputRevision` 不受影响。
+
+已在专用模拟器运行 `AnalysisProjectionTest`、`CommandLedgerExecutionTest`、`AnalysisFlowTest`、`LocationEntryFlowTest` 与 `MerchantFlowTest`；`MerchantFlowTest` 另以 `looks=all visual=true` 在标准 390dp、S24 Ultra 基准（`captureSuffix=-s24`）与 320dp/fontScale 1.3（`captureSuffix=-narrow`）下运行，并检查了三主题×中日文的列表、展开、归入/合并确认及编辑器截图。无数据库迁移。能力产物通过 `CommandCapabilitiesTest -Dyohaku.updateCapabilities=true` 生成；协议的正式格式、交接包和 assets 副本同步。
+
+设备验证（在 `android/` 执行，Gradle 任务串行；仅构建测试 APK 不会启动模拟器）：
+
+```sh
+GRADLE_USER_HOME=$PWD/.gradle-home GRADLE_RO_DEP_CACHE=$HOME/.gradle/caches ./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebugAndroidTest
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+# 归属、同步、合并、回收站、模板/周期/草稿及云端完整撤销。
+adb shell am instrument -w \
+  -e class com.yohaku.expensetracker.AnalysisProjectionTest,com.yohaku.expensetracker.CommandLedgerExecutionTest#merchantRenameAdoptionAndActivationUndoRestoreEveryOwnedRow,com.yohaku.expensetracker.CommandLedgerExecutionTest#merchantLocationAndFriend,com.yohaku.expensetracker.CommandExecutionTest#undoEntryEditAfterMerchantDeletionKeepsTextWithoutRestoringMissingLink \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+
+# 默认参数的相关流程回归（列表展开后的既有调用方）。
+adb shell am instrument -w \
+  -e class com.yohaku.expensetracker.AnalysisFlowTest#chooseOrderPinDrillIntoRefundsAndSaveMerchantLocationInEveryThemeAndLanguage,com.yohaku.expensetracker.LocationEntryFlowTest#newMerchantKeepsCapturedLocationUntilSavedFromOriginalName,com.yohaku.expensetracker.EntryExperienceFlowTest#merchantSuggestionsSearchAndSelectionWorkAcrossThemes \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+
+# S24 Ultra 布局；三主题 × 中日文，含长名字/停用/无地点、展开、合并及归入确认。
+adb shell wm size 1080x2340
+adb shell wm density 450
+adb shell settings put system font_scale 1.0
+adb shell am instrument -w -e class com.yohaku.expensetracker.MerchantFlowTest \
+  -e looks all -e visual true -e captureSuffix -s24 \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+
+# 320dp / 大字，仅相关新目录/弹层场景。
+adb shell wm size 960x2078
+adb shell wm density 480
+adb shell settings put system font_scale 1.3
+adb shell am instrument -w \
+  -e class com.yohaku.expensetracker.MerchantFlowTest#compactDirectoryAdoptionAndBothMergeEntrances \
+  -e looks all -e visual true -e captureSuffix -narrow \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+
+adb pull /sdcard/Android/data/com.yohaku.expensetracker.dev/files/phase-b-p12-merchants-s24 /tmp/yohaku-merchants-s24
+adb pull /sdcard/Android/data/com.yohaku.expensetracker.dev/files/phase-b-p12-merchants-narrow /tmp/yohaku-merchants-narrow
+# 查看截图后恢复专用模拟器标准配置。
+adb shell wm size 1170x2532
+adb shell wm density 480
+adb shell settings put system font_scale 1.0
+```
 
 ## 新商户记账位置与地图选点（2026-11-01 源码更新）
 

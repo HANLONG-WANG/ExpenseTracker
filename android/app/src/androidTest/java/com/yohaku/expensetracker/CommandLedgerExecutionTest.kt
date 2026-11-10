@@ -107,6 +107,33 @@ class CommandLedgerExecutionTest {
             assertTrue(m.net.any{it.type=="book"});assertEquals(3,r.books.first().size);assertNull(r.dao.storedBook(other)!!.deletedAt)
         }
     }
+    @Test fun merchantRenameAdoptionAndActivationUndoRestoreEveryOwnedRow()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"食事",EntryKind.EXPENSE,null)
+        val shop=r.saveMerchant(book,"Cafe")
+        val linked=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",date="2026-11-02",merchant="旧文字",merchantId=shop))
+        val legacy=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="200",date="2026-11-02",merchant="ＣＡＦＥ",capturedPlace=CapturedPlace(35.0,139.0,5.0)))
+        val adopted=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="300",date="2026-11-02",merchant="NEXT"))
+        r.saveTemplate(book,TemplateInput("常用",EntryKind.EXPENSE,category,bank,Currency.JPY,merchant="Cafe",merchantId=shop))
+        r.saveRecurrence(book,RecurrenceInput("每月",bank,category,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-11-02",merchant="Cafe",merchantId=shop))
+        r.saveDraft(book,EntryDraft(merchant="Cafe",merchantId=shop))
+        val original=CommandUndoJournal(r,book).snapshot()
+        cycle(book,listOf(step("rename","merchant.save","""{"merchant":"$shop","name":"Next"}"""))) {_,s->
+            assertTrue(s.events.all{it.merchant=="Next"});assertEquals(setOf(linked,legacy,adopted),s.eventMerchants.map{it.eventId}.toSet())
+            assertTrue(s.eventPlaces.isEmpty());assertEquals("Next",s.templates.single().merchant);assertEquals("Next",s.recurrences.single().merchant);assertEquals("Next",s.draft!!.merchant)
+        }
+        assertEquals(original,CommandUndoJournal(r,book).snapshot()) // Includes record names, relationships and temporary places.
+        cycle(book,listOf(step("stop","merchant.setActive","""{"target":"$shop","active":false}"""))) {_,s->
+            assertFalse(s.merchants.single().active);assertEquals("Cafe",s.events.single{it.id==linked}.merchant)
+            assertEquals(shop,s.eventMerchants.single{it.eventId==legacy}.merchantId)
+            assertEquals("NEXT",s.events.single{it.id==adopted}.merchant)
+        }
+        assertEquals(original,CommandUndoJournal(r,book).snapshot())
+        val other=r.saveMerchant(book,"Other")
+        val before=CommandUndoJournal(r,book).snapshot()
+        val row=receive(book,listOf(step("duplicate","merchant.save","""{"merchant":"$shop","name":" ＯＴＨＥＲ "}""")))
+        assertTrue(assertThrows(IllegalArgumentException::class.java){runBlocking{commands.preview(row.planId)}}.message!!.contains("应用内合并"))
+        assertEquals(before,CommandUndoJournal(r,book).snapshot());assertNotNull(r.dao.merchant(book,other))
+    }
     @Test fun merchantLocationAndFriend()=runBlocking<Unit> {
         val (book,_)=setup()
         cycle(book,listOf(

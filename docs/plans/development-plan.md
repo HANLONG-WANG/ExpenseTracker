@@ -109,7 +109,7 @@ P01之后提供 `android/README.md`，记录JDK/SDK要求、构建/安装命令�
 | 账户/分类 | Account、OpeningPosition、Category | 账户类型固定；尚无交易引用的账户可调整币种，已有历史/关联事实不得重解释；期初资金/欠款不算收支；分类区分收支最多两级 |
 | 正式账目 | LedgerEvent、Posting、ExpenseComponent、FxSnapshot、Revision | 稳定原ID、实际/预计状态、发生/到账日期；一次事件多资金端；一个消费分类 |
 | 活动与互请 | Activity、ActivityBudget、Reserve、Friend、Participant、TreatEvent、TreatAllocation | 同账本同活动；本人整单不重复；别人付款不产生本人Posting |
-| 商户地点 | Merchant、SavedPlace、RecordMerchantSnapshot | 管理资料与原交易原文分开；手动修改优先 |
+| 商户地点 | Merchant、SavedPlace、RecordMerchantSnapshot | 保存商户同步归属记录文字，旧名不保留；查重与显式合并；手动输入优先 |
 | 周期安排 | Recurrence、Occurrence、ExpectedIncome | 固定实例ID；确认关联已存事件；预留/实际互斥，不自动记账 |
 | 金融规则 | FinancialRuleVersion、FeeTable、LimitPolicy、Deadline | 模式/生效期/时区/计息边界/舍入/验证；无机构名称预设 |
 | 金融计划 | DebtContract、PaymentPlan、PlanPeriod、Bill、BillLine、RepaymentAllocation | 单卡/逐笔合同、预测/手动/已确认；本金费用分开；实际还款关联义务 |

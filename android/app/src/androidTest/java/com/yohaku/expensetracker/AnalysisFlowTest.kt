@@ -192,6 +192,7 @@ class AnalysisFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithText("¥4,000").fetchSemanticsNodes().size>=2&&!vm.busy.value}
             assertEquals(5,runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}.events.size)
             ui.runOnIdle{vm.navigate("merchants")}
+            ui.onNodeWithTag("merchant-card-$merchant").performScrollTo().performClick()
             ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
             runBlocking{repo.saveMerchantLocation(book,merchant,"入口",35.0,139.0)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==1}

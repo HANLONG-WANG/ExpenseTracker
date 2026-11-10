@@ -34,7 +34,7 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
     internal val categoryById by lazy{categories.associateBy{it.id}}
     internal val activityByEvent by lazy{eventActivities.associate{it.eventId to it.activityId}}
     internal val merchantByEvent by lazy{eventMerchants.associate{it.eventId to it.merchantId}}
-    internal val merchantsByName by lazy{merchants.groupBy{it.name}}
+    internal val merchantsByName by lazy{merchants.groupBy{normalizedMerchantName(it.name)}}
     /** Visible refunds whose settlement is confirmed, keyed by the expense they return. */
     internal val confirmedRefunds by lazy{settlements.filter{it.confirmed&&it.originalEventId!=null}.mapNotNull{st->visibleById[st.eventId]?.let{st.originalEventId!! to it}}.groupBy({it.first},{it.second})}
     fun balance(account:AccountEntity):Long=postings.filter{it.accountId==account.id}.fold(account.openingMinor){a,p->Math.addExact(a,p.deltaMinor)}

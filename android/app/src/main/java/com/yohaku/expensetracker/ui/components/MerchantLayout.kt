@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.style.TextOverflow
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun MerchantLocationNotice() {
@@ -28,24 +30,39 @@ import com.yohaku.expensetracker.ui.theme.*
         }
     }
 }
-@Composable internal fun MerchantPlaceCard(id:String,name:String,places:List<String>,active:Boolean,onOpen:()->Unit,onEntry:()->Unit) {
-    val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
-    Panel(Modifier.testTag("merchant-card-$id")) {
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-            val shape=if(journal)RoundedCornerShape(3.dp,5.dp,1.dp,4.dp)else RoundedCornerShape(9.dp)
-            Box(Modifier.size(if(journal||objects)32.dp else 24.dp).then(if(journal)Modifier.rotate(-4f).border(1.dp,t.line,shape)else if(objects)Modifier.background(t.soft,shape)else Modifier),contentAlignment=Alignment.Center){YIcon("bag",Modifier.size(18.dp),t.accent)}
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                YText(name,if(journal)16 else if(objects)12 else 11)
-                YText(places.joinToString(" · ").ifBlank{word("未保存地点","場所未保存")},if(journal)11 else 9,color=t.muted,lineHeightMultiplier=1.8f)
-                if(!active)YText(word("已停用 · 历史保留","停止済み・履歴を保持"),11,color=t.muted)
-            }
+/** Two-column directory: editorial columns, receipt slips, or ruled handwritten entries. */
+@Composable internal fun MerchantPlaceCard(id:String,name:String,secondary:String,active:Boolean,expanded:Boolean?,onClick:()->Unit,modifier:Modifier=Modifier) {
+    val t=LocalYohaku.current
+    val state=if(expanded==true)word("已展开","展開済み")else word("可展开","折りたたみ")
+    val action=if(expanded==null)word("保存商户","お店を保存")else if(expanded)word("收起商户","お店を折りたたむ")else word("展开商户","お店を展開")
+    val frame=when(t.id) {
+        "magazine"->Modifier.drawBehind{drawLine(if(expanded==true)t.accent else t.ink,Offset.Zero,Offset(size.width,0f),(if(expanded==true)4 else 2).dp.toPx())}
+        "journal"->Modifier.background(if(expanded==true)t.soft else Color.Transparent).drawBehind {
+            drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx())))
+            drawLine(t.accent.copy(alpha=.4f),Offset(3.dp.toPx(),0f),Offset(3.dp.toPx(),size.height),1.dp.toPx())
         }
-        // Native targets stack below the name so long names and multiple places remain readable.
-        Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-            YActionRow {
-                YButton(word("记一笔","記録"),onEntry,Modifier.testTag("merchant-entry-$id"),enabled=active)
-                YButton(word("查看商户资料","お店の情報を見る"),onOpen,Modifier.testTag("merchant-open-$id"))
-            }
+        else->Modifier.shadow(2.dp,RoundedCornerShape(4.dp)).background(t.surface,RoundedCornerShape(4.dp)).then(if(expanded==true)Modifier.border(1.dp,t.accent,RoundedCornerShape(4.dp))else Modifier).drawBehind {
+            drawLine(t.line,Offset(10.dp.toPx(),size.height-5.dp.toPx()),Offset(size.width-10.dp.toPx(),size.height-5.dp.toPx()),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(),3.dp.toPx())))
+        }
+    }
+    Column(modifier.testTag("merchant-card-$id").semantics{if(expanded!=null)stateDescription=state}.clickable(role=Role.Button,onClickLabel=action,onClick=onClick).then(frame).padding(horizontal=10.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+        Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            YText(name,if(t.id=="journal")16 else 13,Modifier.weight(1f),bold=t.id=="magazine",maxLines=2,overflow=TextOverflow.Ellipsis)
+            // Same disclosure mark as the other expandable rows of the app.
+            if(expanded!=null)YText(if(expanded)"−" else "+",15,color=t.accent)
+        }
+        YText(secondary,10,color=t.muted,maxLines=1,overflow=TextOverflow.Ellipsis)
+        if(!active)YText(word("已停用","停止中"),10,color=t.accent)
+    }
+}
+
+@Composable internal fun MerchantExpanded(id:String,places:List<String>,note:String,active:Boolean,onOpen:()->Unit,onEntry:()->Unit) {
+    Panel(Modifier.testTag("merchant-expanded-$id")) {
+        YText(places.joinToString(" · ").ifBlank{word("未保存地点","場所未保存")},12,color=LocalYohaku.current.muted)
+        if(note.isNotBlank())YText(note,13)
+        YActionRow {
+            YButton(word("记一笔","記録"),onEntry,Modifier.testTag("merchant-entry-$id"),enabled=active)
+            YButton(word("查看商户资料","お店の情報を見る"),onOpen,Modifier.testTag("merchant-open-$id"))
         }
     }
 }

@@ -19,7 +19,7 @@ data class AnalysisReport(val filter:AnalysisFilter,val facts:List<AnalysisFact>
 }
 fun BookSnapshot.merchantKey(event:EventEntity):String {
     merchantByEvent[event.id]?.let{return "id:"+it}
-    val matching=merchantsByName[event.merchant]?.takeIf{event.merchant.isNotBlank()}?.singleOrNull()
+    val matching=merchantsByName[normalizedMerchantName(event.merchant)]?.takeIf{event.merchant.isNotBlank()}?.singleOrNull()
     return matching?.let{"id:"+it.id}?:"name:"+event.merchant
 }
 fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merchants.firstOrNull{it.id==key.removePrefix("id:")}?.name.orEmpty() else key.removePrefix("name:")

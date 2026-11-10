@@ -278,6 +278,7 @@ class LocationEntryFlowTest {
             assertEquals(merchant,saved.eventMerchants.single().merchantId)
             assertEquals(9500L,saved.balance(saved.accounts.single()))
             ui.runOnIdle{vm.navigate("merchants")}
+            ui.onNodeWithTag("merchant-card-$merchant").performScrollTo().performClick()
             ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
             ui.onNode(hasText("＋ 場所を追加") and hasClickAction()).performScrollTo().performClick()
             visible("field-場所の名前").performTextReplacement("GPS保存場所")

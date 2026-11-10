@@ -58,7 +58,11 @@ class EntryDefaultsTest {
     @Test fun merchantNamesMatchWidthAndCaseAndExactInputAssociatesEnabledMerchant() {
         val s=snapshot().copy(merchants=listOf(MerchantEntity("b","shop","Ｃａｆｅ １２"),MerchantEntity("b","off","Cafe 12",active=false)))
         assertEquals(listOf("shop"),s.merchants.matchingMerchants("cAFE").map{it.id})
-        assertEquals("shop",s.merchantInput(EntryDraft(),"cafe 12").merchantId)
+        assertNull(s.merchantInput(EntryDraft(),"cafe 12").merchantId) // Historical duplicate stays ambiguous, even when one is disabled.
+        assertEquals("shop",s.copy(merchants=s.merchants.take(1)).merchantInput(EntryDraft()," cafe 12 ").merchantId)
         assertNull(s.merchantInput(EntryDraft(merchantId="shop"),"Cafe 1").merchantId)
+        val recorded=event("purchase","bank").copy(merchant=" cafe 12 ")
+        assertFalse(s.merchantKey(recorded).startsWith("id:"))
+        assertEquals("id:shop",s.copy(merchants=s.merchants.take(1)).merchantKey(recorded))
     }
 }

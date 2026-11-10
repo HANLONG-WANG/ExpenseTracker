@@ -19,7 +19,7 @@ fun BookSnapshot.recordedPlaces(name:String):List<RecordedPlace> {
     if(name.isBlank())return emptyList()
     val places=eventPlaces.associateBy{it.eventId}
     val linked=eventMerchants.map{it.eventId}.toSet()
-    val points=visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.merchant.trim()==name.trim()&&it.id !in linked}
+    val points=visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&normalizedMerchantName(it.merchant)==normalizedMerchantName(name)&&it.id !in linked}
         .sortedWith(compareByDescending<EventEntity>{it.date}.thenByDescending{it.createdAt}.thenBy{it.id})
         .mapNotNull{event->places[event.id]?.let{event to it}}
     val clusters=mutableListOf<MutableList<Pair<EventEntity,EventPlaceEntity>>>()
@@ -33,9 +33,8 @@ fun BookSnapshot.recordedPlaces(name:String):List<RecordedPlace> {
     }
 }
 data class MerchantPlaceInput(val name:String,val latitude:Double,val longitude:Double,val radiusMeters:Int=100)
-suspend fun LedgerRepository.saveMerchantWithLocations(bookId:String,name:String,note:String="",id:String?=null,active:Boolean=true,places:List<MerchantPlaceInput> = emptyList()):String=db.withTransaction {
-    val merchantId=saveMerchant(bookId,name,note,id,active)
+suspend fun LedgerRepository.saveMerchantWithLocations(bookId:String,name:String,note:String="",id:String?=null,active:Boolean=true,places:List<MerchantPlaceInput> = emptyList(),confirmAdoption:Boolean=false):String=db.withTransaction {
+    val merchantId=saveMerchant(bookId,name,note,id,active,confirmAdoption)
     places.forEach{saveMerchantLocation(bookId,merchantId,it.name,it.latitude,it.longitude,it.radiusMeters)}
-    if(id==null)dao.unlinkedExpenses(bookId).filter{it.merchant.trim()==name.trim()}.forEach{dao.clearEventPlace(bookId,it.id)}
     merchantId
 }

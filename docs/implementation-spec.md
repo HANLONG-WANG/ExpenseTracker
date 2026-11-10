@@ -106,8 +106,20 @@
 
 - `EntryDraft.capturedPlace`（纬度/经度/精度）：`EntryLocation` 定位成功且为今天的新建支出时写入；`changeEntry` 在日期非今天或非支出时清空；`hasManualInput` 忽略它。
 - `placeForNewEntry`：新建、支出、`merchantId==null`、商户非空、日期为今天且有暂存定位时，`PreparedLedgerChange.eventPlace` 在同一事务写入 `event_places`。保存时关联了已保存商户则删除该记录的位置；永久清理沿用级联表清理。
-- `recordedPlaces(name)`：未关联商户且商户文字（trim）相同的支出，按日期从新到旧，以簇首点100米内贪心合并；坐标取精度最好的点。`saveMerchantWithLocations` 在一个事务里保存商户和地点；新建商户时删除所有同名未关联支出的位置。距离统一用 `distanceMeters`（haversine）。
+- `recordedPlaces(name)`：未关联商户且 `normalizedMerchantName` 相同的支出，按日期从新到旧，以簇首点100米内贪心合并；坐标取精度最好的点。`saveMerchantWithLocations` 在一个事务里保存商户和地点；正式关联支出时删除其临时位置。距离统一用 `distanceMeters`（haversine）。
 - `PlacePicker`：`AndroidView(MapView)`，转发生命周期；中心图钉、半径圈为 Compose 叠加层（像素半径 = 米 / `getMetersPerPixelAtLatitude`），相机停下回调中心坐标；MapView 在按下时请求父级不拦截，防止外层滚动抢走拖动。`applyPlaceTheme` 在 Liberty 样式加载后按图层 id 重设颜色、隐藏 3D 建筑和道路编号、文字只用 `name`。`YohakuApplication` 初始化 MapLibre，用 OkHttp 拦截器设置专用 User-Agent。
+
+### 1.9 商户同步与合并（2026-11-10）
+
+- `MerchantUpdates.kt` 集中 `saveMerchant` / `mergeMerchants` / 归入及文字变更数量预览。事务内读取一个 `BookSnapshot`，按改名前 `merchantKey` 归属选记录；快照包含回收站、排除 `purgedAt`，不需数据库迁移。
+- `normalizedMerchantName`（trim + NFKC + lowercase）统一保存查重、`merchantsByName` / `merchantKey` 回退、输入关联、原名目录及 `recordedPlaces`。历史重复名称不自动选择任意 ID；原名称规范化未改变时允许保存。新建/改名撞名由仓库双语拒绝，提示应用内合并。
+- 改名吸收新名字的未关联记录需要 `confirmAdoption=true`；新建正常归入。UI 显示数量后确认，云端 `merchant.save` 显式开启归入并在 capability 声明。`merchant.setActive` 走同一保存函数，顺带修复旧文字/关联，不触发新名字归入。
+- 归属记录统一文字，仅未关联支出新增 `event_merchants`，并清除其临时位置；收入/转账/退款不新建关联。退款的商户文字来自 `prepareRefund` 复制原消费，按统一归属处理。记录上的商户文字视为对商户的引用，与关联同等：同步只改 `events.merchant` 与 `event_merchants`，不递增 revision、不写 `revisions`，旧名不保留。原因是修订时间决定 `eventSaveTimes`，写修订会让改名改变「最近保存」默认值（默认账户、记住的刷卡付款方式），并使已导出小票和按记录 revision 建立的金融事实过期。保存按 ID 同步模板、周期规则、持久化草稿；ViewModel 同步打开的草稿及其编辑基线，云端改名/撤销也通过快照名称变化同步。
+- 合并事务迁移 S/T 的归属记录、S 地点与全部引用，去重拼接非空备注、启用状态取 OR，删除 S。编辑器传入的备注/启停覆盖 S 后参与合并。历史重名在移除 S 后变为唯一的名字回退记录也正式归入 T，保证最终不变式。云端不提供合并命令。
+- `CommandUndoJournal` 已收集 events / event_merchants / event_places / templates / recurrences / drafts / merchants 的完整行变化，无需扩大日志表集；新增仪器测试逐行比较执行前与撤销后，包括记录文字、关联和临时位置。
+- 改名不更新记录 revision、图片、小票 revision 或远端提交内容：远端任务 `inputRevision`、已导出小票（不会成为 `staleExport`）和“最近保存”默认值排序都不受影响。
+- 目录两列紧凑、单项展开后在同行下方全宽显示操作。名称两行省略，摘要一行省略，操作用 `YActionRow` 换行。杂志细线双栏、手账边线/虚线、小物小票；复用三主题 `YSheet`。`merchant-card/entry/open-$id` 标签保留，展开语义双语；删除计数按可见归属记录。
+
 
 
 - 统一 UTF-8 JSON，首版版本号1；不同用途使用不同 `kind`。正式协议与 HTML 示例区分，不把示例账本/账户ID当真实ID。
@@ -158,6 +170,7 @@
 - 原记录或小票在打包后发生变化时预览指出变化；旧结果不默默覆盖新增图片或手工编辑。已回填再次导入必须预览并确认替换，不重复追加。
 - 回填保存后，只要当前图片都已被结果覆盖即转为已整理；明细不完整、行金额未知或有疑点不影响整理状态，只在已整理卡片标“明细待确认”并在详情中提示。图片有新增尚未整理部分时仍保留待整理状态，原已保存商品不删除。正式应用不做OCR，也不自动上传；只有用户在小票工作台明确选择“交给云端整理”时才上传所选小票图片ZIP（见3.2）。商品明细可领取云端回填、通过办理命令 receipt.items.save 回填/编辑，也可在本机首次手工录入；不提供手动选结果文件导入。
 
+
 ## 3. 数据管理与本地存储
 
 ### 3.1 编辑、删除、恢复
@@ -174,7 +187,7 @@
 - **账户**：优先停用，历史保留，日常选择隐藏。停用不代表债务结清、不取消尚未完成的重要安排；仍有欠款或付款时显示说明。只有无记录/计划/核对引用的空账户可以直接删除，不制造余额调整来消除数据。
 - **分类**：优先归档（一级、二级均可），归档后从日常选择隐藏、在分类管理的「已归档」区可取消归档，已有记录仍可查看；删除被使用的分类需明确转移记录到另一节点。改父级先预览历史分类汇总/预算影响，仍最多两级。不能悄悄把已用分类改成未分类。
 - **分类图标**：`categories.icon` 可空，存 Tabler id。Room v32 / `MIGRATION_31_32` 按名称一次性回填，二级只在推荐与父级不同时写入。显示解析：自身有效图标 → 父级 → `category`，目录里不存在的 id 视为空。目录由 `android/tools/build-category-icons.py` 从固定版本 Tabler Icons 3.49.0 生成 `domain/category/CategoryIconCatalog.kt`（每组一个字符串常量、懒解析）和设计稿 JS。`saveCategory(icon=Auto)` 新建时按名称推荐、编辑时保留；`Set(id|null)` 显式写入。CSV 新建分类走 Auto。
-- **商户/朋友**：可改资料或停用；原交易商户原文、地点和活动参与者历史保留。管理名称与原始购买摘要分开。
+- **商户/朋友**：可改资料或停用；商户保存同步归属记录文字与模板/周期/草稿引用，旧文字不保留；支持明确确认后合并商户，地点迁移。朋友资料编辑不改活动参与历史。
 - **活动**：结束/取消保留历史消费和互请，释放明确未用预留。删除活动需明确消费改为日常后的预算归属影响，不能删除活动时暗删消费或把互请累计到其他活动。
 - **账本**：支持重命名/归档；归档移出普通切换列表，数据和未完付款提醒保留账本标识。整本删除进入回收站30天并取消该账本提醒；确认显示账户/记录/附件范围，不联动其他账本。恢复后重建安排。自动删除到期数据的行为在回收站说明。
 - 使用全局唯一ID和账本ID约束防止跨账本关联，但储存不必按账本拆成多个物理数据库；每个查询、写入和外键关系遵循逻辑隔离。

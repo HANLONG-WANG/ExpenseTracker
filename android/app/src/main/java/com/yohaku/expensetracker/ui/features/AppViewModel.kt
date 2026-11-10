@@ -64,6 +64,11 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     private var entryBaseline:EntryDraft?=null
     val negativeBalanceReview=MutableStateFlow<PendingEntrySave?>(null)
     fun entryHasManualInput()=entry.value?.hasManualInput(entryBaseline)==true
+    internal fun syncMerchantDraft(sourceId:String,targetId:String,name:String) {
+        fun EntryDraft.synced()=if(merchantId==sourceId)copy(merchantId=targetId,merchant=name)else this
+        entry.value=entry.value?.synced()
+        entryBaseline=entryBaseline?.synced()
+    }
     fun markEntryBaseline(){entryBaseline=entry.value}
     private fun openDraft(bookId:String){persistDraft(bookId);markEntryBaseline()}
     private val backStack=mutableListOf<String>()
@@ -76,6 +81,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun back(){route.value=if(backStack.isEmpty())"home" else backStack.removeAt(backStack.lastIndex)}
     // Loading appears only initially and for an explicit retry. A subscription restarted after the app returns
     // from the background (camera, another app) keeps the last state, so open sheets and page positions stay composed.
+    private var merchantNamesBook:String?=null
+    private var merchantNames:Map<String,String> = emptyMap()
     private var servedReadRequest=0L
     private var failedReadRequest=0L
     private fun readFailed(request:Long){if(request>0&&failedReadRequest!=request){failedReadRequest=request;haptic(Haptic.Error)}}
@@ -83,7 +90,15 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val retry=request!=servedReadRequest;servedReadRequest=request;var retryPending=retry
         combine(repository.dao.bookOverviews(java.time.YearMonth.from(date).toString()),preferences.activeBook,preferences.setupDraft){overviews,id,first->Triple(overviews,overviews.map{it.book}.let{books->books.find{it.id==id&&it.deletedAt==null} ?: books.firstOrNull{!it.archived&&it.deletedAt==null}},first).also{selectedBookMetadata.value=it.second}}
         .flatMapLatest{(overviews,book,first)-> val books=overviews.map{it.book};if(book==null)flowOf<AppState>(AppState.Ready(books,null,first,overviews)) else repository.snapshot(book).map{AppState.Ready(books,it,first,overviews)}}
-        .onEach{retryPending=false}
+        .onEach{value->
+            retryPending=false
+            (value as? AppState.Ready)?.snapshot?.let{s->
+                if(merchantNamesBook==s.book.id)s.merchants.forEach{m->
+                    if(merchantNames[m.id]!=null&&merchantNames[m.id]!=m.name)syncMerchantDraft(m.id,m.id,m.name)
+                }
+                merchantNamesBook=s.book.id;merchantNames=s.merchants.associate{it.id to it.name}
+            }
+        }
         .catch{if(retryPending){retryPending=false;readFailed(request)};emit(AppState.Failure(it.message ?: "数据库读取失败 / データ読込失敗"))}
         .onStart{if(retry)emit(AppState.Loading)}
     }

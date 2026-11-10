@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "78dfc1025c47404426c079211a82de909e72e590c6c26506fc0eb456f3ab9532",
+    "catalogDigest": "bc9556f6fbb9148fa7db552d9f26744919ca9362871c11541d5c5ed434864bd7",
     "commands": [
         {
             "comparisonFields": [
@@ -2398,7 +2398,7 @@
                 "RISK"
             ],
             "defaults": "name required; merchant omitted/null creates; active state preserved. note omitted/null preserves (new empty), empty string clears.",
-            "description": "Create or edit a merchant. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion is permanently forbidden.",
+            "description": "Create or edit a merchant. Synchronize owned record names (including trash), linked templates, recurrences and drafts. Name-matched unlinked expenses become linked; income/transfer/refund text is synchronized without adding links. A new name matching unlinked records adopts those records automatically. The name on a record is a reference to the merchant: synchronization writes no entry revision and the previous name is not kept. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion and merging are only available in the app, never through cloud commands.",
             "example": {
                 "name": "咖啡店"
             },
@@ -2448,7 +2448,7 @@
             "outputs": {
                 "merchant": "merchant"
             },
-            "prerequisites": "Nonblank name; existing merchant ID must belong to this book.",
+            "prerequisites": "Nonblank name; existing merchant ID must belong to this book. Names match after trim, case and width normalization. A new or renamed merchant cannot duplicate another saved merchant; merge in the app instead. Existing historical duplicates may be saved without changing the normalized name.",
             "unavailable": "Reject the whole batch if this command's input or prerequisites fail; no step is skipped.",
             "undo": "Restore exact recorded existing rows; remove only execution-owned new objects and dependent rows, if unchanged and without external FK/JSON/draft references. Full row/relationship conflicts block the entire undo.",
             "version": 1
@@ -2655,7 +2655,7 @@
             "mode": "transactional",
             "name": "merchant.setActive",
             "outputs": {},
-            "prerequisites": "Target must be a merchant in plan.book_id; saved name, note and locations are retained.",
+            "prerequisites": "Target must be a merchant in plan.book_id; saved name, note and locations are retained. Saving also synchronizes owned record names and linked templates/recurrences/drafts, and formally links name-matched expenses.",
             "unavailable": "Reject the whole batch if this command's input or prerequisites fail; no step is skipped.",
             "undo": "Restore exact recorded existing rows; remove only execution-owned new objects and dependent rows, if unchanged and without external FK/JSON/draft references. Full row/relationship conflicts block the entire undo.",
             "version": 1

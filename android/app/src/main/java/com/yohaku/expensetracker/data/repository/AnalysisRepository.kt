@@ -14,12 +14,6 @@ suspend fun LedgerRepository.saveAnalysisPreferences(bookId:String,modules:List<
     require(dao.book(bookId)!=null);require(modules.distinct()==modules&&pinned.all{it in modules})
     dao.putAnalysisPreferences(AnalysisPreferencesEntity(bookId,json.encodeToString(modules.map{it.name}),json.encodeToString(pinned.map{it.name})))
 }
-suspend fun LedgerRepository.saveMerchant(bookId:String,name:String,note:String="",id:String?=null,active:Boolean=true):String=db.withTransaction {
-    require(dao.book(bookId)!=null);require(name.isNotBlank()){ "请输入商户原名 / お店の元の名前を入力してください" }
-    val old=id?.let{dao.merchant(bookId,it)?:error("商户不属于本账本 / 別の帳簿のお店です")}
-    val merchant=MerchantEntity(bookId,old?.id?:this.id(),name.trim(),note,active)
-    dao.putMerchant(merchant);merchant.id
-}
 suspend fun LedgerRepository.saveMerchantLocation(bookId:String,merchantId:String,name:String,latitude:Double?,longitude:Double?,radiusMeters:Int=100,id:String?=null):String=db.withTransaction {
     require(dao.merchant(bookId,merchantId)!=null)
     require(name.isNotBlank()){ "请输入地点名称 / 場所の名前を入力してください" }
