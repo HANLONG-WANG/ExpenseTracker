@@ -8,6 +8,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.merchant.*
+import com.yohaku.expensetracker.domain.csv.*
+import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.data.command.*
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
@@ -17,6 +21,50 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
+
+    @Test fun version39BackfillsOriginalCsvKeysAndUpgradesUndoExpectations()=runBlocking<Unit> {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val current=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        val sources=try {
+            val repo=LedgerRepository(current)
+            val book=repo.createBook("CSV source",Currency.CNY,startDate="2026-01-01")
+            val account=repo.saveAccount(book,"Cash",AccountType.CASH,Currency.CNY,Money(Currency.CNY,100000),"2026-01-01")
+            val document=CsvParser.read("日期,金额,类别,商户,备注\n2026/10/01,-12.34,Food,喫茶,原始备注\n2026/10/02,56.78,Income,返金,第二行".toByteArray())
+            val settings=CsvParser.guess(document).copy(accountId=account,rule="SIGN",dateFormat="yyyy/MM/dd",noteAsMerchant=false,columns=mapOf("date" to 0,"amount" to 1,"category" to 2,"merchant" to 3,"note" to 4))
+            repo.importCsv(book,"source.csv","hash",document,settings,emptyMap(),repo.csvPreview(book,document,settings,emptyMap()))
+            current.openHelper.readableDatabase.query("SELECT c.sourceMatchKey,r.afterJson FROM csv_batch_events c JOIN revisions r ON r.bookId=c.bookId AND r.eventId=c.eventId AND r.version=1").use{c->buildList{while(c.moveToNext())add(c.getString(0) to c.getString(1))}}
+        }finally{current.close()}
+        assertEquals(2,sources.size)
+        val name="csv-source-upgrade-v39.db";context.deleteDatabase(name)
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null).use{old->
+            merchantV39Fixture(old)
+            old.execSQL("INSERT INTO csv_batches (bookId,id,fileName,sha256,createdAt,rowCount,importedCount,skippedCount,accountId) VALUES ('b','csv','source.csv','hash',1,3,3,0,'bank')")
+            for(index in 0..2) {
+                val id="csv-$index"
+                old.execSQL("INSERT INTO events (bookId,id,kind,accountId,categoryId,amountMinor,currency,baseMinor,date,merchant,note,historicalIncluded,revision) VALUES ('b',?,'EXPENSE','bank',NULL,9999,'JPY',9999,'2026-11-01','Changed','edited note',0,2)",arrayOf(id))
+                old.execSQL("INSERT INTO csv_batch_events (bookId,eventId,batchId) VALUES ('b',?,'csv')",arrayOf(id))
+                if(index<2)old.execSQL("INSERT INTO revisions (bookId,id,eventId,version,timestamp,afterJson) VALUES ('b',?,?,1,1,?)",arrayOf("r-$index",id,sources[index].second))
+            }
+        }
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            val repo=LedgerRepository(db);val sql=db.openHelper.writableDatabase
+            sql.query("SELECT eventId,sourceMatchKey FROM csv_batch_events WHERE batchId='csv' ORDER BY eventId").use{c->
+                for(index in 0..2){assertTrue(c.moveToNext());if(index<2)assertEquals(sources[index].first,c.getString(1))else assertTrue(c.isNull(1))}
+            }
+            val journal=CommandUndoJournal(repo,"b")
+            val row=buildJsonObject{put("bookId","b");put("eventId","csv-0");put("batchId","csv")}
+            val oldRecord=UndoRecord(emptyList(),emptyList(),emptyList(),rows=listOf(UndoRowChange("csv_batch_events",buildJsonObject{put("bookId","b");put("eventId","csv-0")},null,row)),version=3,databaseVersion=39)
+            val migrated=journal.migratedRecord(oldRecord)
+            assertEquals(JsonPrimitive(sources[0].first),migrated.rows.single().after["sourceMatchKey"])
+            assertTrue(journal.conflicts(migrated).toString(),journal.conflicts(migrated).isEmpty())
+            sql.execSQL("UPDATE csv_batch_events SET sourceMatchKey='changed later' WHERE eventId='csv-0'")
+            assertTrue(journal.conflicts(migrated).any{it.field=="sourceMatchKey"})
+            sql.execSQL("UPDATE csv_batch_events SET sourceMatchKey=? WHERE eventId='csv-0'",arrayOf(sources[0].first))
+            db.withTransaction { journal.restore(CommandRun(repo,"b",ExecutionContext("2026-11-10","Asia/Tokyo","2027-11-10"),migrated)) }
+            sql.query("SELECT COUNT(*) FROM csv_batch_events WHERE eventId='csv-0'").use{it.moveToFirst();assertEquals(0,it.getInt(0))}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
 
     @Test fun version39AddsHistoryAndCleanupWithAtomicHistoryAndBookPurge()=runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext

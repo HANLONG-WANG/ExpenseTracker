@@ -161,6 +161,61 @@ class CsvImportRoundTripTest {
         }finally{db.close()}
     }
 
+    @Test fun renamedSourcesAndCurrentValuesBothMatchUntilTrashOrPurge()=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,YohakuDatabase::class.java).build()
+        try {
+            val repo=LedgerRepository(db)
+            val book=repo.createBook("CSV rename",Currency.JPY,startDate="2026-01-01")
+            val account=repo.saveAccount(book,"Cash",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-01-01")
+            val merchant=repo.saveMerchant(book,"Coffee")
+            fun document(name:String)=CsvParser.read("日期,金额,类别,商户,备注\n2026-10-01,100,Food,$name,note\n2026-10-01,100,Food,$name,note".toByteArray())
+            val original=document("Coffee")
+            val settings=CsvParser.guess(original).copy(accountId=account,noteAsMerchant=false,columns=mapOf("date" to 0,"amount" to 1,"category" to 2,"merchant" to 3,"note" to 4),rule="EXPENSE")
+            val first=repo.csvPreview(book,original,settings,emptyMap())
+            assertFalse(first.rows.any{it.duplicate})
+            val batch=repo.importCsv(book,"source.csv","hash",original,settings,emptyMap(),first)
+            assertEquals(2,db.csvImportDao().events(book,batch.id).size)
+            repo.saveMerchant(book,"Tea",id=merchant)
+            for(name in listOf("Coffee","Tea"))assertTrue(repo.csvPreview(book,document(name),settings,emptyMap()).rows.all{it.duplicate&&it.skipped})
+            assertFalse(repo.csvPreview(book,document("Bakery"),settings,emptyMap()).rows.any{it.duplicate})
+            if(visualEnabled()) {
+                val context=InstrumentationRegistry.getInstrumentation().targetContext
+                val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+                val path=File(context.cacheDir,"csv-rename-${java.util.UUID.randomUUID()}.preferences_pb")
+                val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
+                val vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))
+                val model=CsvImportViewModel(repo,book)
+                val snapshot=repo.snapshot(repo.dao.book(book)!!).first()
+                var theme by mutableStateOf("magazine");var language by mutableStateOf("zh")
+                model.state.value=CsvUiState(fileName="source.csv",document=original,settings=settings,preview=repo.csvPreview(book,original,settings,emptyMap()),step=3)
+                try {
+                    ui.setContent {YohakuTheme(theme,language){
+                        Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp)) {
+                            CsvImportScreen(snapshot.copy(book=snapshot.book.copy(theme=theme,language=language)),vm,model)
+                        }
+                    }}
+                    val folder=File(context.getExternalFilesDir(null),"merchant-f-csv").apply{mkdirs()}
+                    for((t,l) in testLooks(this@CsvImportRoundTripTest)) {
+                        ui.runOnIdle{theme=t;language=l}
+                        ui.onNodeWithTag("csv-import").performScrollTo().assertIsNotEnabled()
+                        ui.waitForIdle()
+                        ui.onRoot().captureToImage().asAndroidBitmap().let{bitmap->
+                            File(folder,"$t-$l-source-duplicates.png").outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+                        }
+                    }
+                }finally{vm.viewModelScope.cancel();model.viewModelScope.cancel();scope.cancel();path.delete()}
+            }
+            repo.undoCsvBatch(book,batch.id)
+            assertFalse(repo.csvPreview(book,original,settings,emptyMap()).rows.any{it.duplicate})
+            val id=db.csvImportDao().events(book,batch.id).first().id
+            repo.restoreEntry(book,id)
+            assertTrue(repo.csvPreview(book,original,settings,emptyMap()).rows.all{it.duplicate})
+            repo.undoCsvBatch(book,batch.id)
+            db.withTransaction { repo.purgeEntryGroup(book,id) }
+            db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM csv_batch_events WHERE bookId=? AND eventId=?",arrayOf(book,id)).use{it.moveToFirst();assertEquals(0,it.getInt(0))}
+        }finally{db.close()}
+    }
+
     @Test fun sourceMatchKeyCapturesOriginalValuesBeforeMerchantResolution()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
@@ -188,8 +243,7 @@ class CsvImportRoundTripTest {
             val links=journal.changes(before).filter{it.table=="csv_batch_events"}
             assertEquals(2,links.size);assertTrue(links.all{it.before==null&&!it.removed})
             assertTrue(links.all{it.after["sourceMatchKey"]==kotlinx.serialization.json.JsonPrimitive(expected)})
-            // This batch captures source only; duplicate preview still compares current values until F.
-            assertFalse(repo.csvPreview(book,document,settings,emptyMap()).rows.any{it.duplicate})
+            assertTrue(repo.csvPreview(book,document,settings,emptyMap()).rows.all{it.duplicate})
             val record=UndoRecord(emptyList(),emptyList(),emptyList(),rows=journal.changes(before),version=3)
             db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey='later source' WHERE bookId=?",arrayOf(book))
             assertTrue(journal.conflicts(record).any{it.type=="csv_batch_events"&&it.field=="sourceMatchKey"})

@@ -150,7 +150,9 @@ class CommandLedgerExecutionTest {
             // Entire-row removal must notice a post-upgrade source key, even though old JSON lacks it.
             db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey='later-source' WHERE bookId=? AND eventId=?",arrayOf(book,created))
             assertUndoConflict(createdPlan,"sourceMatchKey")
-            db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey=NULL WHERE bookId=? AND eventId=?",arrayOf(book,created))
+            val migratedKey=csvRevisionSourceKeyV40(db.openHelper.readableDatabase,book,created)
+            assertNotNull(migratedKey)
+            db.openHelper.writableDatabase.execSQL("UPDATE csv_batch_events SET sourceMatchKey=? WHERE bookId=? AND eventId=?",arrayOf(migratedKey,book,created))
             val csvUndo=commands.prepareUndo(createdPlan.planId);val csvPreview=commands.preview(csvUndo.planId)
             assertTrue(csvPreview.conflicts.toString(),csvPreview.executable);commands.confirm(csvUndo.planId,commandChecks(csvPreview))
             assertNull(r.dao.event(book,created))

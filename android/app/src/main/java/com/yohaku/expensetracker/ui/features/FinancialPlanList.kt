@@ -24,7 +24,8 @@ internal fun FinancialBillEntity.hasUnknownPredictedFee() = !confirmed && basisJ
     val unknown=word("未知","不明")
     fun amount(n:Long?)=n?.let{Money(currency,it).display()}?:unknown
     FinancialPlanRow(plan.name,financeLabel(plan.mode),if(next.isEmpty())word("无待付","未払なし")else (if(stale)word("原预测 · ","元予測・")else "")+amount(if(next.any{it.hasUnknownPredictedFee()})null else next.sumOf{s.billOutstanding(it).totalMinor}),
-        word("下次付款：","次の支払：")+(nextDate?:"—"),
+        word("下次付款：","次の支払：")+(nextDate?:"—")+
+            (plan.sourceEventId?.let{id->s.events.firstOrNull{it.id==id}}?.let{event->"\n"+word("来源：","対象：")+event.date+" · "+event.merchant.ifBlank{event.note}}?:""),
         word("已列未清 ${p.unpaidPeriods}/${p.listedPeriods} 期","記載分の未払 ${p.unpaidPeriods}/${p.listedPeriods} 回")+" · "+(if(p.complete)word("完整安排","全期間")else word("部分安排","一部予定"))+"\n"+
             word("已列待付本金 / 费用：","記載済みの未払元金・費用：")+amount(p.principalMinor)+" / "+amount(if(unpaid.any{it.hasUnknownPredictedFee()})null else p.feeMinor),
         listOfNotNull(if(stale)word("待重算","要再計算")else null,if(p.overduePeriods>0)word("逾期 ${p.overduePeriods} 期","延滞 ${p.overduePeriods} 回")else null,

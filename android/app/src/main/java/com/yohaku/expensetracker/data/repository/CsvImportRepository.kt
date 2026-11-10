@@ -17,7 +17,7 @@ data class CsvPreview(val rows:List<CsvPreviewRow>) {
 }
 fun csvAccountAllowed(account:AccountEntity,book:BookEntity)=account.active&&account.currency==book.currency
 fun csvCategoryChoice(s:BookSnapshot,kind:String,value:String):String = s.categories.filter{it.kind==kind&&it.name==value&&s.categoryEnabled(it.id)}.singleOrNull()?.id?:"NEW"
-fun previewCsv(s:BookSnapshot,document:CsvDocument,settings:CsvSettings,edits:Map<Int,CsvEdit>):CsvPreview {
+fun previewCsv(s:BookSnapshot,document:CsvDocument,settings:CsvSettings,edits:Map<Int,CsvEdit>,sourceMatchKeys:Set<String> = emptySet()):CsvPreview {
     require(settings.columns["date"]!=null&&settings.columns["amount"]!=null){"请选择日期与金额列 / 日付・金額の列を選択してください"}
     require(s.accounts.any{it.id==settings.accountId&&csvAccountAllowed(it,s.book)}){"请选择本位币的目标账户 / 基準通貨の移行先口座を選択してください"}
     val existing=s.events.filter{it.deletedAt==null&&it.purgedAt==null&&it.currency==s.book.currency}.map{CsvParser.duplicateKey(it.date,it.kind,it.amountMinor,it.note,it.merchant)}.toHashSet()
@@ -36,7 +36,8 @@ fun previewCsv(s:BookSnapshot,document:CsvDocument,settings:CsvSettings,edits:Ma
         val category=categories[choice]
         if(newName!=null) {if(newName.isBlank())issues+="请输入新分类名称 / 新しいカテゴリ名を入力してください"}
         else if(category==null||category.kind!=kind||!s.categoryEnabled(category.id))issues+="请选择有效分类；空分类需要默认分类 / 有効なカテゴリを選択してください。空欄には既定カテゴリが必要です"
-        val duplicate=date!=null&&amount!=null&&CsvParser.duplicateKey(date,kind.orEmpty(),amount,source.note,source.merchant) in existing
+        val duplicate=date!=null&&amount!=null&&(CsvParser.duplicateKey(date,kind.orEmpty(),amount,source.note,source.merchant) in existing||
+            CsvParser.sourceMatchKey(date,kind.orEmpty(),amount,source.note,source.merchant) in sourceMatchKeys)
         CsvPreviewRow(source,date,amount,account?.id,category?.id,newName,date!=null&&account!=null&&date<=account.openingDate,duplicate,
             kind=="SKIP"||(edits[source.row]?.skip?:duplicate),issues)
     })
@@ -44,7 +45,7 @@ fun previewCsv(s:BookSnapshot,document:CsvDocument,settings:CsvSettings,edits:Ma
 
 suspend fun LedgerRepository.csvPreview(bookId:String,document:CsvDocument,settings:CsvSettings,edits:Map<Int,CsvEdit>):CsvPreview {
     val book=requireNotNull(dao.book(bookId))
-    return previewCsv(snapshot(book).first(),document,settings,edits)
+    return db.withTransaction { previewCsv(snapshot(book).first(),document,settings,edits,db.csvImportDao().sourceMatchKeys(bookId,book.currency).toSet()) }
 }
 
 suspend fun LedgerRepository.importCsv(bookId:String,fileName:String,sha256:String,document:CsvDocument,settings:CsvSettings,edits:Map<Int,CsvEdit>,review:CsvPreview,onProgress:(Int,Int)->Unit={_,_->}):CsvBatchEntity=db.withTransaction {

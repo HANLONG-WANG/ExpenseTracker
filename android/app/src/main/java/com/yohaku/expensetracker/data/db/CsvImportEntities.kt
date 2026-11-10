@@ -15,6 +15,8 @@ data class CsvProfileEntity(val bookId:String,val signature:String,val settingsJ
 @Dao interface CsvImportDao {
     @Query("SELECT * FROM csv_batches WHERE bookId=:bookId ORDER BY createdAt DESC") fun batches(bookId:String):Flow<List<CsvBatchEntity>>
     @Query("SELECT * FROM csv_batches WHERE bookId=:bookId AND id=:id") suspend fun batch(bookId:String,id:String):CsvBatchEntity?
+    @Query("SELECT c.sourceMatchKey FROM csv_batch_events c JOIN events e ON e.bookId=c.bookId AND e.id=c.eventId WHERE c.bookId=:bookId AND e.deletedAt IS NULL AND e.purgedAt IS NULL AND e.currency=:currency AND c.sourceMatchKey IS NOT NULL")
+    suspend fun sourceMatchKeys(bookId:String,currency:String):List<String>
     @Upsert suspend fun putBatch(value:CsvBatchEntity)
     @Insert suspend fun putEvents(values:List<CsvBatchEventEntity>)
     @Query("SELECT e.* FROM events e JOIN csv_batch_events c ON c.bookId=e.bookId AND c.eventId=e.id WHERE c.bookId=:bookId AND c.batchId=:batchId AND e.purgedAt IS NULL ORDER BY e.date,e.createdAt") suspend fun events(bookId:String,batchId:String):List<EventEntity>

@@ -81,6 +81,8 @@ class ActivityFlowTest {
                 val activity=repo.saveActivity(book,"秋の旅","2026-10-01","2026-10-31",Money(Currency.JPY,40000))
                 val friend=repo.saveFriend(book,"朋友A");repo.addParticipant(book,activity,friend)
                 repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="6000",date="2026-10-14",merchant="晚餐",activityId=activity,treatEnabled=true,treatFriends=listOf(friend)))
+                val merchant=repo.saveMerchant(book,"晚餐")
+                repo.saveMerchant(book,"夜の喫茶",id=merchant)
                 vm.preferences.select(book);book to activity
             }
             val (book,activity)=values
@@ -144,7 +146,9 @@ class ActivityFlowTest {
             tap(text("查看与这位朋友的明细","この友達との明細を見る"))
             ui.onNode(hasText(text("你多替对方承担","自分が多く負担")) and hasAnyAncestor(hasTestTag("sheet-scroll"))).performScrollTo().assertExists()
             ui.onNodeWithTag("lead-amount").assertTextEquals(if(theme=="journal")"¥1,500 ↗"else"¥1,500")
-            shot("$theme-$language-friend",true)
+            ui.onNodeWithText("夜の喫茶").performScrollTo().assertExists()
+            ui.onNodeWithText("晚餐",substring=false).assertDoesNotExist()
+            shot("$theme-$language-friend",true,reset=false)
             ui.onNode(hasText(text("对方替我承担：","相手が自分に：")+"¥1,500") and hasAnyAncestor(hasTestTag("sheet-scroll"))).performScrollTo().assertExists()
             ui.onNodeWithTag("sheet-close").performClick()
             val s=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}

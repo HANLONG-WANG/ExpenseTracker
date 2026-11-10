@@ -216,13 +216,13 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         }
         return newMerchantUndoConflicts(before.mapValues{it.value.values.toList()},after.mapValues{it.value.values.toList()})
     }
-    /** Missing databaseVersion identifies journals written before v40. Only known migration
-     * defaults are supplied; current values (including later source keys) are still compared. */
+    /** Missing databaseVersion identifies journals written before v40. Only frozen migration
+     * values are supplied; current values (including later source keys) are still compared. */
     fun migratedRecord(record:UndoRecord):UndoRecord {
         if(record.databaseVersion>=40)return record
         fun row(table:String,value:JsonObject):JsonObject {
             val defaults=buildMap<String,JsonElement> {
-                if(record.databaseVersion<40&&table=="csv_batch_events")put("sourceMatchKey",JsonNull)
+                if(record.databaseVersion<40&&table=="csv_batch_events")put("sourceMatchKey",com.yohaku.expensetracker.data.db.csvRevisionSourceKeyV40(sql,bookId,value.getValue("eventId").jsonPrimitive.content)?.let(::JsonPrimitive)?:JsonNull)
                 if(record.databaseVersion<39&&table in setOf("events","entry_templates"))put("budgetExcluded",JsonPrimitive(0))
             }
             return JsonObject(defaults+value)

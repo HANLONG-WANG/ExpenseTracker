@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.data.command.*
 import com.yohaku.expensetracker.data.repository.BookSnapshot
+import com.yohaku.expensetracker.data.repository.treatDisplayName
 import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.ui.components.*
@@ -214,7 +215,7 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     fun label(zh:String,ja:String)=if(s.book.language=="ja")ja else zh
     val current=s.book.takeIf{it.id==id}?.name?:s.merchants.firstOrNull{it.id==id}?.name?:s.merchantLocations.firstOrNull{it.id==id}?.name?:s.friends.firstOrNull{it.id==id}?.name?:s.templates.firstOrNull{it.id==id}?.name?:s.accounts.firstOrNull{it.id==id}?.name?:s.categories.firstOrNull{it.id==id}?.let{s.path(it.id)}
         ?:s.events.firstOrNull{it.id==id}?.let{"${it.date} ${it.merchant}"}
-        ?:s.activities.firstOrNull{it.id==id}?.name?:s.treats.firstOrNull{it.id==id}?.name?:s.occurrences.firstOrNull{it.id==id}?.let{it.name+" · "+it.scheduledDate}
+        ?:s.activities.firstOrNull{it.id==id}?.name?:s.treats.firstOrNull{it.id==id}?.let{s.treatDisplayName(it)}?:s.occurrences.firstOrNull{it.id==id}?.let{it.name+" · "+it.scheduledDate}
         ?:s.recurrences.firstOrNull{it.id==id}?.name?:s.reserves.firstOrNull{it.id==id}?.name
         ?:s.receipts.firstOrNull{it.id==id}?.let{receipt->s.events.firstOrNull{it.id==receipt.eventId}?.let{it.date+" · "+it.merchant}}
         ?:s.storedPostings.firstOrNull{it.id==id}?.let{p->s.accounts.firstOrNull{it.id==p.accountId}?.name+" · "+p.date}

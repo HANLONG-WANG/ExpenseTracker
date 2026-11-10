@@ -92,3 +92,8 @@ suspend fun LedgerRepository.restoreOtherTreat(bookId:String,id:String)=db.withT
     require(dao.activity(bookId,old.activityId)?.deletedAt==null)
     dao.putTreat(old.copy(deletedAt=null,revision=old.revision+1))
 }
+
+/** Linked own payments use the current purchase, never the legacy copied treat name.
+ * Independent other-paid records (and detached historical records) keep their own meaning. */
+fun BookSnapshot.treatDisplayName(treat:TreatEntity):String =
+    treat.eventId?.let{eventById[it]?.merchant}?:treat.name

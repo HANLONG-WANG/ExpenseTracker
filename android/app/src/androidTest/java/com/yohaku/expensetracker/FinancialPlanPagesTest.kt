@@ -74,6 +74,47 @@ class FinancialPlanPagesTest {
             bitmap.recycle()
         }
     }
+    @Test fun renamedPurchaseSourceIsCurrentAndConfirmedBillsAndTitlesStayIndependent() {
+        for((theme,language) in testLooks(this@FinancialPlanPagesTest)) {
+            val values=runBlocking {
+                val book=repo.createBook("商户来源",Currency.JPY,theme,language,startDate="2026-10-01")
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val bank=repo.saveAccount(book,"支払銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-10-01")
+                val card=repo.saveAccount(book,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val category=repo.saveCategory(book,"食事",EntryKind.EXPENSE,null)
+                repo.commitFinancialRule(repo.previewFinancialRule(book,card,FinancialRuleVersion("",book,card,FinanceMode.INSTALLMENT,"2026-10-01","Asia/Tokyo",BillingRule(20,true,1,5,bank),installment=InstallmentRule(listOf(3),InstallmentFeeMethod.TOTAL_AMOUNT,totalFeeMinor=60,principalRemainder=RemainderPlacement.LAST,feeRemainder=RemainderPlacement.LAST,roundingMode="HALF_UP"))))
+                val merchant=repo.saveMerchant(book,"朝の喫茶")
+                val event=repo.saveEntry(book,EntryDraft(accountId=card,categoryId=category,amount="1200",date="2026-10-15",merchant="朝の喫茶",cardPaymentChoice="INSTALLMENT",cardPaymentPeriods="3"))
+                var f=db.financialDao().graph(book).first()!!
+                val plan=f.plans.single{it.sourceEventId==event}
+                assertEquals("CARD_ENTRY",plan.origin)
+                repo.commitFinancialBillConfirmation(repo.previewFinancialBillConfirmation(book,f.bills.minBy{it.number}.id,KnownBillInput("2026-11-05",420,400,20,bank)))
+                repo.commitManualFinancialPlan(repo.previewManualFinancialPlan(book,ManualFinancialPlanInput(card,"独立の予定",FinanceMode.SINGLE,listOf(KnownBillInput("2026-12-05",100,100,0,bank)),100,opening=true)))
+                f=db.financialDao().graph(book).first()!!
+                val before=repo.snapshot(repo.dao.book(book)!!).first()
+                val stale=repo.financialPredictionStale(before,f,plan)
+                repo.saveMerchant(book,"夜の喫茶",id=merchant)
+                val after=repo.snapshot(repo.dao.book(book)!!).first()
+                assertEquals(f,db.financialDao().graph(book).first())
+                assertEquals(stale,repo.financialPredictionStale(after,f,plan))
+                vm.preferences.select(book)
+                listOf(book,card,plan.id,f.bills.filter{it.planId==plan.id}.minBy{it.number}.id)
+            }
+            val (book,card,plan,bill)=values
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans")
+            ui.onNodeWithText("夜の喫茶",substring=true).performScrollTo().assertExists()
+            shot("$theme-$language-merchant-source-list")
+            tapTag("finance-plan-row-$plan")
+            ui.onNodeWithText("夜の喫茶",substring=true).assertExists()
+            shot("$theme-$language-merchant-source-detail")
+            tapTag("finance-plan-period-$bill")
+            ui.onNodeWithText("夜の喫茶",substring=true).performScrollTo().assertExists()
+            shot("$theme-$language-merchant-source-period")
+            assertNull(vm.error.value)
+        }
+    }
+
     @Test fun summariesPeriodsAndContractCreationReturnWithoutDuplicatingPlans() {
         for((theme,language) in testLooks(this@FinancialPlanPagesTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh

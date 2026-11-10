@@ -73,7 +73,7 @@ import java.time.LocalDate
         s.activityExpenses(activity.id).forEach{e->YLink(e.date+" · "+e.merchant.ifBlank{s.path(e.categoryId)}+" · "+money(s.netExpense(e)),{onRecord(e)})}
         s.liveTreats(activity.id).filter{it.eventId==null}.forEach{t->Panel {
             YText(s.friends.first{it.id==t.payerFriendId}.name+word("付款","の支払"),14)
-            YText(t.date+" · "+t.name+" · "+Money(Currency.valueOf(t.currency),t.amountMinor).display(),12)
+            YText(t.date+" · "+s.treatDisplayName(t)+" · "+Money(Currency.valueOf(t.currency),t.amountMinor).display(),12)
         }}
     }else {
         YLink(word("返回全部活动","すべてのシーンへ"),{selected=null})
@@ -146,7 +146,7 @@ import java.time.LocalDate
         }}
         s.liveTreats(activity.id).filter{it.eventId==null}.forEach{t->Panel {
             YText((s.friends.find{it.id==t.payerFriendId}?.name.orEmpty())+word("付款","の支払"),17)
-            YText(t.date+" · "+t.name+" · "+Money(Currency.valueOf(t.currency),t.amountMinor).display(),12)
+            YText(t.date+" · "+s.treatDisplayName(t)+" · "+Money(Currency.valueOf(t.currency),t.amountMinor).display(),12)
             YText(word("仅互请份额；不记本人消费或账户扣款。","ごちそうの取り分のみ。自分の支出・口座引落は記録しません。"),10,color=LocalYohaku.current.muted)
             YActionRow {
                 YButton(word("修正份额","取り分を修正"),{treatFriend=null;treatId=t.id;treatFor=activity.id})
@@ -172,7 +172,7 @@ import java.time.LocalDate
         s.liveTreats(a.id).filter{t->t.payerFriendId==friendId||t.payerFriendId==null&&s.allocations.any{it.treatId==t.id&&it.friendId==friendId}}.forEach{t->
             val portion=s.allocations.first{it.treatId==t.id&&if(t.payerFriendId==null)it.friendId==friendId else it.participant=="ME"}
             val original=t.eventId?.let{id->s.visibleEvents.find{it.id==id}}
-            PairHistoryRow(t.date,t.name,t.payerFriendId==null,Money(Currency.valueOf(t.currency),t.amountMinor).display(),money(portion.baseMinor),original?.let{e->{friendDetail=null;onRecord(e)}})
+            PairHistoryRow(t.date,s.treatDisplayName(t),t.payerFriendId==null,Money(Currency.valueOf(t.currency),t.amountMinor).display(),money(portion.baseMinor),original?.let{e->{friendDetail=null;onRecord(e)}})
 
         }
     }}}

@@ -126,7 +126,7 @@ object CsvParser {
     /** v1 captures exactly the current duplicate tuple BEFORE merchant resolution: parsed date,
      * kind, absolute minor amount (book currency), original note and original merchant text.
      * JSON array encoding preserves delimiters/empty values; no merchant normalization or account
-     * is added. Batch F must use this same definition for lookup and revision-based backfill. */
+     * is added. Lookup and frozen v40 revision backfill use this same definition. */
     fun sourceMatchKey(date:String,kind:String,minor:Long,note:String,merchant:String)=
         kotlinx.serialization.json.JsonArray(duplicateKey(date,kind,minor,note,merchant).map{ kotlinx.serialization.json.JsonPrimitive(it) }).toString()
     fun duplicateKey(date:String,kind:String,minor:Long,note:String,merchant:String)=listOf(date,kind,minor.toString(),note,merchant)

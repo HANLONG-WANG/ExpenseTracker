@@ -4,12 +4,14 @@ import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import java.text.Normalizer
 import java.util.Locale
+import kotlinx.serialization.json.*
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 val MIGRATION_39_40 = object:Migration(39,40) {
     override fun migrate(db:SupportSQLiteDatabase) {
         createMerchantUpgradeStructure(db)
+        backfillCsvSourcesV40(db)
         organizeMerchantHistoryV40(db)
     }
 }
@@ -116,5 +118,31 @@ private fun organizeMerchantHistoryV40(db:SupportSQLiteDatabase) {
             put("oldMerchantName",impact.before.name);put("newMerchantName",impact.name)
             put("oldMerchantId",impact.before.merchantId);put("newMerchantId",impact.merchantId)
         })
+    }
+}
+
+/** Frozen source-key v1, also used to upgrade pre-v40 undo expectations. Revision v1 stores
+ * parsed ISO date/kind and absolute amountMinor, not CSV signed text or baseMinor. Never resolve
+ * merchant names here. Read fields directly so later Entity defaults/serializers cannot alter it. */
+internal fun csvSourceKeyFromRevisionV40(afterJson:String):String {
+    val row=Json.parseToJsonElement(afterJson).jsonObject
+    return JsonArray(listOf(row.getValue("date").jsonPrimitive.content,
+        row.getValue("kind").jsonPrimitive.content,row.getValue("amountMinor").jsonPrimitive.long.toString(),
+        row.getValue("note").jsonPrimitive.content,row.getValue("merchant").jsonPrimitive.content).map(::JsonPrimitive)).toString()
+}
+
+internal fun csvRevisionSourceKeyV40(db:SupportSQLiteDatabase,bookId:String,eventId:String):String? =
+    db.query("SELECT afterJson FROM revisions WHERE bookId=? AND eventId=? AND version=1",arrayOf(bookId,eventId)).use{c->
+        if(c.moveToFirst())csvSourceKeyFromRevisionV40(c.getString(0))else null
+    }
+
+/** Run before merchant cleanup to keep import provenance separate from merchant attribution.
+ * An inner join leaves missing revisions NULL; current event values are never a substitute. */
+private fun backfillCsvSourcesV40(db:SupportSQLiteDatabase) {
+    db.query("""SELECT c.bookId,c.eventId,r.afterJson FROM csv_batch_events c
+        JOIN revisions r ON r.bookId=c.bookId AND r.eventId=c.eventId AND r.version=1
+        WHERE c.sourceMatchKey IS NULL""").use{c->
+        while(c.moveToNext())db.execSQL("UPDATE csv_batch_events SET sourceMatchKey=? WHERE bookId=? AND eventId=?",
+            arrayOf(csvSourceKeyFromRevisionV40(c.getString(2)),c.getString(0),c.getString(1)))
     }
 }
