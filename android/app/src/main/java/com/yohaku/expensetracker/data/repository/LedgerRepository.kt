@@ -27,6 +27,7 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
     val friends:List<FriendEntity> = emptyList(),val participants:List<ActivityParticipantEntity> = emptyList(),val treats:List<TreatEntity> = emptyList(),val allocations:List<TreatAllocationEntity> = emptyList(),val analysisPreferences:AnalysisPreferencesEntity?=null,val merchants:List<MerchantEntity> = emptyList(),val merchantLocations:List<MerchantLocationEntity> = emptyList(),val eventMerchants:List<EventMerchantEntity> = emptyList(),val files:List<FileBlobEntity> = emptyList(),val attachments:List<AttachmentLinkEntity> = emptyList(),val stagedMedia:List<DraftMediaEntity> = emptyList(),val receipts:List<ReceiptEntity> = emptyList(),val receiptImages:List<ReceiptImageEntity> = emptyList(),val contracts:List<DebtContractEntity> = emptyList(),val repayments:List<FinancialRepaymentEntity> = emptyList(),val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val arrangements:List<FinancialArrangementEntity> = emptyList(),val billAdjustments:List<FinancialBillAdjustmentEntity> = emptyList(),val expectedIncomes:List<ExpectedIncomeEntity> = emptyList(),val eventSaveTimes:Map<String,Long> = emptyMap(),val templates:List<EntryTemplateEntity> = emptyList(),val eventPlaces:List<EventPlaceEntity> = emptyList()) {
     // Lookups are built once per snapshot; per-event scans over thousands of records made every screen quadratic.
     val visibleEvents by lazy{events.filter{it.deletedAt==null}}
+    internal val eventById by lazy{events.associateBy{it.id}}
     internal val visibleById by lazy{visibleEvents.associateBy{it.id}}
     internal val settlementByEvent by lazy{settlements.associateBy{it.eventId}}
     internal val transferByEvent by lazy{transfers.associateBy{it.eventId}}
@@ -35,6 +36,15 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
     internal val activityByEvent by lazy{eventActivities.associate{it.eventId to it.activityId}}
     internal val merchantByEvent by lazy{eventMerchants.associate{it.eventId to it.merchantId}}
     internal val merchantsByName by lazy{merchants.groupBy{normalizedMerchantName(it.name)}}
+    /** Keep the first visible expense's spelling for each original-name group, once per snapshot. */
+    internal val merchantNameLabels by lazy {
+        buildMap<String,String> {
+            for(event in visibleEvents)if(event.kind==EntryKind.EXPENSE.name) {
+                val key=merchantKey(event)
+                if(key.startsWith("name:")&&key !in this)put(key,event.merchant)
+            }
+        }
+    }
     /** Visible refunds whose settlement is confirmed, keyed by the expense they return. */
     internal val confirmedRefunds by lazy{settlements.filter{it.confirmed&&it.originalEventId!=null}.mapNotNull{st->visibleById[st.eventId]?.let{st.originalEventId!! to it}}.groupBy({it.first},{it.second})}
     fun balance(account:AccountEntity):Long=postings.filter{it.accountId==account.id}.fold(account.openingMinor){a,p->Math.addExact(a,p.deltaMinor)}
@@ -165,9 +175,8 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
         require(old?.deletedAt==null){"请先恢复记录 / 記録を復元してください"}
         val linkedRefunds=old?.let{dao.refunds(bookId,it.id).filter{r->r.deletedAt==null}}.orEmpty()
         require(linkedRefunds.isEmpty() || old?.currency==amount.currency.name && old.kind==draft.kind.name && linkedRefunds.sumOf{it.amountMinor}<=amount.minor){"修改不能使关联退款超过原消费 / 変更後の金額は返金総額以上にしてください"}
-        val merchant=draft.merchantId?.let{dao.merchant(bookId,it)?:error("商户不属于本账本 / 別の帳簿のお店です")}
-        require(merchant==null||merchant.active||old?.let{dao.eventMerchant(bookId,it.id)?.merchantId}==merchant.id)
-        val event=cardPayment(EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),draft.merchant.trim(),draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis(),budgetExcluded=draft.kind==EntryKind.EXPENSE&&draft.budgetExcluded),draft,old,a)
+        val merchant=resolveSavedMerchant(bookId,draft.kind,draft.merchantId,draft.merchant,dao.merchants(bookId))
+        val event=cardPayment(EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),merchant?.name?:draft.merchant,draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis(),budgetExcluded=draft.kind==EntryKind.EXPENSE&&draft.budgetExcluded),draft,old,a)
         val expenseSign=if(draft.kind==EntryKind.EXPENSE)-1L else 1L
         val accountSign=if(AccountType.valueOf(a.type).debt)-expenseSign else expenseSign
         val postings=if(draft.historicalIncluded)emptyList()else listOf(PostingEntity(bookId,event.id+":settlement",event.id,a.id,
@@ -199,7 +208,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             listOf(ReserveUseEntity(bookId,event.id,rid,used))
         }.orEmpty()
         val treat=if(draft.treatEnabled)prepareTreat(bookId,draft.activityId?:error("互请必须关联活动 / ごちそうはシーンに関連付けてください"),event,null,draft.treatFriends,draft.treatMode,draft.treatWeights)else null
-        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantId=merchant?.id,eventPlace=draft.placeForNewEntry(bookId,event.id,LocalDate.now(clock).toString()),cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,draft))
+        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantId=merchant?.id,eventPlace=draft.copy(merchantId=merchant?.id).placeForNewEntry(bookId,event.id,LocalDate.now(clock).toString()),cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,draft))
     }
     /** Foundation for transfers/borrowing/repayments. UI is implemented in subsequent phases. */
     suspend fun saveMovement(bookId:String,kind:EntryKind,fromId:String,toId:String,fromAmount:Money,toAmount:Money,date:String):String=db.withTransaction {

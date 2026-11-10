@@ -20,7 +20,6 @@ data class OriginalExpenseMerchant(val bookId:String,val merchantId:String?,val 
  * Null/blank names with an explicit ID mean "use the formal name". A nonblank name must match.
  * Local editors must clear a stale selection when editing its name; cloud callers can report Invalid.
  * Refund callers supply the original expense and must not persist an independent refund link.
- * This is infrastructure only until batch B switches the write paths to it.
  */
 fun resolveMerchant(
     bookId:String,
@@ -54,3 +53,20 @@ fun resolveMerchant(
         else->MerchantResolution.Ambiguous(matches.sortedBy{it.id})
     }
 }
+
+/** Invalid explicit references are errors, while unmatched/ambiguous text remains unlinked. */
+fun MerchantResolution.merchantOrThrow():MerchantEntity?=when(this) {
+    is MerchantResolution.Resolved->merchant
+    is MerchantResolution.None,is MerchantResolution.Ambiguous->null
+    is MerchantResolution.Invalid->error(when(reason) {
+        MerchantResolutionError.ID_NAME_MISMATCH->"商户 ID 与名称不一致 / お店の ID と名前が一致しません"
+        MerchantResolutionError.INVALID_MERCHANT_ID->"商户不存在或不属于本账本 / お店が存在しないか別の帳簿のお店です"
+        MerchantResolutionError.UNSUPPORTED_ENTRY_KIND->"此记录类型不支持独立商户关联 / この記録種類はお店を直接関連付けられません"
+        MerchantResolutionError.ORIGINAL_EXPENSE_REQUIRED->"退款必须关联原消费 / 返金には元の支出が必要です"
+    })
+}
+
+/** Local selections are authoritative; editors clear the ID when the user changes text.
+ * Cloud adapters validate explicitly supplied ID + text together before calling repositories. */
+internal fun resolveSavedMerchant(bookId:String,kind:EntryKind,id:String?,name:String,merchants:List<MerchantEntity>)=
+    resolveMerchant(bookId,kind,id,name.takeIf{id==null},merchants).merchantOrThrow()

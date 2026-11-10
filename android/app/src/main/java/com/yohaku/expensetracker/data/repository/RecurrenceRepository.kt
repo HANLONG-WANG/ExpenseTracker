@@ -28,10 +28,10 @@ suspend fun LedgerRepository.saveRecurrence(bookId:String,input:RecurrenceInput)
         require(dao.activity(bookId,input.activityId)?.let{it.deletedAt==null}==true)
         require(dao.features(bookId)?.activityMode==true||old?.activityId==input.activityId)
     }
-    require(input.merchantId==null||dao.merchant(bookId,input.merchantId)!=null){"商户不属于本账本 / 別の帳簿のお店です"}
+    val merchant=resolveSavedMerchant(bookId,EntryKind.EXPENSE,input.merchantId,input.merchant.ifBlank{input.name},dao.merchants(bookId))
     val payment=fixedCardPayment(account,input.cardPaymentChoice,input.cardPaymentPeriods)
     val rule=RecurrenceEntity(bookId,old?.id?:id(),input.name.trim(),account.id,category.id,account.currency,input.amount?.minor,base?.minor,
-        input.estimated||input.amount==null,input.frequency.name,anchor.toString(),input.endDate,input.active,input.activityId,input.merchant.trim(),input.merchantId,input.note,payment.first,payment.second)
+        input.estimated||input.amount==null,input.frequency.name,anchor.toString(),input.endDate,input.active,input.activityId,merchant?.name?:input.merchant,merchant?.id,input.note,payment.first,payment.second)
     dao.putRecurrence(rule)
     val months=(dao.occurrences(bookId).filter{it.recurrenceId==rule.id}.map{it.scheduledDate.take(7)}+YearMonth.now(clock).toString()).distinct()
     months.forEach{ensureOccurrences(bookId,it)}

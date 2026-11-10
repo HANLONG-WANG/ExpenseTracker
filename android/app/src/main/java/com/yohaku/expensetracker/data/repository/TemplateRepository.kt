@@ -33,7 +33,7 @@ fun BookSnapshot.validateTemplate(input:TemplateInput) {
     require(categories.any{it.id==input.categoryId&&it.kind==input.kind.name}&&categoryEnabled(input.categoryId)){"请选择可用的同类型分类 / 有効な同じ種類のカテゴリを選択してください"}
     val account=entryAccounts(input.kind).firstOrNull{it.id==input.accountId}?:error("请选择可用账户 / 有効な口座を選択してください")
     require(input.currency.name==account.currency&&(input.amountMinor==null||input.amountMinor>0)){"金额须大于零且币种与账户一致 / 金額は0より大きく、口座の通貨と一致させてください"}
-    require(input.merchantId==null||merchants.any{it.id==input.merchantId&&it.active}){"请选择本账本的可用商户 / この帳簿の有効なお店を選択してください"}
+    require(input.merchantId==null||merchants.any{it.id==input.merchantId&&it.bookId==book.id}){"请选择本账本的可用商户 / この帳簿の有効なお店を選択してください"}
     require(input.activityId==null||availableActivities.any{it.id==input.activityId}){"活动不存在或已删除 / シーンは存在しないか削除済みです"}
     require(input.activityId==null||input.kind==EntryKind.EXPENSE){"活动只关联支出 / シーンは支出に関連付けてください"}
     fixedCardPayment(account,input.cardPaymentChoice,input.cardPaymentPeriods)
@@ -44,8 +44,9 @@ suspend fun LedgerRepository.saveTemplate(bookId:String,input:TemplateInput):Str
     val old=input.id?.let{id->s.templates.firstOrNull{it.id==id}?:error("模板不存在 / テンプレートがありません")}
     require(input.activityId==null||s.features?.activityMode==true||old?.activityId==input.activityId){"请先开启活动模式 / シーンモードを有効にしてください"}
     val payment=fixedCardPayment(s.accounts.first{it.id==input.accountId},input.cardPaymentChoice,input.cardPaymentPeriods)
+    val merchant=resolveSavedMerchant(bookId,input.kind,input.merchantId,input.merchant,s.merchants)
     val value=EntryTemplateEntity(bookId,old?.id?:id(),input.name.trim(),input.kind.name,input.categoryId,input.accountId,input.currency.name,input.amountMinor,
-        input.merchant.trim(),input.merchantId,input.note,payment.first,payment.second,input.activityId,old?.sortOrder?:((s.templates.maxOfOrNull{it.sortOrder}?:-1)+1),old?.createdAt?:clock.millis(),budgetExcluded=input.kind==EntryKind.EXPENSE&&input.budgetExcluded)
+        merchant?.name?:input.merchant,merchant?.id,input.note,payment.first,payment.second,input.activityId,old?.sortOrder?:((s.templates.maxOfOrNull{it.sortOrder}?:-1)+1),old?.createdAt?:clock.millis(),budgetExcluded=input.kind==EntryKind.EXPENSE&&input.budgetExcluded)
     dao.putTemplate(value);value.id
 }
 suspend fun LedgerRepository.deleteTemplate(bookId:String,id:String)=dao.deleteTemplate(bookId,id)
@@ -62,7 +63,7 @@ fun BookSnapshot.templateIssue(t:EntryTemplateEntity):String?=when {
     t.kind !in listOf("EXPENSE","INCOME")->"不支持的模板类型 / 未対応のテンプレート種類です"
     entryAccounts(EntryKind.valueOf(t.kind)).none{it.id==t.accountId&&it.currency==t.currency}->"账户已停用或不可用，请编辑模板 / 口座が停止中か利用不可です。テンプレートを編集してください"
     !categoryEnabled(t.categoryId)||categories.none{it.id==t.categoryId&&it.kind==t.kind}->"分类已归档或不可用，请编辑模板 / カテゴリがアーカイブ済みか利用不可です。テンプレートを編集してください"
-    t.merchantId!=null&&merchants.none{it.id==t.merchantId&&it.active}->"商户已停用，请编辑模板 / お店が停止中です。テンプレートを編集してください"
+    t.merchantId!=null&&merchants.none{it.id==t.merchantId&&it.bookId==book.id}->"商户不存在或不属于本账本，请编辑模板 / お店が存在しないか別の帳簿のお店です。テンプレートを編集してください"
     t.activityId!=null&&availableActivities.none{it.id==t.activityId}->"活动已删除，请编辑模板 / シーンが削除済みです。テンプレートを編集してください"
     t.activityId!=null&&features?.activityMode!=true->"请先开启活动模式 / シーンモードを有効にしてください"
     else->null

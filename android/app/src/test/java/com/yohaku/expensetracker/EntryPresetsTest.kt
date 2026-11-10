@@ -48,6 +48,10 @@ class EntryPresetsTest {
         invalid(input.copy(cardPaymentChoice="DEFERRED"));invalid(input.copy(merchantId="other-book"))
         assertEquals(null to null,fixedCardPayment(account.copy(type="BANK"),"DEFERRED",3))
         assertNull(s.templateIssue(template))
+        val stopped=s.copy(merchants=listOf(merchant.copy(active=false)))
+        stopped.validateTemplate(input.copy(merchantId=merchant.id))
+        assertNull(stopped.templateIssue(template));assertEquals(merchant.id,stopped.templateDraft(template).merchantId)
+        assertNotNull(s.copy(merchants=emptyList()).templateIssue(template))
         val disabled=s.copy(accounts=listOf(account.copy(active=false),account.copy(id="another")))
         assertNotNull(disabled.templateIssue(template));assertThrows(IllegalArgumentException::class.java){disabled.templateDraft(template)}
         val archived=s.copy(categories=listOf(category.copy(active=false)))

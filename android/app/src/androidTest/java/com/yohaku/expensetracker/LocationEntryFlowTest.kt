@@ -299,4 +299,26 @@ class LocationEntryFlowTest {
         }
     }
 
+
+    @Test fun disabledUniqueMerchantResolvesBeforeSavingTemporaryLocation()=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,YohakuDatabase::class.java).build()
+        try {
+            val repo=LedgerRepository(db)
+            val book=repo.createBook("Location resolution",Currency.JPY)
+            val account=repo.saveAccount(book,"Cash",AccountType.CASH,Currency.JPY,Money(Currency.JPY,1000),"2026-01-01")
+            val category=repo.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+            val shop=repo.saveMerchant(book,"Ｃａｆｅ",active=false)
+            repo.saveMerchantLocation(book,shop,"Entrance",35.0,139.0)
+            val draft=EntryDraft(accountId=account,categoryId=category,amount="100",date=java.time.LocalDate.now(repo.clock).toString(),merchant=" cafe ",capturedPlace=CapturedPlace(35.0,139.0,5.0))
+            val review=repo.previewEntry(book,draft)
+            assertEquals(shop,review.change.merchantId);assertNull(review.change.eventPlace)
+            val event=repo.commitEntryReview(book,review)!!
+            val unknown=repo.saveEntry(book,draft.copy(merchant="New place"))
+            val s=repo.snapshot(repo.dao.book(book)!!).first()
+            assertEquals("Ｃａｆｅ",s.events.single{it.id==event}.merchant)
+            assertEquals(shop,s.eventMerchants.single{it.eventId==event}.merchantId)
+            assertEquals(listOf(unknown),s.eventPlaces.map{it.eventId})
+            assertTrue(s.merchantCandidates(35.0,139.0).isEmpty())
+        }finally{db.close()}
+    }
 }

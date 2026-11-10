@@ -77,8 +77,11 @@ suspend fun LedgerRepository.confirmSettlement(bookId:String,input:SettlementCon
     val old=dao.event(bookId,input.eventId)!!
     val settlement=dao.settlement(bookId,old.id)!!
     val account=dao.account(bookId,old.accountId)!!
-    val event=old.copy(baseMinor=input.baseAmount.minor,revision=old.revision+1)
+    val merchant=if(old.kind in listOf("EXPENSE","INCOME"))resolveSavedMerchant(bookId,EntryKind.valueOf(old.kind),dao.eventMerchant(bookId,old.id)?.merchantId,old.merchant,dao.merchants(bookId))else null
+    val event=old.copy(baseMinor=input.baseAmount.minor,revision=old.revision+1,merchant=merchant?.name?:old.merchant)
     dao.putEvent(event)
+    merchant?.let{dao.putEventMerchant(EventMerchantEntity(bookId,event.id,it.id))}
+    if(event.kind==EntryKind.EXPENSE.name)synchronizeRefundMerchant(event)
     dao.putSettlement(settlement.copy(accountMinor=input.accountAmount.minor,confirmed=true,settlementDate=input.date,rateSource=input.source,rateDate=input.rateDate))
     dao.clearPostings(bookId,event.id)
     if(!event.historicalIncluded){

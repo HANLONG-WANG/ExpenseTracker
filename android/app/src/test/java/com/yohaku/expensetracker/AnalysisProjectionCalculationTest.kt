@@ -8,6 +8,21 @@ import org.junit.Test
 import java.time.LocalDate
 
 class AnalysisProjectionCalculationTest {
+    @Test fun originalNameLabelsKeepFirstVisibleSpellingAndRefreshWithSnapshot() {
+        val first=EventEntity("b","first","EXPENSE","bank",null,100,"JPY",100,"2026-10-01"," Ｃａｆｅ ","")
+        val second=first.copy(id="second",merchant="cAFE")
+        val s=BookSnapshot(BookEntity("b","分析","JPY","2026-01-01"),emptyList(),emptyList(),
+            listOf(first.copy(id="trash",merchant="CAFE",deletedAt=1L),first,second),emptyList(),null)
+        assertEquals(" Ｃａｆｅ ",s.merchantLabel("name:cafe"))
+        assertEquals("Other",s.merchantLabel("name:Other"))
+        val next=s.copy(events=listOf(second))
+        assertEquals("cAFE",next.merchantLabel("name:cafe"))
+        val linked=next.copy(merchants=listOf(MerchantEntity("b","shop","Cafe")),
+            eventMerchants=listOf(EventMerchantEntity("b",second.id,"shop")))
+        assertEquals("Cafe",linked.merchantLabel("id:shop"))
+        assertEquals("cafe",linked.merchantLabel("name:cafe"))
+    }
+
     @Test fun parentChildrenRefundsFeesFiltersAndComparisonUseTheSameEconomicFacts() {
         val parent="parent";val child="child";val shop="shop";val activity="activity"
         fun expense(id:String,amount:Long,date:String,category:String=parent,merchant:String="日常")=EventEntity("b",id,"EXPENSE","bank",category,amount,"JPY",amount,date,merchant,"")

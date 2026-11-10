@@ -18,11 +18,16 @@ data class AnalysisReport(val filter:AnalysisFilter,val facts:List<AnalysisFact>
     fun groups(key:(AnalysisFact)->String)=facts.groupBy(key).map{(id,values)->AnalysisGroup(id,values.fold(0L){s,f->Math.addExact(s,f.net)},values.map{it.event.id}.distinct().size)}.sortedByDescending{it.amount}
 }
 fun BookSnapshot.merchantKey(event:EventEntity):String {
-    merchantByEvent[event.id]?.let{return "id:"+it}
-    val matching=merchantsByName[normalizedMerchantName(event.merchant)]?.takeIf{event.merchant.isNotBlank()}?.singleOrNull()
-    return matching?.let{"id:"+it.id}?:"name:"+event.merchant
+    if(event.kind==EntryKind.REFUND.name) {
+        val original=settlementByEvent[event.id]?.originalEventId?.let{originalId->eventById[originalId]?.takeIf{it.kind==EntryKind.EXPENSE.name&&it.purgedAt==null}}
+        return original?.let{merchantKey(it)}?:"name:"
+    }
+    if(event.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name))merchantByEvent[event.id]?.let{return "id:"+it}
+    // Legacy expense fallback remains until batch E completes historical backfill.
+    val matching=if(event.kind==EntryKind.EXPENSE.name)merchantsByName[normalizedMerchantName(event.merchant)]?.takeIf{event.merchant.isNotBlank()}?.singleOrNull()else null
+    return matching?.let{"id:"+it.id}?:"name:"+if(event.kind==EntryKind.EXPENSE.name)normalizedMerchantName(event.merchant)else event.merchant
 }
-fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merchants.firstOrNull{it.id==key.removePrefix("id:")}?.name.orEmpty() else key.removePrefix("name:")
+fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merchants.firstOrNull{it.id==key.removePrefix("id:")}?.name.orEmpty() else merchantNameLabels[key]?:key.removePrefix("name:")
 fun BookSnapshot.analysis(filter:AnalysisFilter):AnalysisReport {
     require(LocalDate.parse(filter.start)<=LocalDate.parse(filter.end)){"开始日期不能晚于结束日期 / 開始日は終了日以前にしてください"}
     val ids=filter.categoryId?.let{id->setOf(id)+categories.filter{it.parentId==id}.map{it.id}}

@@ -213,4 +213,36 @@ class CommandLedgerExecutionTest {
         Log.i("CommandStage3","records=${snapshot(book).events.size} targets=500 previewMs=$previewMs confirmMs=$confirmMs")
         assertEquals(500,snapshot(book).events.count{it.note=="批量核对"})
     }
+
+    @Test fun merchantResolutionAcrossCommandsAndRefundUpdatesUndoTogether()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        val income=r.saveCategory(book,"Income",EntryKind.INCOME,null)
+        val cash=r.saveAccount(book,"Cash",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")
+        val a=r.saveMerchant(book,"A");val b=r.saveMerchant(book,"Ｃａｆｅ",active=false)
+        val purchase=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",date="2026-11-02",merchant="A"))
+        val refund=r.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,20),bank,Money(Currency.JPY,20),Money(Currency.JPY,20),"2026-11-02",true))
+        val trashed=r.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,5),bank,Money(Currency.JPY,5),Money(Currency.JPY,5),"2026-11-02",false))
+        r.deleteEntry(book,trashed)
+        cycle(book,listOf(
+            step("move","entry.update","""{"targets":{"ids":["$purchase"]},"set":{"merchant":"cafe"}}"""),
+            step("expense","entry.create","""{"account":"$bank","category":"$category","amount":{"currency":"JPY","minor":10},"merchant":" cafe "}"""),
+            step("income","entry.create","""{"kind":"INCOME","account":"$bank","category":"$income","amount":{"currency":"JPY","minor":10},"merchant":"cafe"}"""),
+            step("linkedIncome","entry.create","""{"kind":"INCOME","account":"$bank","category":"$income","amount":{"currency":"JPY","minor":10},"merchantId":"$b"}"""),
+            step("transfer","entry.create","""{"kind":"TRANSFER","account":"$bank","toAccount":"$cash","amount":{"currency":"JPY","minor":10},"toAmount":{"currency":"JPY","minor":10},"merchant":"cafe"}"""),
+            step("template","template.save","""{"name":"Daily","kind":"EXPENSE","category":"$category","account":"$bank","currency":"JPY","amountMinor":10,"merchant":"cafe"}"""),
+            step("fromTemplate","template.createEntry","""{"template":{"ref":"template","output":"template"}}"""),
+            step("rule","recurrence.save","""{"name":"cafe","account":"$bank","category":"$category","frequency":"MONTHLY","anchorDate":"2026-11-02","amount":{"currency":"JPY","minor":10}}"""))) {_,s->
+            assertEquals(b,s.eventMerchants.single{it.eventId==purchase}.merchantId)
+            assertTrue(s.events.filter{it.id in setOf(refund,trashed)}.all{it.merchant=="Ｃａｆｅ"})
+            assertEquals("id:$b",s.merchantKey(s.events.single{it.id==refund}));assertTrue(s.merchantEvents(a).isEmpty())
+            assertEquals(80L,s.netExpense(s.events.single{it.id==purchase}))
+            assertEquals(b,s.templates.single().merchantId);assertEquals(b,s.recurrences.single().merchantId)
+            assertEquals(4,s.eventMerchants.size) // purchase, new expense, explicit income, template payment
+            assertTrue(s.events.filter{it.kind=="TRANSFER"||it.kind=="INCOME"&&it.merchant=="cafe"}.all{e->s.eventMerchants.none{it.eventId==e.id}})
+        }
+        val before=CommandUndoJournal(r,book).snapshot()
+        val bad=receive(book,listOf(step("bad","entry.create","""{"account":"$bank","category":"$category","amount":{"currency":"JPY","minor":10},"merchantId":"$b","merchant":"A"}""")))
+        val error=assertThrows(IllegalStateException::class.java){runBlocking{commands.preview(bad.planId)}}
+        assertTrue(error.message!!.contains("ID 与名称不一致"));assertEquals(before,CommandUndoJournal(r,book).snapshot())
+    }
 }

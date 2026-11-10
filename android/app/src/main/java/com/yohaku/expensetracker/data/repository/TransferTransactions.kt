@@ -6,6 +6,7 @@ import java.time.LocalDate
 import kotlinx.serialization.encodeToString
 
 internal suspend fun LedgerRepository.prepareTransfer(bookId:String,d:EntryDraft):PreparedLedgerChange {
+    resolveMerchant(bookId,EntryKind.TRANSFER,d.merchantId,d.merchant,emptyList()).merchantOrThrow()
     val book=dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
     val from=dao.account(bookId,d.accountId?:"")?:error("请选择转出账户 / 出金口座を選択してください")
     val to=dao.account(bookId,d.toAccountId?:"")?:error("请选择转入账户 / 入金口座を選択してください")

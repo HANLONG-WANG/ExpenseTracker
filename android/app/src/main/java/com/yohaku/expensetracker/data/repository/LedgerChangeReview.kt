@@ -15,12 +15,15 @@ data class LedgerChangeReview internal constructor(val snapshot:BookSnapshot,val
 data class LedgerDetails(val settlement:SettlementEntity?=null,val transfer:TransferEntity?=null,val components:List<ExpenseComponentEntity> = emptyList(),val activityId:String?=null,val occurrenceId:String?=null,val reserveUses:List<ReserveUseEntity> = emptyList(),val treat:TreatEntity?=null,val allocations:List<TreatAllocationEntity> = emptyList(),val merchantId:String?=null,val attachmentIds:List<String> = emptyList(),val receiptRevision:Int?=null,val contract:DebtContractEntity?=null,val repayment:FinancialRepaymentEntity?=null,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val postings:List<PostingEntity> = emptyList())
 
 internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,clearDraft:Boolean=false,refreshFinance:Boolean=true,savedAt:Long=clock.millis()):String {
-    val e=change.event
-    val merchantId=change.merchantId?.takeIf{dao.merchant(e.bookId,it)!=null}
+    // Re-resolve inside the commit transaction, including commits prepared by a prior preview.
+    val prepared=change.event
+    val merchant=if(prepared.kind in listOf("EXPENSE","INCOME"))resolveSavedMerchant(prepared.bookId,EntryKind.valueOf(prepared.kind),change.merchantId,prepared.merchant,dao.merchants(prepared.bookId))else null
+    val e=prepared.copy(merchant=merchant?.name?:prepared.merchant)
+    val merchantId=merchant?.id
     val beforeDetails=change.before?.let{LedgerDetails(dao.settlement(e.bookId,e.id),dao.transfer(e.bookId,e.id),dao.components(e.bookId,e.id),dao.eventActivity(e.bookId,e.id)?.activityId,dao.eventOccurrences(e.bookId,e.id).firstOrNull{it.status in listOf("PENDING","COMPLETED")}?.id,dao.reserveUses(e.bookId,e.id),dao.eventTreat(e.bookId,e.id),dao.eventTreat(e.bookId,e.id)?.let{t->dao.allocations(e.bookId,t.id)}.orEmpty(),dao.eventMerchant(e.bookId,e.id)?.merchantId,dao.attachments(e.bookId,e.id).map{a->a.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=db.financialDao().fundingContract(e.bookId,e.id),repayment=db.financialDao().repayment(e.bookId,e.id),repaymentAllocations=db.financialDao().repaymentAllocations(e.bookId,e.id),postings=dao.eventPostings(e.bookId,e.id))}
     dao.putEvent(e)
     if(merchantId!=null)dao.clearEventPlace(e.bookId,e.id)
-    change.eventPlace?.let{dao.putEventPlace(it)}
+    if(merchantId==null)change.eventPlace?.let{dao.putEventPlace(it)}
     if(e.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name)||change.before?.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name)) {
         dao.clearEventMerchant(e.bookId,e.id)
         merchantId?.let{dao.putEventMerchant(EventMerchantEntity(e.bookId,e.id,it))}
@@ -39,7 +42,8 @@ internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,cl
     dao.putComponents(change.components)
     dao.clearEventActivity(e.bookId,e.id)
     change.activityId?.let{dao.putEventActivity(EventActivityEntity(e.bookId,e.id,it))}
-    if(e.kind==EntryKind.EXPENSE.name)dao.refunds(e.bookId,e.id).forEach{refund->
+    if(e.kind==EntryKind.EXPENSE.name)synchronizeRefundMerchant(e)
+    if(e.kind==EntryKind.EXPENSE.name)dao.refunds(e.bookId,e.id).filter{it.purgedAt==null}.forEach{refund->
         dao.clearEventActivity(e.bookId,refund.id)
         change.activityId?.let{dao.putEventActivity(EventActivityEntity(e.bookId,refund.id,it))}
     }

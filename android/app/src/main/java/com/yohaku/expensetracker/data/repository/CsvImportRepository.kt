@@ -68,10 +68,11 @@ suspend fun LedgerRepository.importCsv(bookId:String,fileName:String,sha256:Stri
             merchant=row.source.merchant,note=row.source.note,historicalIncluded=row.historical)
         // Same validation + complete event/settlement/postings/revision writer as manual entry;
         // do not clear the user's unrelated draft or repeatedly derive whole-book finance views.
+        val sourceMatchKey=CsvParser.sourceMatchKey(row.date,kind.name,row.minor,row.source.note,row.source.merchant)
         val change=prepareEntry(bookId,draft)
         val eventId=writeChange(change,refreshFinance=false)
         accountsToRefresh[change.event.accountId]=change
-        links+=CsvBatchEventEntity(bookId,eventId,batch.id)
+        links+=CsvBatchEventEntity(bookId,eventId,batch.id,sourceMatchKey)
         if(index%50==0||index==selected.lastIndex)onProgress(index+1,selected.size)
     }
     accountsToRefresh.values.forEach{refreshFinancialPools(it)}

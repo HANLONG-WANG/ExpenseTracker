@@ -94,6 +94,7 @@ class MerchantFlowTest {
             tap(text("编辑原名与备注","元の名前・メモを編集"))
             val field="field-"+text("商户原名","お店の元の名前")
             clearHeader(tag(field)).performTextReplacement("新名字")
+            // The adopted record already says 新名字; only the source record's text changes.
             tag("merchant-name-impact").assertTextContains("1",substring=true)
             sheetTap("merchant-save");tag("merchant-adoption-message").assertTextContains("1",substring=true);shot("$theme-$language-adoption-confirm")
             sheetTap("merchant-adoption-cancel");assertNotEquals("新名字",snapshot().merchants.single{it.id==source}.name)
@@ -236,6 +237,53 @@ class MerchantFlowTest {
             shot("$theme-$language-deleted-list")
             ui.runOnIdle{vm.entry.value=null}
 
+        }
+    }
+
+    @Test fun disabledMerchantInputAndRefundOwnershipAcrossLooks() {
+        for((theme,language) in testLooks(this@MerchantFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val ids=runBlocking {
+                val book=repo.createBook("Merchant B $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val account=repo.saveAccount(book,"Bank",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+                val category=repo.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+                val shop=repo.saveMerchant(book,"Ｃａｆｅ",active=false)
+                val other=repo.saveMerchant(book,"B")
+                vm.preferences.select(book);listOf(book,account,category,shop,other)
+            }
+            val (book,account,category,shop,other)=ids
+            fun snapshot()=(vm.state.value as AppState.Ready).snapshot!!
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
+            ui.runOnIdle {
+                vm.startEntry(snapshot())
+                vm.changeEntry(book,vm.entry.value!!.copy(categoryId=category,accountId=account,amount="100"))
+                vm.navigate("entry")
+            }
+            val input=ui.onNodeWithTag("field-"+text("商户 / 买了什么","お店 / 買ったもの"))
+            input.performScrollTo().performTextReplacement("cafe")
+            ui.waitUntil(10000){vm.entry.value?.merchantId==shop}
+            ui.onNodeWithTag("entry-merchant-selected").assertTextContains(text("将关联到已停用商户 Ｃａｆｅ","停止中のお店「Ｃａｆｅ」に関連付けます"),substring=true)
+            ui.onNodeWithTag("entry-merchant-selected").performScrollTo();shot("$theme-$language-disabled-merchant")
+            input.performScrollTo().performTextReplacement("New shop");assertNull(vm.entry.value!!.merchantId)
+            input.performTextReplacement("cafe")
+            ui.entryAction("entry-save-button").performClick()
+            ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value&&snapshot().events.size==1}
+            val purchase=snapshot().events.single().id
+            val refunds=runBlocking {
+                val confirmed=repo.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,20),account,Money(Currency.JPY,20),Money(Currency.JPY,20),"2026-10-14",true))
+                val pending=repo.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,5),account,Money(Currency.JPY,5),Money(Currency.JPY,5),"2026-10-14",false))
+                repo.saveEntry(book,EntryDraft(id=purchase,accountId=account,categoryId=category,amount="100",date="2026-10-14",merchant="B"))
+                listOf(confirmed,pending)
+            }
+            ui.waitUntil(10000){snapshot().events.size==3&&snapshot().events.all{it.merchant=="B"}}
+            ui.runOnIdle{vm.navigate("merchants")}
+            expand(other);ui.onNodeWithTag("merchant-open-$other").performScrollTo().performClick()
+            ui.onNodeWithTag("event-${refunds[0]}").performScrollTo().assertTextContains(text("已到账","入金済"),substring=true)
+            ui.onNodeWithTag("event-${refunds[1]}").performScrollTo().assertTextContains(text("待到账","未入金"),substring=true)
+            shot("$theme-$language-refund-ownership")
+            assertTrue(snapshot().merchantEvents(shop).isEmpty())
+            assertEquals(80L,snapshot().analysis(AnalysisFilter("2026-10-01","2026-10-31",merchantKey="id:$other")).total)
         }
     }
 }

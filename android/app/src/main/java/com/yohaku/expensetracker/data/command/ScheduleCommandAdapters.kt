@@ -26,6 +26,7 @@ internal class RecurrenceAdapter(private val active:Boolean=false):LedgerAdapter
         val before=run.state();val r=run.ledger
         if(active){val v=commandJson.decodeFromJsonElement<RecurrenceActiveCommand>(step.input);r.setRecurrenceActive(run.bookId,run.resolve(v.recurrence),v.active)}
         else {val v=commandJson.decodeFromJsonElement<RecurrenceSaveCommand>(step.input);val old=v.recurrence?.let(run::resolve)
+            resolveMerchant(run.bookId,EntryKind.EXPENSE,v.merchantId?.let(run::resolve),v.merchant,before.ledger.merchants).merchantOrThrow()
             val id=r.saveRecurrence(run.bookId,RecurrenceInput(v.name,run.resolve(v.account),run.resolve(v.category),v.amount,v.baseAmount,v.estimated,v.frequency,v.anchorDate,v.endDate,old,v.active,v.activity?.let(run::resolve),v.merchant,v.merchantId?.let(run::resolve),v.note,v.cardPaymentChoice,v.cardPaymentPeriods))
             run.output(step.id,"recurrence",id,old==null)}
         return planningEffect(step,run,before)

@@ -158,4 +158,34 @@ class CsvImportRoundTripTest {
             assertEquals(10000L,repo.snapshot(repo.dao.book(book)!!).first().balance(snapshot.accounts.single()))
         }finally{db.close()}
     }
+
+    @Test fun sourceMatchKeyCapturesOriginalValuesBeforeMerchantResolution()=runBlocking {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        try {
+            val repo=LedgerRepository(db)
+            val book=repo.createBook("CSV source",Currency.JPY,startDate="2026-01-01")
+            val account=repo.saveAccount(book,"Cash",AccountType.CASH,Currency.JPY,Money(Currency.JPY,1000),"2026-01-01")
+            val shop=repo.saveMerchant(book,"Ｃａｆｅ",active=false)
+            val bytes="日期,金额,类别,商户,备注\n2026-10-01,100,Food,cafe,original note\n2026-10-01,100,Food,cafe,original note".toByteArray()
+            val document=CsvParser.read(bytes)
+            val settings=CsvParser.guess(document).copy(accountId=account,noteAsMerchant=false,columns=mapOf("date" to 0,"amount" to 1,"category" to 2,"merchant" to 3,"note" to 4),rule="EXPENSE")
+            val journal=com.yohaku.expensetracker.data.command.CommandUndoJournal(repo,book)
+            val before=journal.snapshot()
+            val batch=repo.importCsv(book,"source.csv",CsvParser.hash(bytes),document,settings,emptyMap(),repo.csvPreview(book,document,settings,emptyMap()))
+            val events=db.csvImportDao().events(book,batch.id)
+            assertEquals(2,events.size) // Equal source rows within one file remain separate.
+            assertTrue(events.all{it.merchant=="Ｃａｆｅ"})
+            assertTrue(events.all{repo.dao.eventMerchant(book,it.id)!!.merchantId==shop})
+            val expected=CsvParser.sourceMatchKey("2026-10-01","EXPENSE",100,"original note","cafe")
+            db.openHelper.readableDatabase.query("SELECT sourceMatchKey FROM csv_batch_events WHERE bookId=?",arrayOf(book)).use{c->
+                var count=0;while(c.moveToNext()){assertEquals(expected,c.getString(0));count++};assertEquals(2,count)
+            }
+            val links=journal.changes(before).filter{it.table=="csv_batch_events"}
+            assertEquals(2,links.size);assertTrue(links.all{it.before==null&&!it.removed})
+            assertTrue(links.all{it.after["sourceMatchKey"]==kotlinx.serialization.json.JsonPrimitive(expected)})
+            // This batch captures source only; duplicate preview still compares current values until F.
+            assertFalse(repo.csvPreview(book,document,settings,emptyMap()).rows.any{it.duplicate})
+        }finally{db.close()}
+    }
 }

@@ -36,7 +36,7 @@ fun AccountBalanceChange.needsNegativeBalanceConfirmation()=!AccountType.valueOf
 fun LedgerChangeReview.negativeBalanceChanges()=impacts.flatMap{it.balances}.filter{it.needsNegativeBalanceConfirmation()}
 fun normalizedMerchantName(value:String)=normalizedSearchText(value.trim())
 fun List<MerchantEntity>.matchingMerchants(query:String)=filter{it.active&&normalizedMerchantName(it.name).contains(normalizedMerchantName(query))}
-fun BookSnapshot.merchantInput(d:EntryDraft,value:String)=d.copy(merchant=value,merchantId=merchants.filter{normalizedMerchantName(it.name)==normalizedMerchantName(value)}.singleOrNull()?.takeIf{it.active}?.id,merchantManuallyEdited=true,merchantLocated=false)
+fun BookSnapshot.merchantInput(d:EntryDraft,value:String)=d.copy(merchant=value,merchantId=(resolveMerchant(book.id,d.kind,null,value,merchants) as? MerchantResolution.Resolved)?.merchant?.id,merchantManuallyEdited=true,merchantLocated=false)
 
 /** The editor and command adapters share this policy; risk acceptance remains separate. */
 suspend fun LedgerRepository.entryNeedsReview(bookId:String,d:EntryDraft):Boolean {

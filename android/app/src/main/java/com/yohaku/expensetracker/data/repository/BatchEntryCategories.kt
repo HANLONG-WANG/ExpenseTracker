@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker.data.repository
 
 import com.yohaku.expensetracker.data.db.*
+import com.yohaku.expensetracker.domain.model.EntryKind
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.encodeToString
@@ -23,15 +24,21 @@ internal fun prepareEntryCategories(snapshot:BookSnapshot,ids:List<String>,categ
 /** Caller holds mediaWrites and the outer transaction. Revision timestamps still drive recent defaults. */
 internal suspend fun LedgerRepository.writeEntryCategoriesInTransaction(changes:List<PreparedCategoryChange>) {
     val timestamp=clock.millis()
-    for((before,after,details) in changes) {
+    val merchants=changes.firstOrNull()?.let{dao.merchants(it.after.bookId)}.orEmpty()
+    for((before,prepared,details) in changes) {
+        val merchant=if(prepared.kind in listOf("EXPENSE","INCOME"))resolveSavedMerchant(prepared.bookId,EntryKind.valueOf(prepared.kind),details.merchantId,prepared.merchant,merchants)else null
+        val after=prepared.copy(merchant=merchant?.name?:prepared.merchant)
         currentCoroutineContext().ensureActive()
         dao.putEvent(after)
+        if(merchant!=null)dao.putEventMerchant(EventMerchantEntity(after.bookId,after.id,merchant.id))
+        if(after.kind==EntryKind.EXPENSE.name)synchronizeRefundMerchant(after)
         val savedDetails=json.encodeToString(details)
-        dao.putRevision(RevisionEntity(after.bookId,id(),after.id,after.revision,timestamp,json.encodeToString(before),json.encodeToString(after),savedDetails,savedDetails))
+        val afterDetails=json.encodeToString(details.copy(merchantId=merchant?.id))
+        dao.putRevision(RevisionEntity(after.bookId,id(),after.id,after.revision,timestamp,json.encodeToString(before),json.encodeToString(after),savedDetails,afterDetails))
     }
 }
 
-/** The same immutable detail snapshot is saved on both sides of a category-only revision. */
+/** Shared details for lightweight category revisions; merchant normalization updates only its ID. */
 internal fun BookSnapshot.entryDetails(id:String):LedgerDetails {
     val treat=treats.firstOrNull{it.eventId==id}
     return LedgerDetails(settlement=settlementByEvent[id],transfer=transferByEvent[id],components=expenseComponents.filter{it.eventId==id},

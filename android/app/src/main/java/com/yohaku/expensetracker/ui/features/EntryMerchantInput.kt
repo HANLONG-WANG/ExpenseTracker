@@ -25,6 +25,7 @@ import com.yohaku.expensetracker.ui.theme.*
     var query by rememberSaveable(d.mediaSession){mutableStateOf("")}
     val haptics=LocalHaptics.current
     fun choose(m:MerchantEntity){haptics.perform(Haptic.Select);onChange(d.copy(merchant=m.name,merchantId=m.id,merchantManuallyEdited=true,merchantLocated=false));open=false}
+    val selected=s.merchants.firstOrNull{it.id==d.merchantId}
     val suggestions=if(d.merchantId==null&&d.merchant.isNotBlank())s.merchants.matchingMerchants(d.merchant).take(5)else emptyList()
     // Suggestions sit under the field; keep them above the keyboard as they appear and as it slides in.
     val requester=remember{BringIntoViewRequester()}
@@ -37,7 +38,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YLink(word("商户一览","一覧"),{query="";open=true},Modifier.testTag("entry-merchant-list"))
         }
         if(d.merchantId!=null) {
-            LocatedMerchantChip(d.merchant,word("已选商户 · 点击清除","選択済み・タップして解除"),{onChange(d.copy(merchant="",merchantId=null,merchantManuallyEdited=true,merchantLocated=false))},Modifier.fillMaxWidth().testTag("entry-merchant-selected"))
+            LocatedMerchantChip(d.merchant,if(selected?.active==false)word("将关联到已停用商户 ${selected.name} · 点击清除","停止中のお店「${selected.name}」に関連付けます・タップして解除")else word("已选商户 · 点击清除","選択済み・タップして解除"),{onChange(d.copy(merchant="",merchantId=null,merchantManuallyEdited=true,merchantLocated=false))},Modifier.fillMaxWidth().testTag("entry-merchant-selected"))
         }else suggestions.forEach{m->
             LocatedMerchantChip(m.name,word("使用已保存商户","保存済みのお店を使用"),{choose(m)},Modifier.fillMaxWidth().testTag("merchant-suggestion-${m.id}"))
         }

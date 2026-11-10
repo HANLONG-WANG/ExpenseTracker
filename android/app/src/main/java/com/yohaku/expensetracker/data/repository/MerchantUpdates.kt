@@ -11,11 +11,15 @@ fun BookSnapshot.merchantEvents(id:String)=events.filter{merchantKey(it)=="id:$i
 fun BookSnapshot.merchantAdoptions(name:String,old:MerchantEntity?):List<EventEntity> {
     val key=normalizedMerchantName(name)
     if(key.isEmpty()||old!=null&&key==normalizedMerchantName(old.name))return emptyList()
-    return events.filter{it.id !in merchantByEvent&&normalizedMerchantName(it.merchant)==key&&
+    return events.filter{it.kind==EntryKind.EXPENSE.name&&it.id !in merchantByEvent&&normalizedMerchantName(it.merchant)==key&&
         (old==null||merchantKey(it)!="id:${old.id}")}
 }
+private fun BookSnapshot.withMerchantRefunds(records:List<EventEntity>):List<EventEntity> {
+    val originals=records.filter{it.kind==EntryKind.EXPENSE.name}.map{it.id}.toSet()
+    return (records.filter{it.kind!=EntryKind.REFUND.name}+events.filter{it.kind==EntryKind.REFUND.name&&settlementByEvent[it.id]?.originalEventId in originals}).distinctBy{it.id}
+}
 fun BookSnapshot.merchantNameChanges(name:String,old:MerchantEntity?)=
-    (old?.let{merchantEvents(it.id)}.orEmpty()+merchantAdoptions(name,old)).distinctBy{it.id}.count{it.merchant!=name.trim()}
+    withMerchantRefunds(old?.let{merchantEvents(it.id)}.orEmpty()+merchantAdoptions(name,old)).count{it.merchant!=name.trim()}
 
 internal fun BookSnapshot.merchantMergeEvents(sourceId:String,targetId:String):List<EventEntity> {
     val afterRemoval=copy(merchants=merchants.filter{it.id!=sourceId})
@@ -66,8 +70,8 @@ suspend fun LedgerRepository.mergeMerchants(bookId:String,sourceId:String,target
  * exported receipt bundles and financial facts keyed by event revision stay untouched.
  */
 private suspend fun LedgerRepository.synchronizeMerchant(s:BookSnapshot,target:MerchantEntity,sourceIds:Set<String>,events:List<EventEntity>) {
-    for(event in events) {
-        if(event.kind==EntryKind.EXPENSE.name||event.id in s.merchantByEvent) {
+    for(event in s.withMerchantRefunds(events)) {
+        if(event.kind==EntryKind.EXPENSE.name||event.kind==EntryKind.INCOME.name&&event.id in s.merchantByEvent) {
             dao.putEventMerchant(EventMerchantEntity(s.book.id,event.id,target.id))
             dao.clearEventPlace(s.book.id,event.id)
         }
@@ -78,5 +82,12 @@ private suspend fun LedgerRepository.synchronizeMerchant(s:BookSnapshot,target:M
     dao.storedDraft(s.book.id)?.let{stored->
         val draft=json.decodeFromString<com.yohaku.expensetracker.domain.model.EntryDraft>(stored.json)
         if(draft.merchantId in sourceIds)dao.putDraft(stored.copy(json=json.encodeToString(draft.copy(merchantId=target.id,merchant=target.name))))
+    }
+}
+
+/** Refund display copies follow their purchase, including recoverable refunds, without revisions. */
+internal suspend fun LedgerRepository.synchronizeRefundMerchant(original:EventEntity) {
+    dao.refunds(original.bookId,original.id).filter{it.purgedAt==null&&it.merchant!=original.merchant}.forEach {
+        dao.putEvent(it.copy(merchant=original.merchant))
     }
 }

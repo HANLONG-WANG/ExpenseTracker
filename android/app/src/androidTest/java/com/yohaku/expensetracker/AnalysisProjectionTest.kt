@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker
 
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.data.db.*
@@ -89,8 +90,8 @@ class AnalysisProjectionTest {
         val after=snapshot()
         assertTrue(after.merchants.isEmpty());assertTrue(after.merchantLocations.isEmpty());assertTrue(after.eventMerchants.isEmpty())
         assertEquals(before.events,after.events)
-        assertEquals("记录原名",after.events.single{it.id==event}.merchant)
-        assertEquals("回收站原名",after.events.single{it.id==trashed}.merchant)
+        assertEquals("原名",after.events.single{it.id==event}.merchant)
+        assertEquals("原名",after.events.single{it.id==trashed}.merchant)
         assertEquals(before.templates.single().copy(merchantId=null),after.templates.single{it.id==template})
         assertEquals(before.recurrences.single().copy(merchantId=null),after.recurrences.single{it.id==rule})
         assertEquals(draft.copy(merchantId=null,merchantLocated=false),after.draft)
@@ -100,7 +101,7 @@ class AnalysisProjectionTest {
         assertEquals(after.draft,snapshot().draft)
         repo.restoreEntry(book,trashed)
         assertNull(repo.dao.event(book,trashed)!!.deletedAt)
-        assertEquals("回收站原名",repo.dao.event(book,trashed)!!.merchant)
+        assertEquals("原名",repo.dao.event(book,trashed)!!.merchant)
         assertTrue(snapshot().eventMerchants.isEmpty())
     }
     @Test fun renameSynchronizesLegacyLinkedTrashRefundAndReusableReferences()=runBlocking {
@@ -117,18 +118,22 @@ class AnalysisProjectionTest {
         repo.saveTemplate(book,TemplateInput("常用",EntryKind.EXPENSE,parent,account,Currency.JPY,merchant="旧模板名",merchantId=shop))
         repo.saveRecurrence(book,RecurrenceInput("每月",account,parent,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-10-01",merchant="旧周期名",merchantId=shop))
         repo.saveDraft(book,EntryDraft(accountId=account,categoryId=parent,merchant="旧草稿名",merchantId=shop))
+        repo.dao.putEvent(repo.dao.event(book,linked)!!.copy(merchant="以前改名留下的文字"))
+        repo.dao.clearEventMerchant(book,legacy)
+        repo.dao.putEvent(repo.dao.event(book,legacy)!!.copy(merchant=" cafe "))
         val before=snapshot()
-        assertEquals(setOf(linked,legacy,refund,trashed,income,transfer),before.merchantEvents(shop).map{it.id}.toSet())
+        assertEquals(setOf(linked,legacy,refund,trashed),before.merchantEvents(shop).map{it.id}.toSet())
         repo.saveMerchant(book,"New cafe",id=shop)
         val after=snapshot()
-        assertTrue(after.events.all{it.merchant=="New cafe"})
+        assertTrue(after.events.filter{it.id !in setOf(income,transfer)}.all{it.merchant=="New cafe"})
+        assertTrue(after.events.filter{it.id in setOf(income,transfer)}.all{it.merchant=="cafe"})
         assertEquals(setOf(linked,legacy,trashed),after.eventMerchants.map{it.eventId}.toSet())
         assertTrue(after.eventMerchants.all{it.merchantId==shop})
-        assertEquals(before.events.map{it.id}.toSet(),after.merchantEvents(shop).map{it.id}.toSet())
+        assertEquals(setOf(linked,legacy,refund,trashed),after.merchantEvents(shop).map{it.id}.toSet())
         assertEquals("New cafe",after.templates.single().merchant);assertEquals("New cafe",after.recurrences.single().merchant);assertEquals("New cafe",after.draft!!.merchant)
         assertEquals(before.postings,after.postings)
         // The name is a reference to the merchant, not a record edit: no revision, so recent-entry defaults keep their order.
-        assertEquals(before.events.map{it.copy(merchant="New cafe")},after.events)
+        assertEquals(before.events.map{if(it.id in setOf(income,transfer))it else it.copy(merchant="New cafe")},after.events)
         assertEquals(before.eventSaveTimes,after.eventSaveTimes)
         repo.saveMerchant(book,"New cafe",note="只改备注",id=shop,active=false)
         assertEquals(after.events,snapshot().events)
@@ -187,5 +192,80 @@ class AnalysisProjectionTest {
         try{repo.saveMerchantLocation(separate,first,"別",35.0,139.0);fail("Cross-book location accepted")}catch(_:IllegalArgumentException){}
         try{repo.saveEntry(book,EntryDraft(accountId=account,categoryId=parent,amount="100",merchantId=repo.saveMerchant(separate,"別店")));fail("Cross-book merchant accepted")}catch(_:IllegalStateException){}
         assertTrue(snapshot().events.isEmpty())
+    }
+
+    @Test fun savesResolveNamesAndDisabledTemplatesAndRulesRemainUsable()=runBlocking {
+        val shop=repo.saveMerchant(book,"Ｃａｆｅ",active=false)
+        val matched=expense("100","2026-10-14",merchant=" cafe ")
+        val unknown=expense("100","2026-10-14",merchant=" Unlisted ")
+        val otherBook=repo.createBook("Other",Currency.JPY)
+        repo.dao.putMerchant(MerchantEntity(otherBook,"elsewhere","Unlisted"))
+        val duplicate=repo.id();repo.dao.putMerchant(MerchantEntity(book,duplicate,"CAFE"))
+        val ambiguous=expense("100","2026-10-14",merchant="cafe")
+        assertNull(repo.dao.eventMerchant(book,ambiguous))
+        assertEquals("cafe",repo.dao.event(book,ambiguous)!!.merchant)
+        repo.dao.deleteMerchant(book,duplicate)
+        assertEquals(shop,repo.dao.eventMerchant(book,matched)!!.merchantId)
+        assertEquals("Ｃａｆｅ",repo.dao.event(book,matched)!!.merchant)
+        assertNull(repo.dao.eventMerchant(book,unknown));assertEquals(" Unlisted ",repo.dao.event(book,unknown)!!.merchant)
+        val incomeCategory=repo.saveCategory(book,"Income",EntryKind.INCOME,null)
+        val income=repo.saveEntry(book,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=incomeCategory,amount="20",merchant="cafe"))
+        assertNull(repo.dao.eventMerchant(book,income))
+        val explicitIncome=repo.saveEntry(book,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=incomeCategory,amount="20",merchantId=shop))
+        assertEquals(shop,repo.dao.eventMerchant(book,explicitIncome)!!.merchantId)
+        val template=repo.saveTemplate(book,TemplateInput("Coffee",EntryKind.EXPENSE,parent,account,Currency.JPY,100,merchant="cafe"))
+        val rule=repo.saveRecurrence(book,RecurrenceInput("cafe",account,parent,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-10-14"))
+        var s=snapshot()
+        val savedTemplate=s.templates.single{it.id==template};val savedRule=s.recurrences.single{it.id==rule}
+        assertEquals(shop,savedTemplate.merchantId);assertEquals("Ｃａｆｅ",savedTemplate.merchant)
+        assertEquals(shop,savedRule.merchantId);assertEquals("Ｃａｆｅ",savedRule.merchant)
+        assertNull(s.templateIssue(savedTemplate))
+        val templateEntry=repo.saveEntry(book,s.templateDraft(savedTemplate,"2026-10-14"))
+        val occurrence=s.occurrences.single{it.recurrenceId==rule}
+        val occurrenceEntry=repo.commitOccurrencePayment(book,repo.previewEntry(book,s.occurrenceDraft(occurrence,savedRule)))!!
+        s=snapshot()
+        assertEquals(shop,s.eventMerchants.single{it.eventId==templateEntry}.merchantId)
+        assertEquals(shop,s.eventMerchants.single{it.eventId==occurrenceEntry}.merchantId)
+        // Even lightweight command/category edits must normalize a previously unlinked expense.
+        repo.dao.clearEventMerchant(book,matched)
+        repo.dao.putEvent(repo.dao.event(book,matched)!!.copy(merchant="cafe"))
+        db.withTransaction { repo.writeEntryCategoriesInTransaction(prepareEntryCategories(snapshot(),listOf(matched),child)) }
+        assertEquals(shop,repo.dao.eventMerchant(book,matched)!!.merchantId)
+        assertEquals("Ｃａｆｅ",repo.dao.event(book,matched)!!.merchant)
+    }
+
+    @Test fun refundsFollowOriginalOwnershipIncludingTrashAndLegacyText()=runBlocking {
+        val a=repo.saveMerchant(book,"A");val b=repo.saveMerchant(book,"B",active=false)
+        val purchase=expense("100","2026-10-01",merchant="A")
+        suspend fun refund(value:Long,confirmed:Boolean)=repo.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,value),account,Money(Currency.JPY,value),Money(Currency.JPY,value),"2026-10-02",confirmed))
+        val confirmed=refund(20,true);val pending=refund(5,false);val recoverable=refund(5,true)
+        repo.deleteEntry(book,recoverable)
+        val review=repo.previewEntry(book,snapshot().merchantInput(snapshot().editingEntryDraft(repo.dao.event(book,purchase)!!),"b"))
+        assertNotNull(repo.commitEntryReview(book,review))
+        var s=snapshot()
+        assertEquals(setOf(purchase,confirmed,pending,recoverable),s.merchantEvents(b).map{it.id}.toSet())
+        assertTrue(s.merchantEvents(a).isEmpty())
+        assertTrue(s.events.all{it.merchant=="B"})
+        assertEquals(setOf(purchase),s.eventMerchants.map{it.eventId}.toSet())
+        assertEquals(80L,s.analysis(AnalysisFilter("2026-10-01","2026-10-31",merchantKey="id:$b")).total)
+        // Historical wrong refund copies cannot steal ownership back to A, even with original in trash.
+        repo.dao.putEvent(repo.dao.event(book,confirmed)!!.copy(merchant="A"))
+        s=snapshot();assertEquals("id:$b",s.merchantKey(s.events.single{it.id==confirmed}))
+        assertTrue(s.merchantAdoptions("A",null).isEmpty())
+        repo.deleteEntry(book,purchase)
+        s=snapshot();assertEquals("id:$b",s.merchantKey(s.events.single{it.id==confirmed}))
+        // Renaming A must not select that stale copy; renaming B follows its original instead.
+        repo.saveMerchant(book,"A2",id=a);assertEquals("A",repo.dao.event(book,confirmed)!!.merchant)
+        repo.saveMerchant(book,"B2",id=b)
+        assertTrue(snapshot().events.all{it.merchant=="B2"})
+    }
+
+    @Test fun unlinkedExpenseGroupsNormalizeNamesLikeOriginalDirectory()=runBlocking {
+        val one=expense("100","2026-10-01",merchant=" Ｃａｆｅ ")
+        val two=expense("200","2026-10-02",merchant="cAFE")
+        val s=snapshot();val report=s.analysis(AnalysisFilter("2026-10-01","2026-10-31"))
+        assertEquals(1,report.facts.map{it.merchantKey}.distinct().size)
+        assertEquals(s.merchantKey(s.events.single{it.id==one}),s.merchantKey(s.events.single{it.id==two}))
+        assertEquals(300L,report.total)
     }
 }

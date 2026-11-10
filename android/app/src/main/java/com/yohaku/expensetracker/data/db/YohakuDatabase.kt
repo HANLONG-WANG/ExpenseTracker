@@ -109,6 +109,7 @@ interface YohakuDao {
     @Query("UPDATE entry_templates SET merchantId=NULL WHERE bookId=:bookId AND merchantId=:merchantId") suspend fun clearTemplateMerchant(bookId:String,merchantId:String)
     @Query("UPDATE recurrences SET merchantId=NULL WHERE bookId=:bookId AND merchantId=:merchantId") suspend fun clearRecurrenceMerchant(bookId:String,merchantId:String)
     @Upsert suspend fun putMerchant(merchant:MerchantEntity)
+    @Query("SELECT * FROM merchants WHERE bookId=:bookId") suspend fun merchants(bookId:String):List<MerchantEntity>
     @Query("SELECT * FROM merchants WHERE bookId=:bookId AND id=:id") suspend fun merchant(bookId:String,id:String):MerchantEntity?
     @Upsert suspend fun putMerchantLocation(location:MerchantLocationEntity)
     @Query("SELECT * FROM merchant_locations WHERE bookId=:bookId AND id=:id") suspend fun merchantLocation(bookId:String,id:String):MerchantLocationEntity?

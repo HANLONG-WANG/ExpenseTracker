@@ -59,4 +59,11 @@ class MerchantFoundationTest {
         requireCurrentMerchantPreview(fingerprint,MerchantOperationPreview(basis,MerchantImpactCounts()))
         assertThrows(IllegalStateException::class.java){requireCurrentMerchantPreview(fingerprint,MerchantOperationPreview(changed,MerchantImpactCounts()))}
     }
+
+    @Test fun savedSelectionUsesFormalNameAndErrorsRemainExplicit() {
+        assertEquals(shop,resolveSavedMerchant("book",EntryKind.EXPENSE,shop.id,"old display",listOf(shop)))
+        assertEquals(shop,resolveSavedMerchant("book",EntryKind.INCOME,shop.id,"old display",listOf(shop)))
+        assertNull(resolveSavedMerchant("book",EntryKind.INCOME,null,shop.name,listOf(shop)))
+        assertTrue(runCatching{resolve(name="Other",id=shop.id).merchantOrThrow()}.exceptionOrNull()!!.message!!.contains("ID 与名称不一致"))
+    }
 }

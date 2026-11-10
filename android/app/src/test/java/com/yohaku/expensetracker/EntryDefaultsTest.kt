@@ -55,11 +55,13 @@ class EntryDefaultsTest {
         assertFalse(AccountBalanceChange(card,100,-1).needsNegativeBalanceConfirmation())
         assertFalse(AccountBalanceChange(card.copy(type="LOAN"),100,-1).needsNegativeBalanceConfirmation())
     }
-    @Test fun merchantNamesMatchWidthAndCaseAndExactInputAssociatesEnabledMerchant() {
+    @Test fun merchantNamesMatchWidthAndCaseIncludingDisabledButNotAmbiguousOrIncome() {
         val s=snapshot().copy(merchants=listOf(MerchantEntity("b","shop","Ｃａｆｅ １２"),MerchantEntity("b","off","Cafe 12",active=false)))
         assertEquals(listOf("shop"),s.merchants.matchingMerchants("cAFE").map{it.id})
         assertNull(s.merchantInput(EntryDraft(),"cafe 12").merchantId) // Historical duplicate stays ambiguous, even when one is disabled.
         assertEquals("shop",s.copy(merchants=s.merchants.take(1)).merchantInput(EntryDraft()," cafe 12 ").merchantId)
+        assertEquals("off",s.copy(merchants=s.merchants.drop(1)).merchantInput(EntryDraft(),"cafe 12").merchantId)
+        for(kind in listOf(EntryKind.INCOME,EntryKind.TRANSFER))assertNull(s.copy(merchants=s.merchants.take(1)).merchantInput(EntryDraft(kind=kind,merchantId="shop"),"Cafe 12").merchantId)
         assertNull(s.merchantInput(EntryDraft(merchantId="shop"),"Cafe 1").merchantId)
         val recorded=event("purchase","bank").copy(merchant=" cafe 12 ")
         assertFalse(s.merchantKey(recorded).startsWith("id:"))
