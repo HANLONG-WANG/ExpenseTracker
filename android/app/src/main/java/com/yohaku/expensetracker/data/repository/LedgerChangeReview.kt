@@ -8,7 +8,7 @@ import kotlinx.serialization.encodeToString
 
 /** The exact same prepared change drives both the impact preview and transaction. */
 data class PreparedLedgerChange internal constructor(val before:EventEntity?,val event:EventEntity,
-    val settlement:SettlementEntity,val postings:List<PostingEntity>,val transfer:TransferEntity?=null,val components:List<ExpenseComponentEntity> = emptyList(),val activityId:String?=null,val occurrenceId:String?=null,val reserveUses:List<ReserveUseEntity> = emptyList(),val treat:PreparedTreat?=null,val merchantId:String?=null,val media:PreparedMedia?=null,val contract:DebtContractEntity?=null,val repayment:FinancialRepaymentEntity?=null,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val cardRuleChecked:Boolean=false,val eventPlace:EventPlaceEntity?=null)
+    val settlement:SettlementEntity,val postings:List<PostingEntity>,val transfer:TransferEntity?=null,val components:List<ExpenseComponentEntity> = emptyList(),val activityId:String?=null,val occurrenceId:String?=null,val reserveUses:List<ReserveUseEntity> = emptyList(),val treat:PreparedTreat?=null,val merchantId:String?=null,val media:PreparedMedia?=null,val contract:DebtContractEntity?=null,val repayment:FinancialRepaymentEntity?=null,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val cardRuleChecked:Boolean=false,val eventPlace:EventPlaceEntity?=null,val merchantConflict:EntryMerchantConflict?=null)
 data class LedgerChangeReview internal constructor(val snapshot:BookSnapshot,val change:PreparedLedgerChange,val impacts:List<EntryImpact>,val originalNetBefore:Long?,val originalNetAfter:Long?)
 
 @kotlinx.serialization.Serializable
@@ -96,7 +96,8 @@ suspend fun LedgerRepository.previewEntry(bookId:String,draft:EntryDraft):Ledger
 }
 
 /** null means authoritative data changed: return to a fresh preview instead of committing. */
-suspend fun LedgerRepository.commitEntryReview(bookId:String,review:LedgerChangeReview,clearDraft:Boolean=true):String?=db.withTransaction {
+suspend fun LedgerRepository.commitEntryReview(bookId:String,review:LedgerChangeReview,clearDraft:Boolean=true,merchantConflictConfirmed:Boolean=false):String?=db.withTransaction {
+    require(review.change.merchantConflict==null||merchantConflictConfirmed){"请确认商户变化 / お店の変更を確認してください"}
     require(review.change.event.bookId==bookId)
     val book=dao.book(bookId) ?: error("账本不存在 / 帳簿がありません")
     if(snapshot(book).first().reviewState()!=review.snapshot.reviewState())return@withTransaction null

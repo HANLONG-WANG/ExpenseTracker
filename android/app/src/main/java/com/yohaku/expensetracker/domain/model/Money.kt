@@ -25,9 +25,14 @@ enum class AccountType { CASH, BANK, CREDIT, LOAN, IC;
 }
 @Serializable
 enum class EntryKind { EXPENSE, INCOME, TRANSFER, REPAYMENT, BORROWING, REFUND }
+/** Only the merchant fields at editor opening; null on legacy drafts. */
+@Serializable
+data class MerchantBaseline(val name:String,val id:String?)
 @Serializable
 data class EntryDraft(
     val id: String? = null, val kind: EntryKind = EntryKind.EXPENSE,
+    val merchantBaseline:MerchantBaseline?=null,
+    val merchantSyncVersion:Long=0,
     val categoryId: String? = null, val accountId: String? = null,
     val amount: String = "", val baseAmount: String = "", val date: String = java.time.LocalDate.now().toString(),
     val capturedPlace:CapturedPlace?=null, val merchant: String = "", val merchantId:String?=null,val merchantManuallyEdited:Boolean=false,val merchantLocated:Boolean=false,val note: String = "", val historicalIncluded: Boolean = false, val budgetExcluded:Boolean = false,

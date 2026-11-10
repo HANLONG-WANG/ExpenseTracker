@@ -152,7 +152,9 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
         dao.putCategory(category.copy(favorite=!category.favorite))
     }
     suspend fun saveEntry(bookId:String,draft:EntryDraft):String=db.withTransaction {
-        writeChange(withMedia(prepareEntry(bookId,draft),draft),clearDraft=true)
+        val prepared=prepareEntry(bookId,draft)
+        require(prepared.merchantConflict==null){"商户已变化，请预览并确认 / お店が変わりました。内容を確認してください"}
+        writeChange(withMedia(prepared,draft),clearDraft=true)
     }
     internal suspend fun prepareEntry(bookId:String,draft:EntryDraft,preparedSnapshot:BookSnapshot?=null):PreparedLedgerChange {
         val b=dao.book(bookId) ?: error("账本不存在 / 帳簿がありません")
@@ -175,8 +177,9 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
         require(old?.deletedAt==null){"请先恢复记录 / 記録を復元してください"}
         val linkedRefunds=old?.let{dao.refunds(bookId,it.id).filter{r->r.deletedAt==null}}.orEmpty()
         require(linkedRefunds.isEmpty() || old?.currency==amount.currency.name && old.kind==draft.kind.name && linkedRefunds.sumOf{it.amountMinor}<=amount.minor){"修改不能使关联退款超过原消费 / 変更後の金額は返金総額以上にしてください"}
-        val merchant=resolveSavedMerchant(bookId,draft.kind,draft.merchantId,draft.merchant,dao.merchants(bookId))
-        val event=cardPayment(EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),merchant?.name?:draft.merchant,draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis(),budgetExcluded=draft.kind==EntryKind.EXPENSE&&draft.budgetExcluded),draft,old,a)
+        val merchantDecision=draft.resolveEditingMerchant(bookId,old?.let{MerchantBaseline(it.merchant,dao.eventMerchant(bookId,it.id)?.merchantId)},dao.merchants(bookId))
+        val merchant=merchantDecision.value
+        val event=cardPayment(EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),merchant.name,draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis(),budgetExcluded=draft.kind==EntryKind.EXPENSE&&draft.budgetExcluded),draft,old,a)
         val expenseSign=if(draft.kind==EntryKind.EXPENSE)-1L else 1L
         val accountSign=if(AccountType.valueOf(a.type).debt)-expenseSign else expenseSign
         val postings=if(draft.historicalIncluded)emptyList()else listOf(PostingEntity(bookId,event.id+":settlement",event.id,a.id,
@@ -208,7 +211,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             listOf(ReserveUseEntity(bookId,event.id,rid,used))
         }.orEmpty()
         val treat=if(draft.treatEnabled)prepareTreat(bookId,draft.activityId?:error("互请必须关联活动 / ごちそうはシーンに関連付けてください"),event,null,draft.treatFriends,draft.treatMode,draft.treatWeights)else null
-        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantId=merchant?.id,eventPlace=draft.copy(merchantId=merchant?.id).placeForNewEntry(bookId,event.id,LocalDate.now(clock).toString()),cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,draft))
+        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantConflict=merchantDecision.conflict,merchantId=merchant.id,eventPlace=draft.copy(merchantId=merchant.id).placeForNewEntry(bookId,event.id,LocalDate.now(clock).toString()),cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,draft))
     }
     /** Foundation for transfers/borrowing/repayments. UI is implemented in subsequent phases. */
     suspend fun saveMovement(bookId:String,kind:EntryKind,fromId:String,toId:String,fromAmount:Money,toAmount:Money,date:String):String=db.withTransaction {
@@ -226,11 +229,15 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             PostingEntity(bookId,id(),event.id,toId,if(toDebt)-toAmount.minor else toAmount.minor,to.currency,date)))
         dao.putRevision(RevisionEntity(bookId,id(),event.id,1,clock.millis(),null,json.encodeToString(event)));event.id
     }
-    suspend fun saveDraft(bookId:String,draft:EntryDraft)=db.withTransaction {
+    suspend fun saveDraft(bookId:String,draft:EntryDraft,isCurrent:()->Boolean={true}):Boolean=db.withTransaction {
+        if(!isCurrent())return@withTransaction false
+        val storedDraft=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}
+        if(storedDraft?.mediaSession==draft.mediaSession&&storedDraft.merchantSyncVersion>draft.merchantSyncVersion)return@withTransaction false
         dao.storedDraft(bookId)?.let{stored->val old=json.decodeFromString<EntryDraft>(stored.json);if(old.mediaSession!=draft.mediaSession)dao.clearStagedMedia(bookId,old.mediaSession)}
         // A queued save may still carry a merchant removed since the form was opened.
-        val current=if(draft.merchantId!=null&&dao.merchant(bookId,draft.merchantId)==null)draft.withoutMerchantLink()else draft
+        val current=draft.clearMissingMerchant(dao.merchants(bookId))
         dao.putDraft(DraftEntity(bookId,json.encodeToString(current),clock.millis()))
+        true
     }
     suspend fun clearDraft(bookId:String)=db.withTransaction {
         dao.storedDraft(bookId)?.let{stored->dao.clearStagedMedia(bookId,json.decodeFromString<EntryDraft>(stored.json).mediaSession)}

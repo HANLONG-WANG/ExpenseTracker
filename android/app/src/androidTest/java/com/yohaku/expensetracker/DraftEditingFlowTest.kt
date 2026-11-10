@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.MerchantOperationType
 import com.yohaku.expensetracker.ui.features.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -1083,7 +1084,7 @@ class DraftEditingFlowTest {
         ui.onNodeWithText("×").performClick()
         val before=snapshot(a).events.single()
         val changedDate=java.time.LocalDate.parse(before.date).minusDays(1).toString()
-        runBlocking{repo.saveEntry(a,EntryDraft(id=event,accountId=account,categoryId=category,amount="680",date=changedDate,merchant="新商户",note="新的备注"))}
+        runBlocking{repo.saveEntry(a,EntryDraft(id=event,merchantBaseline=MerchantBaseline("喫茶と余白",null),accountId=account,categoryId=category,amount="680",date=changedDate,merchant="新商户",note="新的备注"))}
         for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("home")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
@@ -1105,7 +1106,7 @@ class DraftEditingFlowTest {
         }
     }
     @Test fun unreadableRevisionShowsErrorAndCanRetryWithoutChangingEntry(){
-        runBlocking{repo.saveEntry(a,EntryDraft(id=event,accountId=account,categoryId=category,amount="680",merchant="新商户"))}
+        runBlocking{repo.saveEntry(a,EntryDraft(id=event,merchantBaseline=MerchantBaseline("喫茶と余白",null),accountId=account,categoryId=category,amount="680",merchant="新商户"))}
         val saved=runBlocking{repo.dao.revisions(a,event).first().single{it.version==2}}
         db.openHelper.writableDatabase.execSQL("UPDATE revisions SET beforeJson=? WHERE bookId=? AND eventId=? AND version=2",arrayOf("{bad json",a,event))
         tap("新商户")
@@ -1226,6 +1227,114 @@ class DraftEditingFlowTest {
         assertEquals("invalid",vm.entry.value?.amount)
         assertEquals(original.events,snapshot(a).events)
         assertEquals(9700L,snapshot(a).balance(original.accounts.single()))
+    }
+
+    @Test fun retainedDraftPreviewsCurrentMerchantAndChecksConcurrentEdits()=runBlocking<Unit> {
+        val opening=snapshot(a).editingEntryDraft(snapshot(a).events.single()).copy(note="保留的草稿")
+        repo.saveDraft(a,opening)
+        val created=repo.commitMerchantOperation(repo.previewMerchantOperation(a,MerchantOperationInput(
+            MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,name="整理后的商户",originalName="喫茶と余白",createdId="organized")))!!
+        repo.saveMerchant(a,"新正式名称",id=created)
+        val retained=snapshot(a).draft!!
+        assertEquals(opening,retained)
+        val preview=repo.previewEntry(a,retained)
+        assertEquals("新正式名称",preview.change.event.merchant);assertEquals(created,preview.change.merchantId);assertNull(preview.change.merchantConflict)
+        assertNotNull(repo.commitEntryReview(a,preview))
+        assertEquals("保留的草稿",snapshot(a).events.single().note)
+        val start=snapshot(a).editingEntryDraft(snapshot(a).events.single())
+        val other=repo.saveMerchant(a,"别的商户")
+        val user=start.copy(merchant="别的商户",merchantId=null)
+        assertNull(repo.previewEntry(a,user).change.merchantConflict)
+        repo.saveEntry(a,start.copy(merchant="外部输入",merchantId=null))
+        val conflict=repo.previewEntry(a,user)
+        assertNotNull(conflict.change.merchantConflict)
+        assertTrue(runCatching{repo.saveEntry(a,user)}.isFailure)
+        assertTrue(runCatching{repo.commitEntryReview(a,conflict)}.isFailure)
+        assertNotNull(repo.commitEntryReview(a,conflict,merchantConflictConfirmed=true))
+        assertEquals(other,snapshot(a).eventMerchants.single().merchantId)
+        val legacy=start.copy(merchantBaseline=null,merchantId=null)
+        assertTrue(repo.previewEntry(a,legacy).change.merchantConflict!!.legacy)
+    }
+
+    @Test fun queuedDraftSaveCannotOverwriteMerchantSyncOrAnotherSession() {
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==a}
+        ui.runOnIdle{
+            vm.startEntry(snapshot(a))
+            vm.changeEntry(a,vm.entry.value!!.copy(categoryId=category,amount="50",merchant="原名",merchantManuallyEdited=true))
+        }
+        ui.waitUntil(10000){!vm.busy.value&&snapshot(a).draft?.merchant=="原名"}
+        val captured=vm.entry.value!!
+        val gate=kotlinx.coroutines.CompletableDeferred<Unit>()
+        ui.runOnIdle{vm.execute{gate.await()};vm.leaveEntry(a,true)}
+        runBlocking{repo.commitMerchantOperation(repo.previewMerchantOperation(a,MerchantOperationInput(
+            MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,name="正式名",originalName="原名",createdId="fresh")))}
+        ui.waitUntil(10000){vm.entry.value?.merchant=="正式名"}
+        assertFalse(runBlocking{repo.saveDraft(a,captured)})
+        gate.complete(Unit)
+        ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+        assertEquals("正式名",snapshot(a).draft!!.merchant);assertEquals("fresh",snapshot(a).draft!!.merchantId)
+        assertEquals("50",snapshot(a).draft!!.amount)
+        val secondGate=kotlinx.coroutines.CompletableDeferred<Unit>()
+        ui.runOnIdle{vm.resumeEntry(snapshot(a));vm.execute{secondGate.await()};vm.persistDraft(a);vm.startEntry(snapshot(a),EntryKind.INCOME)}
+        val session=vm.entry.value!!.mediaSession
+        secondGate.complete(Unit)
+        ui.waitUntil(10000){!vm.busy.value&&snapshot(a).draft?.mediaSession==session}
+        assertEquals(EntryKind.INCOME,snapshot(a).draft!!.kind)
+    }
+
+    @Test fun merchantConflictConfirmationAcrossLooks() {
+        for((theme,language) in testLooks(this@DraftEditingFlowTest))for(legacy in listOf(false,true)) {
+            ui.runOnIdle{vm.appearance(a,theme=theme,language=language)}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true&&!vm.busy.value}
+            val start=snapshot(a).editingEntryDraft(snapshot(a).events.single())
+            val requested="我的商户・自分のお店 $theme-$language"
+            val draft=start.copy(merchant=requested,merchantId=null,merchantManuallyEdited=true,merchantBaseline=start.merchantBaseline.takeUnless{legacy})
+            ui.runOnIdle{vm.entry.value=draft;vm.navigate("entry")}
+            runBlocking{repo.saveEntry(a,start.copy(merchant="当前商户・現在のお店",merchantId=null))}
+            ui.runOnIdle{vm.saveEntry(a)}
+            ui.waitUntil(10000){vm.entryReview.value?.change?.merchantConflict!=null&&!vm.busy.value}
+            ui.onNodeWithTag("entry-merchant-conflict").assertIsDisplayed()
+            ui.onNode(hasText("当前商户・現在のお店") and hasAnyAncestor(hasTestTag("entry-merchant-conflict"))).assertExists()
+            captureScreen("merchant-conflict","$theme-$language-${if(legacy)"legacy"else"concurrent"}")
+            ui.onNodeWithTag("entry-review-confirm").performScrollTo().performClick()
+            ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+            assertEquals(requested,snapshot(a).events.single().merchant)
+            assertNull(vm.error.value)
+        }
+    }
+
+    @Test fun queuedTemplateAndRecurrenceInputsReadTheirCurrentMerchantInTransaction()=runBlocking<Unit> {
+        val t=TemplateInput("Daily",EntryKind.EXPENSE,category,account,Currency.JPY,merchant="Raw")
+        val rule=RecurrenceInput("Daily",account,category,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-10-01",merchant="Raw")
+        val template=repo.saveTemplate(a,t);val recurrence=repo.saveRecurrence(a,rule)
+        val oldFields=MerchantBaseline("Raw",null)
+        val queuedTemplate=t.copy(id=template,merchantBaseline=oldFields,note="local template")
+        val queuedRule=rule.copy(id=recurrence,merchantBaseline=oldFields,note="local rule")
+        val target=repo.commitMerchantOperation(repo.previewMerchantOperation(a,MerchantOperationInput(
+            MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,name="Formal",originalName="Raw",createdId="organized")))!!
+        repo.saveMerchant(a,"Renamed",id=target)
+        repo.saveTemplate(a,queuedTemplate);repo.saveRecurrence(a,queuedRule)
+        val saved=snapshot(a)
+        assertEquals("Renamed",saved.templates.single().merchant);assertEquals(target,saved.templates.single().merchantId);assertEquals("local template",saved.templates.single().note)
+        assertEquals("Renamed",saved.recurrences.single().merchant);assertEquals(target,saved.recurrences.single().merchantId);assertEquals("local rule",saved.recurrences.single().note)
+    }
+
+    @Test fun openEditingFormTracksExternalMerchantAndRefreshesItsBaseline() {
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==a}
+        ui.runOnIdle{vm.editEntry(snapshot(a),snapshot(a).events.single())}
+        ui.waitUntil(10000){!vm.busy.value&&vm.entry.value!=null}
+        val other=runBlocking{repo.saveMerchant(a,"Current")}
+        val external=snapshot(a).editingEntryDraft(snapshot(a).events.single()).copy(merchant="Current",merchantId=other)
+        runBlocking{repo.saveEntry(a,external)}
+        ui.waitUntil(10000){vm.entry.value?.merchant=="Current"}
+        assertEquals(MerchantBaseline("Current",other),vm.entry.value!!.merchantBaseline)
+        assertFalse(vm.entryHasManualInput())
+        ui.runOnIdle{vm.changeEntry(a,vm.entry.value!!.copy(merchant="My choice",merchantId=null,merchantManuallyEdited=true))}
+        runBlocking{repo.saveMerchant(a,"Renamed",id=other)}
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.events?.single()?.merchant=="Renamed"&&!vm.busy.value}
+        assertEquals("My choice",vm.entry.value!!.merchant)
+        assertEquals(MerchantBaseline("Current",other),vm.entry.value!!.merchantBaseline)
+        assertNotNull(runBlocking{repo.previewEntry(a,vm.entry.value!!)}.change.merchantConflict)
     }
 
 }

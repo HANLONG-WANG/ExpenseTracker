@@ -121,14 +121,18 @@ fun BookSnapshot.prepareMerchantOperation(input:MerchantOperationInput):Prepared
     val nextRules=recurrences.map{r->val (id,name)=destination(r.merchantId,r.merchant.ifBlank{r.name},true)
         if(id==r.merchantId&&name==r.merchant.ifBlank{r.name})r else r.copy(merchantId=id,merchant=name)}
     val nextDraft=draft?.let { d->
-        // Editing-record baselines are batch D. Preserve existing explicit-ID sync in this batch.
-        if(d.kind==EntryKind.REFUND&&structural&&d.originalEventId in destinations)
+        // Existing-record text stays at its opening baseline; saving reads the current record.
+        if(!structural)d
+        else if(d.id!=null)if(removed!=null&&d.merchantId==removed)d.withoutMerchantLink()else d
+        else if(d.kind==EntryKind.REFUND&&structural&&d.originalEventId in destinations)
             d.copy(merchant=destinations.getValue(requireNotNull(d.originalEventId)).second,merchantId=null)
         else if(d.kind!=EntryKind.EXPENSE&&d.merchantId==null)d else {
-            val (id,name)=destination(d.merchantId,d.merchant,d.kind==EntryKind.EXPENSE&&d.id==null)
+            val (id,name)=if(op==MerchantOperationType.DELETE&&d.merchantId==removed)null to d.merchant
+                else destination(d.merchantId,d.merchant,d.kind==EntryKind.EXPENSE)
             if(id==d.merchantId&&name==d.merchant)d else d.copy(merchantId=id,merchant=name,merchantLocated=if(id==null)false else d.merchantLocated)
         }
     }
+    val versionedDraft=nextDraft?.let{if(it!=draft)it.copy(merchantSyncVersion=it.merchantSyncVersion+1)else it}
     val pending=if(structural&&op!=MerchantOperationType.DELETE||op==MerchantOperationType.ORGANIZE_LOCATIONS)
         eventPlaces.filter{p->p.eventId in destinations&&(destinations[p.eventId]?.first?:merchantByEvent[p.eventId])!=null}.map{it.eventId}.toSet() else emptySet()
     val handled=input.places.flatMap{it.eventIds}.toSet()
@@ -149,7 +153,7 @@ fun BookSnapshot.prepareMerchantOperation(input:MerchantOperationInput):Prepared
         else->null
     }}+saved
     val after=copy(merchants=finalMerchants,events=nextEvents,eventMerchants=nextLinks,templates=nextTemplates,recurrences=nextRules,
-        draft=nextDraft,merchantLocations=nextLocations,eventPlaces=eventPlaces.filter{it.eventId !in handled})
+        draft=versionedDraft,merchantLocations=nextLocations,eventPlaces=eventPlaces.filter{it.eventId !in handled})
     val savedIds=saved.mapTo(hashSetOf()){it.id}
     fun BookSnapshot.states():List<MerchantObjectState> = buildList {
         val merchantsById=merchants.associateBy{it.id}

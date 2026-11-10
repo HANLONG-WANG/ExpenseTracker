@@ -11,7 +11,7 @@ import java.util.UUID
 
 data class RecurrenceInput(val name:String,val accountId:String,val categoryId:String,val amount:Money?,val baseAmount:Money?,val estimated:Boolean,
     val frequency:RecurrenceFrequency,val anchorDate:String,val endDate:String?=null,val id:String?=null,val active:Boolean=true,val activityId:String?=null,
-    val merchant:String="",val merchantId:String?=null,val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null)
+    val merchant:String="",val merchantId:String?=null,val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val merchantBaseline:MerchantBaseline?=null)
 
 suspend fun LedgerRepository.saveRecurrence(bookId:String,input:RecurrenceInput):String=db.withTransaction {
     val book=dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
@@ -28,10 +28,11 @@ suspend fun LedgerRepository.saveRecurrence(bookId:String,input:RecurrenceInput)
         require(dao.activity(bookId,input.activityId)?.let{it.deletedAt==null}==true)
         require(dao.features(bookId)?.activityMode==true||old?.activityId==input.activityId)
     }
-    val merchant=resolveSavedMerchant(bookId,EntryKind.EXPENSE,input.merchantId,input.merchant.ifBlank{input.name},dao.merchants(bookId))
+    val fields=if(old!=null&&merchantFieldsUnchanged(MerchantBaseline(input.merchant,input.merchantId),input.merchantBaseline,dao.merchants(bookId)))MerchantBaseline(old.merchant,old.merchantId)else MerchantBaseline(input.merchant,input.merchantId)
+    val merchant=resolveSavedMerchant(bookId,EntryKind.EXPENSE,fields.id,fields.name.ifBlank{input.name},dao.merchants(bookId))
     val payment=fixedCardPayment(account,input.cardPaymentChoice,input.cardPaymentPeriods)
     val rule=RecurrenceEntity(bookId,old?.id?:id(),input.name.trim(),account.id,category.id,account.currency,input.amount?.minor,base?.minor,
-        input.estimated||input.amount==null,input.frequency.name,anchor.toString(),input.endDate,input.active,input.activityId,merchant?.name?:input.merchant,merchant?.id,input.note,payment.first,payment.second)
+        input.estimated||input.amount==null,input.frequency.name,anchor.toString(),input.endDate,input.active,input.activityId,merchant?.name?:fields.name,merchant?.id,input.note,payment.first,payment.second)
     dao.putRecurrence(rule)
     val months=(dao.occurrences(bookId).filter{it.recurrenceId==rule.id}.map{it.scheduledDate.take(7)}+YearMonth.now(clock).toString()).distinct()
     months.forEach{ensureOccurrences(bookId,it)}

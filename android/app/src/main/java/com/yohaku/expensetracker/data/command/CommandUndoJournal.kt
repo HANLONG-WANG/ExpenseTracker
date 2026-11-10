@@ -191,9 +191,19 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         }
         return expected
     }
+    // Synchronization generations are concurrency metadata, not user-editable undo fields.
+    private fun comparableRow(table:String,row:JsonObject?):JsonObject? {
+        if(table!="drafts"||row==null)return row
+        val draft=ledger.json.decodeFromString<EntryDraft>(row.getValue("json").jsonPrimitive.content)
+        return JsonObject(row+("json" to JsonPrimitive(ledger.json.encodeToString(draft.copy(merchantSyncVersion=0)))))
+    }
     private fun restoredBefore(change:UndoRowChange):JsonObject? = change.before?.let {
-        // Draft synchronization remains under the existing deletion policy (batch D).
-        if(change.table=="drafts")restorableRow(change.table,it)else it
+        if(change.table!="drafts")it else {
+            val row=requireNotNull(restorableRow(change.table,it))
+            val draft=ledger.json.decodeFromString<EntryDraft>(row.getValue("json").jsonPrimitive.content)
+            val current=read(change)?.let{value->ledger.json.decodeFromString<EntryDraft>(value.getValue("json").jsonPrimitive.content)}
+            JsonObject(row+("json" to JsonPrimitive(ledger.json.encodeToString(draft.copy(merchantSyncVersion=maxOf(draft.merchantSyncVersion,current?.merchantSyncVersion?:0)+1)))))
+        }
     }
     fun merchantConflicts(record:UndoRecord):List<UndoConflict> {
         val relevant=setOf("merchants","events","event_merchants","settlements","entry_templates","recurrences","merchant_locations")
@@ -207,7 +217,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         return newMerchantUndoConflicts(before.mapValues{it.value.values.toList()},after.mapValues{it.value.values.toList()})
     }
     fun conflicts(record:UndoRecord):List<UndoConflict> = record.rows.flatMap{change->
-        undoDifferences(change.table,objectKey(change.table,change.after),if(change.removed)JsonNull else restorableRow(change.table,change.after)?:JsonNull,read(change)?:JsonNull)
+        undoDifferences(change.table,objectKey(change.table,change.after),if(change.removed)JsonNull else comparableRow(change.table,restorableRow(change.table,change.after))?:JsonNull,comparableRow(change.table,read(change))?:JsonNull)
     }+record.rows.filter{it.table in setOf("books","events")&&it.before?.get("deletedAt")==JsonNull&&it.after["deletedAt"]!=JsonNull&&it.after["deletedAt"]?.jsonPrimitive?.longOrNull?.let{time->time<=ledger.clock.millis()-recoveryDuration.toMillis()}==true}.map{change->
         UndoConflict(change.table,objectKey(change.table,change.after),"recoveryDeadline",JsonPrimitive("可恢复 / 復元可能"),JsonPrimitive("已超过恢复期限 / 復元期限切れ"))
     }+references(record.rows,allowRecorded=true)
@@ -253,6 +263,8 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
             fun scan(value:JsonElement,path:String) {
                 when(value) {
                     is JsonObject->value.forEach{(key,value)->
+                        // An opening baseline is historical evidence, not a live merchant reference.
+                        if(table.name=="drafts"&&key=="merchantBaseline")return@forEach
                         byId[key]?.let{found(it,"$path.$key")}
                         if(jsonColumn(key)&&value is JsonPrimitive&&value.isString&&value.content.trimStart().let{it.startsWith("{")||it.startsWith("[")})
                             scan(commandJson.parseToJsonElement(value.content),"$path.$key")
@@ -285,7 +297,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         val rows=record.rows
         for(change in rows) {
             check(change.table in deleteOrder&&change.key==key(change.table,change.after)&&(change.table=="books"||change.after["bookId"]==JsonPrimitive(bookId)||change.table=="budgets"&&rows.any{it.table=="books"&&it.before==null&&it.after["id"]==change.after["bookId"]}))
-            check(read(change)==if(change.removed)null else restorableRow(change.table,change.after))
+            check(comparableRow(change.table,read(change))==if(change.removed)null else comparableRow(change.table,restorableRow(change.table,change.after)))
         }
         val accounts=rows.flatMap{row->listOfNotNull(
             if(row.table=="accounts")row.after["id"]?.jsonPrimitive?.content else null,

@@ -53,6 +53,12 @@ class CommandLedgerExecutionTest {
         assertEquals(history,db.merchantHistoryDao().page(row.bookId,1000))
         assertEquals("EXECUTED",commands.plan(row.planId).status)
     }
+    private fun withoutDraftSyncVersion(rows:Map<String,Pair<String,JsonObject>>)=rows.mapValues{(_,p)->
+        if(p.first!="drafts")p else {
+            val draft=r.json.decodeFromString<EntryDraft>(p.second.getValue("json").jsonPrimitive.content)
+            p.first to JsonObject(p.second+("json" to JsonPrimitive(r.json.encodeToString(EntryDraft.serializer(),draft.copy(merchantSyncVersion=0)))))
+        }
+    }
     private suspend fun cycle(book:String,steps:List<CommandStep>,verify:suspend (ConfirmationModel,BookSnapshot)->Unit) {
         val before=CommandUndoJournal(r,book).snapshot();val historyBefore=db.merchantHistoryDao().page(book,1000);val row=receive(book,steps)
         val preview=commands.preview(row.planId);assertTrue(preview.executable);assertTrue(preview.steps.all{it.undo.available})
@@ -83,7 +89,7 @@ class CommandLedgerExecutionTest {
             assertEquals(impacts.map{it.copy(operationId=inverse.id,oldMerchantName=it.newMerchantName,newMerchantName=it.oldMerchantName,oldMerchantId=it.newMerchantId,newMerchantId=it.oldMerchantId)},db.merchantHistoryDao().undoImpacts(book,inverse.id))
         }
         fun business(rows:Map<String,Pair<String,JsonObject>>)=rows.filterValues{it.first!="revisions"}.mapValues{(_,p)->p.first to JsonObject(p.second.filterKeys{it!="revision"||p.first!="events"})}
-        assertEquals(business(before),business(CommandUndoJournal(r,book).snapshot()))
+        assertEquals(business(withoutDraftSyncVersion(before)),business(withoutDraftSyncVersion(CommandUndoJournal(r,book).snapshot())))
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
         assertEquals("UNDONE",commands.plan(row.planId).status)
     }
@@ -157,13 +163,13 @@ class CommandLedgerExecutionTest {
             assertTrue(s.events.all{it.merchant=="Next"});assertEquals(setOf(linked,legacy,adopted),s.eventMerchants.map{it.eventId}.toSet())
             assertTrue(s.eventPlaces.isEmpty());assertEquals("Next",s.templates.single().merchant);assertEquals("Next",s.recurrences.single().merchant);assertEquals("Next",s.draft!!.merchant)
         }
-        assertEquals(original,CommandUndoJournal(r,book).snapshot()) // Includes record names, relationships and temporary places.
+        assertEquals(withoutDraftSyncVersion(original),withoutDraftSyncVersion(CommandUndoJournal(r,book).snapshot())) // All business fields restore; the synchronization generation advances.
         cycle(book,listOf(step("stop","merchant.setActive","""{"target":"$shop","active":false}"""))) {_,s->
             assertFalse(s.merchants.single().active);assertEquals("Cafe",s.events.single{it.id==linked}.merchant)
             assertEquals(shop,s.eventMerchants.single{it.eventId==legacy}.merchantId)
             assertEquals("NEXT",s.events.single{it.id==adopted}.merchant)
         }
-        assertEquals(original,CommandUndoJournal(r,book).snapshot())
+        assertEquals(withoutDraftSyncVersion(original),withoutDraftSyncVersion(CommandUndoJournal(r,book).snapshot()))
         val other=r.saveMerchant(book,"Other")
         val before=CommandUndoJournal(r,book).snapshot()
         val row=receive(book,listOf(step("duplicate","merchant.save","""{"merchant":"$shop","name":" ＯＴＨＥＲ "}""")))
@@ -404,4 +410,31 @@ class CommandLedgerExecutionTest {
         val error=assertThrows(IllegalStateException::class.java){runBlocking{commands.preview(bad.planId)}}
         assertTrue(error.message!!.contains("ID 与名称不一致"));assertEquals(before,CommandUndoJournal(r,book).snapshot())
     }
+    @Test fun cloudMerchantEditRespectsRetainedDraftIntentAndUndoSyncVersion()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        val a=r.saveMerchant(book,"A");val b=r.saveMerchant(book,"B")
+        val event=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",merchantId=a))
+        val draft=snapshot(book).editingEntryDraft(snapshot(book).events.single()).copy(note="local note")
+        r.saveDraft(book,draft)
+        val moved=execute(book,listOf(step("move","entry.update","""{"targets":{"ids":["$event"]},"set":{"merchantId":"$b"}}""")))
+        assertEquals(draft,snapshot(book).draft)
+        assertEquals(b,r.previewEntry(book,draft).change.merchantId)
+        assertNull(r.previewEntry(book,draft).change.merchantConflict)
+        assertNotNull(r.previewEntry(book,draft.copy(merchantId=null,merchant="My choice")).change.merchantConflict)
+        val undo=commands.prepareUndo(moved.planId);val preview=commands.preview(undo.planId)
+        assertTrue(preview.executable);commands.confirm(undo.planId,commandChecks(preview))
+        assertEquals(a,r.previewEntry(book,draft).change.merchantId)
+        // New-entry draft synchronization participates in cloud undo, but never rewinds its generation.
+        val fresh=draft.copy(id=null,merchantBaseline=null)
+        r.saveDraft(book,fresh)
+        val rename=execute(book,listOf(step("rename","merchant.save","""{"merchant":"$a","name":"A renamed"}""")))
+        val updated=snapshot(book).draft!!;assertEquals("A renamed",updated.merchant)
+        val undoRename=commands.prepareUndo(rename.planId);val undoPreview=commands.preview(undoRename.planId)
+        assertTrue(undoPreview.conflicts.toString(),undoPreview.executable)
+        commands.confirm(undoRename.planId,commandChecks(undoPreview))
+        val restored=snapshot(book).draft!!
+        assertEquals("A",restored.merchant);assertTrue(restored.merchantSyncVersion>updated.merchantSyncVersion)
+        assertFalse(r.saveDraft(book,updated));assertFalse(r.saveDraft(book,fresh))
+    }
+
 }

@@ -67,4 +67,38 @@ class EntryDefaultsTest {
         assertFalse(s.merchantKey(recorded).startsWith("id:"))
         assertEquals("id:shop",s.copy(merchants=s.merchants.take(1)).merchantKey(recorded))
     }
+    @Test fun merchantBaselineIsMinimalAndOldDraftJsonRemainsUnbased() {
+        val json=kotlinx.serialization.json.Json { encodeDefaults=true }
+        val old=json.decodeFromString<EntryDraft>("""{"id":"entry","merchant":"Old","merchantId":null}""")
+        assertNull(old.merchantBaseline);assertEquals(0L,old.merchantSyncVersion)
+        val d=old.copy(merchantBaseline=MerchantBaseline("Old",null))
+        assertEquals(d,json.decodeFromString<EntryDraft>(json.encodeToString(EntryDraft.serializer(),d)))
+        val e=event("entry","bank").copy(merchant="Old")
+        assertEquals(MerchantBaseline("Old",null),snapshot(listOf(e)).editingEntryDraft(e).merchantBaseline)
+        val initial=d.copy(categoryId="food")
+        assertFalse(initial.copy(merchantBaseline=MerchantBaseline("New","shop"),merchantSyncVersion=4).hasManualInput(initial))
+    }
+
+    @Test fun editingMerchantUsesCurrentRecordUnlessBothSidesChangedToDifferentOwners() {
+        val a=MerchantEntity("b","a","A");val b=a.copy(id="b",name="B");val c=a.copy(id="c",name="C")
+        val shops=listOf(a,b,c)
+        val baseline=MerchantBaseline("A","a")
+        val d=EntryDraft(id="entry",merchant="A",merchantId="a",merchantBaseline=baseline,merchantManuallyEdited=true)
+        assertEquals(MerchantBaseline("C","c"),d.resolveEditingMerchant("b",MerchantBaseline("C","c"),shops).value)
+        val edited=d.copy(merchant="b",merchantId=null)
+        assertNull(edited.resolveEditingMerchant("b",baseline,shops).conflict)
+        assertNotNull(edited.resolveEditingMerchant("b",MerchantBaseline("C","c"),shops).conflict)
+        assertNull(edited.resolveEditingMerchant("b",MerchantBaseline("B","b"),shops).conflict)
+        assertTrue(d.copy(merchantBaseline=null).resolveEditingMerchant("b",MerchantBaseline("C","c"),shops).conflict!!.legacy)
+        assertNull(d.copy(merchantBaseline=null).resolveEditingMerchant("b",baseline,shops).conflict)
+        val latest=MerchantBaseline("C","c")
+        assertEquals(latest,d.syncMerchantFields(latest,shops).merchantBaseline)
+        assertEquals(edited,edited.syncMerchantFields(latest,shops))
+        // Clearing an invalid live ID must preserve the evidence that the original ID was deleted.
+        val deleted=d.clearMissingMerchant(listOf(b,c))
+        assertNull(deleted.merchantId);assertEquals(baseline,deleted.merchantBaseline)
+        assertNull(deleted.resolveEditingMerchant("b",MerchantBaseline("A",null),listOf(b,c)).conflict)
+        assertNotNull(deleted.copy(merchant="B").resolveEditingMerchant("b",MerchantBaseline("A",null),listOf(b,c)).conflict)
+    }
+
 }

@@ -155,7 +155,7 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
             val prepared=calculated.getOrThrow()
             if(input.type in setOf(MerchantOperationType.MERGE,MerchantOperationType.ASSIGN_ORIGINAL_NAME)||prepared.preview.counts.newlyLinkedRecords>0||prepared.preview.counts.pendingPlaces>0||
                 input.type==MerchantOperationType.RENAME&&(prepared.preview.counts.templates>0||prepared.preview.counts.recurrenceRules>0))confirming=true
-            else vm.execute(onSuccess={vm.syncMerchantOperationDraft(prepared);vm.haptic(Haptic.Done);onDismiss()}){vm.repository.commitMerchantEdits(prepared)}
+            else vm.execute(onSuccess={vm.haptic(Haptic.Done);onDismiss()}){vm.repository.commitMerchantEdits(prepared)}
         },Modifier.testTag("merchant-save"),primary=true,enabled=!busy&&calculated.isSuccess)
     }
     if(confirming)MerchantOperationConfirmation(s,input,vm,
@@ -205,7 +205,7 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
         YButton(if(delete)word("确认删除商户","お店の削除を確定")else if(merge)word("合并","統合")else if(stable.type==MerchantOperationType.ORGANIZE_LOCATIONS)word("完成位置整理","場所の整理を完了")else word("确认归入并保存","取り込んで保存"),{
             val review=prepared.getOrThrow();var result:String?=null
             var refreshed:PreparedMerchantOperation?=null;var failed=false
-            vm.execute(onSuccess={vm.syncMerchantOperationDraft(review);vm.haptic(Haptic.Done);onSaved(result)},onComplete={
+            vm.execute(onSuccess={vm.haptic(Haptic.Done);onSaved(result)},onComplete={
                 refreshed?.let{base=it}?:run{if(failed)onDismiss()}
             }){
                 try { result=vm.repository.commitMerchantEdits(review) }

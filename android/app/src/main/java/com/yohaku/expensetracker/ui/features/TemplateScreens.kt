@@ -85,7 +85,8 @@ import com.yohaku.expensetracker.ui.theme.*
     var name by rememberSaveable(t?.id){mutableStateOf(t?.name.orEmpty())}
     var d by remember(t?.id){mutableStateOf(EntryDraft(kind=t?.kind?.let{EntryKind.valueOf(it)}?:EntryKind.EXPENSE,categoryId=t?.categoryId,
         accountId=t?.accountId?:s.defaultEntryAccount(EntryKind.EXPENSE),amount=t?.amountMinor?.let{Money(Currency.valueOf(t.currency),it).decimal.toPlainString()}.orEmpty(),
-        merchant=t?.merchant.orEmpty(),merchantId=t?.merchantId,note=t?.note.orEmpty(),budgetExcluded=t?.budgetExcluded?:false,cardPaymentChoice=t?.cardPaymentChoice,cardPaymentPeriods=t?.cardPaymentPeriods?.toString().orEmpty(),activityId=t?.activityId))}
+        merchant=t?.merchant.orEmpty(),merchantId=t?.merchantId,merchantBaseline=t?.let{MerchantBaseline(it.merchant,it.merchantId)},note=t?.note.orEmpty(),budgetExcluded=t?.budgetExcluded?:false,cardPaymentChoice=t?.cardPaymentChoice,cardPaymentPeriods=t?.cardPaymentPeriods?.toString().orEmpty(),activityId=t?.activityId))}
+    LaunchedEffect(t?.merchant,t?.merchantId,s.merchants){if(t!=null)d=d.syncMerchantFields(MerchantBaseline(t.merchant,t.merchantId),s.merchants).clearMissingMerchant(s.merchants)}
     val account=s.accounts.firstOrNull{it.id==d.accountId}
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(if(t==null)word("新建模板","テンプレートを作成")else word("编辑模板","テンプレートを編集"),onClose) {

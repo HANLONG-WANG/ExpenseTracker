@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.MerchantOperationType
 import com.yohaku.expensetracker.ui.features.*
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
@@ -352,7 +353,7 @@ class MerchantFlowTest {
             val refunds=runBlocking {
                 val confirmed=repo.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,20),account,Money(Currency.JPY,20),Money(Currency.JPY,20),"2026-10-14",true))
                 val pending=repo.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,5),account,Money(Currency.JPY,5),Money(Currency.JPY,5),"2026-10-14",false))
-                repo.saveEntry(book,EntryDraft(id=purchase,accountId=account,categoryId=category,amount="100",date="2026-10-14",merchant="B"))
+                repo.saveEntry(book,EntryDraft(id=purchase,merchantBaseline=MerchantBaseline("Ｃａｆｅ",shop),accountId=account,categoryId=category,amount="100",date="2026-10-14",merchant="B"))
                 listOf(confirmed,pending)
             }
             ui.waitUntil(10000){snapshot().events.size==3&&snapshot().events.all{it.merchant=="B"}}
@@ -365,4 +366,42 @@ class MerchantFlowTest {
             assertEquals(80L,snapshot().analysis(AnalysisFilter("2026-10-01","2026-10-31",merchantKey="id:$other")).total)
         }
     }
+    @Test fun templateAndRecurrenceEditorsFollowSystemMerchantChangesButKeepUserInput() {
+        for(template in listOf(true,false))for(userEdited in listOf(false,true)) {
+            val values=runBlocking {
+                vm.preferences.clearSetup()
+                val book=repo.createBook("Editor sync",Currency.JPY,"magazine","zh",startDate="2026-10-01")
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val account=repo.saveAccount(book,"Cash",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+                val category=repo.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+                val id=if(template)repo.saveTemplate(book,TemplateInput("Daily",EntryKind.EXPENSE,category,account,Currency.JPY,merchant="Raw"))
+                    else repo.saveRecurrence(book,RecurrenceInput("Daily",account,category,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-10-01",merchant="Raw"))
+                vm.preferences.select(book);listOf(book,id)
+            }
+            val (book,id)=values
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate(if(template)"templates"else"recurring")}
+            if(template)ui.onNodeWithTag("edit-template-$id").performScrollTo().performClick()else tap("编辑规则")
+            val input=ui.onNodeWithTag("field-商户 / 买了什么")
+            input.performScrollTo().assertTextEquals("Raw")
+            if(userEdited)input.performTextReplacement("My choice")
+            val target=runBlocking {
+                val saved=repo.commitMerchantOperation(repo.previewMerchantOperation(book,MerchantOperationInput(
+                    MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,name="Formal",originalName="Raw",createdId="organized")))!!
+                repo.saveMerchant(book,"Renamed",id=saved)
+                repo.saveMerchant(book,"My choice")
+                saved
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchants?.any{it.name=="Renamed"}==true}
+            input.assertTextEquals(if(userEdited)"My choice"else"Renamed")
+            ui.onNodeWithTag(if(template)"template-save"else"recurrence-save").performScrollTo().performClick()
+            ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag(if(template)"template-save"else"recurrence-save").fetchSemanticsNodes().isEmpty()}
+            val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            val fields=if(template)saved.templates.single().let{MerchantBaseline(it.merchant,it.merchantId)}else saved.recurrences.single().let{MerchantBaseline(it.merchant,it.merchantId)}
+            assertEquals(if(userEdited)"My choice"else"Renamed",fields.name)
+            assertEquals(if(userEdited)saved.merchants.single{it.name=="My choice"}.id else target,fields.id)
+            assertNull(vm.error.value)
+        }
+    }
+
 }

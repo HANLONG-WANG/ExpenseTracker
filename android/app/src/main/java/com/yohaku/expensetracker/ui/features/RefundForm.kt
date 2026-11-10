@@ -45,6 +45,14 @@ import com.yohaku.expensetracker.ui.theme.*
     val occurrence=review.snapshot.occurrences.firstOrNull{it.id==review.change.occurrenceId}
     YSheet(if(e.kind==EntryKind.REFUND.name)word("退款变化预览","返金の変化を確認")else if(e.kind==EntryKind.TRANSFER.name)word("转账变化预览","振替の変化を確認")else word("保存前，再看一次。","保存する前に、もう一度。"),onBack) {
         if(refreshed)YText(word("账务资料已变化。以下是重新计算的影响，请再次确认。","記録が変わりました。再計算した影響をもう一度確認してください。"),12,color=LocalYohaku.current.warm)
+        review.change.merchantConflict?.let{conflict->
+            ThemeAuditPanel(word("请确认商户归属","お店の関連付けを確認"),Modifier.testTag("entry-merchant-conflict")) {
+                YText(if(conflict.legacy)word("这份旧草稿的商户与当前记录不同。请确认是否使用草稿中的商户。","以前保存した下書きのお店は現在の記録と異なります。下書きのお店を使うか確認してください。")
+                    else word("你修改了商户，同时原记录的商户也已变化。请确认是否使用你的输入覆盖当前归属。","編集中に元の記録のお店も変わりました。入力したお店で現在の関連付けを変更するか確認してください。"),12)
+                RecordFacts(listOf(word("记录当前商户","記録の現在のお店") to conflict.current.name.ifBlank{"—"},
+                    word("本次保存商户","今回保存するお店") to conflict.requested.name.ifBlank{"—"}),audit=true)
+            }
+        }
         ThemeAuditPanel(e.merchant.ifBlank{if(e.kind==EntryKind.TRANSFER.name)word("账户转账","口座振替")else word("这一笔","この一筆")}) {
             val transfer=review.change.transfer
             if(transfer!=null) {
@@ -67,7 +75,7 @@ import com.yohaku.expensetracker.ui.theme.*
         if(e.kind==EntryKind.TRANSFER.name)YText(word("转账本金不计收支，只有明确且实际扣收的费用参与消费。","振替元金は収支に含めず、明確で引落済みの費用だけ支出に含めます。"),11,color=LocalYohaku.current.muted)
         review.impacts.forEach{impact->EntryImpactPreview(review.snapshot,e,impact,java.time.YearMonth.now().toString())}
         if(e.kind==EntryKind.REFUND.name)YText(word("到账月份预算不会因退款自动增加。","返金によって入金月の予算は自動で増えません。"),11,color=LocalYohaku.current.muted)
-        YButton(word("确认并保存","確認して保存"),onConfirm,primary=true,enabled=!busy)
+        YButton(if(review.change.merchantConflict!=null)word("使用我的商户并保存","入力したお店で保存")else word("确认并保存","確認して保存"),onConfirm,Modifier.testTag("entry-review-confirm"),primary=true,enabled=!busy)
         YLink(word("返回表单继续编辑","フォームに戻って編集"),onBack)
     }
 }

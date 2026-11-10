@@ -64,13 +64,20 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     private var entryBaseline:EntryDraft?=null
     val negativeBalanceReview=MutableStateFlow<PendingEntrySave?>(null)
     fun entryHasManualInput()=entry.value?.hasManualInput(entryBaseline)==true
-    internal fun syncMerchantDraft(sourceId:String,targetId:String,name:String) {
-        fun EntryDraft.synced()=if(merchantId==sourceId)copy(merchantId=targetId,merchant=name)else this
-        entry.value=entry.value?.synced()
-        entryBaseline=entryBaseline?.synced()
-    }
-    internal fun syncMerchantOperationDraft(prepared:PreparedMerchantOperation) {
-        fun EntryDraft.synced():EntryDraft = prepared.before.copy(draft=this).prepareMerchantOperation(prepared.input).after.draft!!
+    private fun syncOpenMerchant(before:BookSnapshot?,after:BookSnapshot) {
+        fun EntryDraft.synced():EntryDraft {
+            if(id!=null||kind==EntryKind.REFUND)return after.syncEditingMerchant(this).copy(
+                merchantSyncVersion=maxOf(merchantSyncVersion,after.draft?.takeIf{it.mediaSession==mediaSession}?.merchantSyncVersion?:0))
+            val prior=before?.draft?.takeIf{it.mediaSession==mediaSession}
+            val stored=after.draft?.takeIf{it.mediaSession==mediaSession}
+            val next=if(prior!=null&&stored!=null&&merchantFields()==prior.merchantFields())
+                copy(merchant=stored.merchant,merchantId=stored.merchantId,merchantLocated=stored.merchantLocated)
+            else this
+            val formal=after.merchants.firstOrNull{it.id==next.merchantId}
+            val previousName=before?.merchants?.firstOrNull{it.id==next.merchantId}?.name
+            return (if(formal!=null&&previousName!=null&&previousName!=formal.name)next.copy(merchant=formal.name)else next).clearMissingMerchant(after.merchants)
+                .copy(merchantSyncVersion=maxOf(merchantSyncVersion,stored?.merchantSyncVersion?:0))
+        }
         entry.value=entry.value?.synced()
         entryBaseline=entryBaseline?.synced()
     }
@@ -86,8 +93,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun back(){route.value=if(backStack.isEmpty())"home" else backStack.removeAt(backStack.lastIndex)}
     // Loading appears only initially and for an explicit retry. A subscription restarted after the app returns
     // from the background (camera, another app) keeps the last state, so open sheets and page positions stay composed.
-    private var merchantNamesBook:String?=null
-    private var merchantNames:Map<String,String> = emptyMap()
+    private var merchantSnapshot:BookSnapshot?=null
     private var servedReadRequest=0L
     private var failedReadRequest=0L
     private fun readFailed(request:Long){if(request>0&&failedReadRequest!=request){failedReadRequest=request;haptic(Haptic.Error)}}
@@ -98,10 +104,9 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         .onEach{value->
             retryPending=false
             (value as? AppState.Ready)?.snapshot?.let{s->
-                if(merchantNamesBook==s.book.id)s.merchants.forEach{m->
-                    if(merchantNames[m.id]!=null&&merchantNames[m.id]!=m.name)syncMerchantDraft(m.id,m.id,m.name)
-                }
-                merchantNamesBook=s.book.id;merchantNames=s.merchants.associate{it.id to it.name}
+                val previous=merchantSnapshot?.takeIf{it.book.id==s.book.id}
+                if(previous!=null)syncOpenMerchant(previous,s)
+                merchantSnapshot=s
             }
         }
         .catch{if(retryPending){retryPending=false;readFailed(request)};emit(AppState.Failure(it.message ?: "数据库读取失败 / データ読込失敗"))}
@@ -195,13 +200,19 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun setupStep(bookId:String,step:Int)=execute {repository.setupStep(bookId,step)}
     fun leaveEntry(bookId:String,keep:Boolean,target:String="home",onDone:()->Unit={}) {
         val draft=entry.value
-        execute({
+        execute(onSuccess=done@{
+            if(entry.value?.mediaSession!=draft?.mediaSession)return@done
             entry.value=null;entryBaseline=null;negativeBalanceReview.value=null;entryReview.value=null;reviewRefreshed.value=false
             val previous=backStack.indexOfLast{it==target}
             if(previous>=0)while(backStack.size>previous)backStack.removeAt(backStack.lastIndex) else backStack.clear()
             route.value=target;onDone();if(!keep)execute{repository.collectUnusedMedia()}
         }) {
-            if(keep&&draft!=null)repository.saveDraft(bookId,draft) else repository.clearDraft(bookId)
+            if(entry.value?.mediaSession!=draft?.mediaSession)return@execute
+            if(keep&&draft!=null) {
+                val current=entry.value?.takeIf{it.mediaSession==draft.mediaSession}?:return@execute
+                // Read after earlier writes/synchronization, then check again inside the DB transaction.
+                check(repository.saveDraft(bookId,current){entry.value==current}){"草稿已更新，请重试 / 下書きが更新されました。再試行してください"}
+            } else repository.clearDraft(bookId)
         }
     }
     fun startEntry(snapshot:BookSnapshot,kind:EntryKind=EntryKind.EXPENSE,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null) {
@@ -210,7 +221,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         entry.value=snapshot.newEntryDraft(kind,LocalDate.now(repository.clock).toString(),activityId,treatFriendId,merchantId)
         navigate("category-picker");openDraft(snapshot.book.id)
     }
-    fun resumeEntry(snapshot:BookSnapshot) { entryBaseline=null;entryReturnRoute.value=route.value;entry.value=snapshot.draft;route.value=if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry";persistDraft(snapshot.book.id) }
+    fun resumeEntry(snapshot:BookSnapshot) { entryBaseline=null;entryReturnRoute.value=route.value;entry.value=snapshot.draft?.let{snapshot.syncEditingMerchant(it)};route.value=if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry";persistDraft(snapshot.book.id) }
     fun editEntry(snapshot:BookSnapshot,event:EventEntity) {
         if(event.kind==EntryKind.TRANSFER.name){editTransfer(snapshot,event);return}
         entryReturnRoute.value=route.value
@@ -246,7 +257,10 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val original=entry.value?:return
         val snapshot=(state.value as? AppState.Ready)?.snapshot?.takeIf{it.book.id==bookId}
         val d=if(!original.mediaInitialized&&snapshot!=null)original.copy(mediaInitialized=true,attachmentIds=original.id?.let{snapshot.entryAttachments(it).map{f->f.id}}.orEmpty(),receiptFileIds=original.id?.let{snapshot.entryReceiptImages(it).map{f->f.id}}.orEmpty())else original
-        entry.value=d;execute{repository.saveDraft(bookId,entry.value?.takeIf{it.mediaSession==d.mediaSession}?:d)}
+        entry.value=d;execute{
+            val current=entry.value?.takeIf{it.mediaSession==d.mediaSession}?:return@execute
+            repository.saveDraft(bookId,current){entry.value==current}
+        }
     }
     val openBudgetMonth=MutableStateFlow<String?>(null)
     val openActivity=MutableStateFlow<String?>(null)
@@ -431,12 +445,12 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         var negative:PendingEntrySave?=null
         var stale=false
         execute(onSuccess={if(saved)entrySaved(bookId,d)else {negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=stale;if(negative!=null||stale)haptic(Haptic.Warning)}},onComplete={savingEntry=false}) {
-            val needsReview=repository.entryNeedsReview(bookId,d)
             val prepared=repository.previewEntry(bookId,d)
+            val needsReview=prepared.change.merchantConflict!=null||repository.entryNeedsReview(bookId,d)
             if(prepared.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(prepared,needsReview)
             else if(needsReview)review=prepared else {
                 saved=repository.commitEntryReview(bookId,prepared)!=null
-                if(!saved){stale=true;val fresh=repository.previewEntry(bookId,d);if(fresh.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(fresh,false)else review=fresh}
+                if(!saved){stale=true;val fresh=repository.previewEntry(bookId,d);if(fresh.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(fresh,fresh.change.merchantConflict!=null)else review=fresh}
             }
         }
     }
@@ -459,12 +473,12 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         var saved=false
         var refreshed:LedgerChangeReview?=null
         execute(onSuccess={if(saved)entrySaved(bookId,d)else {haptic(Haptic.Warning);entryReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isEmpty()};negativeBalanceReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isNotEmpty()}?.let{PendingEntrySave(it,true)};reviewRefreshed.value=true}},onComplete={savingEntry=false}) {
-            saved=repository.commitEntryReview(bookId,review)!=null
+            saved=repository.commitEntryReview(bookId,review,merchantConflictConfirmed=true)!=null
             if(!saved)refreshed=repository.previewEntry(bookId,d)
         }
     }
     fun discardEntry(bookId:String) =execute({haptic(Haptic.Removed);entry.value=null;route.value="home";execute{repository.collectUnusedMedia()}}) {repository.clearDraft(bookId)}
-    fun keepEntry(bookId:String) {persistDraft(bookId);entry.value=null;route.value="home"}
+    fun keepEntry(bookId:String) {leaveEntry(bookId,keep=true)}
     companion object {
         fun factory(application:YohakuApplication)=object:ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST") override fun <T:ViewModel> create(modelClass:Class<T>):T = AppViewModel(application.repository,application.preferences,reminders=application.reminders,locationSource=com.yohaku.expensetracker.platform.ForegroundLocation(application),cloud=application.cloud) as T

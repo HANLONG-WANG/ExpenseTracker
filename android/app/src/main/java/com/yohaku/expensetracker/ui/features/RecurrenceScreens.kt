@@ -101,7 +101,8 @@ import java.time.YearMonth
     var estimated by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.estimated?:true)}
     var active by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.active?:true)}
     var activity by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.activityId)}
-    var fixed by remember(original?.id){mutableStateOf(EntryDraft(merchant=original?.merchant.orEmpty(),merchantId=original?.merchantId,note=original?.note.orEmpty(),cardPaymentChoice=original?.cardPaymentChoice,cardPaymentPeriods=original?.cardPaymentPeriods?.toString().orEmpty()))}
+    var fixed by remember(original?.id){mutableStateOf(EntryDraft(merchant=original?.merchant.orEmpty(),merchantId=original?.merchantId,merchantBaseline=original?.let{MerchantBaseline(it.merchant,it.merchantId)},note=original?.note.orEmpty(),cardPaymentChoice=original?.cardPaymentChoice,cardPaymentPeriods=original?.cardPaymentPeriods?.toString().orEmpty()))}
+    LaunchedEffect(original?.merchant,original?.merchantId,s.merchants){if(original!=null)fixed=fixed.syncMerchantFields(MerchantBaseline(original.merchant,original.merchantId),s.merchants).clearMissingMerchant(s.merchants)}
     var owner by remember{mutableStateOf<Int?>(null)}
     val account=accounts.find{it.id==accountId}
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -134,7 +135,7 @@ import java.time.YearMonth
                     val value=capturedAmount.takeIf{it.isNotBlank()}?.let{Money.parse(it,Currency.valueOf(selected.currency))}
                     val baseValue=capturedBase.takeIf{it.isNotBlank()}?.let{Money.parse(it,Currency.valueOf(s.book.currency))}
                     vm.repository.saveRecurrence(s.book.id,RecurrenceInput(capturedName,selected.id,capturedCategory?:error("请选择分类 / カテゴリを選択してください"),value,baseValue,
-                        capturedEstimated,RecurrenceFrequency.valueOf(capturedFrequency),capturedDate,capturedEnd,original?.id,capturedActive,capturedActivity,capturedFixed.merchant,capturedFixed.merchantId,capturedFixed.note,capturedFixed.cardPaymentChoice,capturedFixed.cardPaymentPeriods.toIntOrNull()))
+                        capturedEstimated,RecurrenceFrequency.valueOf(capturedFrequency),capturedDate,capturedEnd,original?.id,capturedActive,capturedActivity,capturedFixed.merchant,capturedFixed.merchantId,capturedFixed.note,capturedFixed.cardPaymentChoice,capturedFixed.cardPaymentPeriods.toIntOrNull(),merchantBaseline=capturedFixed.merchantBaseline))
                 }
             },Modifier.testTag("recurrence-save"),primary=true,enabled=!busy)
         }

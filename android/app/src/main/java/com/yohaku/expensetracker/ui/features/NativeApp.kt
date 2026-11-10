@@ -416,9 +416,9 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                 }}
                 "switch-entry"->YSheet(word("切换前保存草稿？","切替前に下書きを残しますか？"),{sheet=null}) {
                     val target=switchTarget!!
-                    YButton(word("保留草稿并切换","下書きを残して切替"),{val d=draft!!;vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.saveDraft(book.id,d);vm.preferences.select(target)}},primary=true)
+                    YButton(word("保留草稿并切换","下書きを残して切替"),{vm.leaveEntry(book.id,true){sheet=null;vm.selectBook(target)}},primary=true)
                     YActionRow {
-                        YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.clearDraft(book.id);vm.haptic(Haptic.Removed);vm.preferences.select(target)}})
+                        YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.leaveEntry(book.id,false){vm.haptic(Haptic.Removed);sheet=null;vm.selectBook(target)}})
                         YButton(word("继续编辑","編集を続ける"),{sheet=null})
                     }
                 }

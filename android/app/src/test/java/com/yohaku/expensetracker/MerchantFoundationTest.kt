@@ -158,4 +158,28 @@ class MerchantFoundationTest {
         changed.forEach{assertThrows(IllegalStateException::class.java){requireCurrentMerchantPreview(p.preview.fingerprint,it.prepareMerchantOperation(input).preview)}}
         requireCurrentMerchantPreview(p.preview.fingerprint,s.copy(events=s.events+record("unrelated","Other")).prepareMerchantOperation(input).preview)
     }
+    @Test fun draftOwnershipUsesClaimedGroupsWhileEditingDraftsKeepTheirBaselineText() {
+        val a=MerchantEntity("book","a","Raw");val target=a.copy(id="target",name="Target")
+        val original=EntryDraft(id="entry",merchant="Raw",merchantId="a",merchantBaseline=MerchantBaseline("Raw","a"))
+        val s=ledger(listOf(record("entry","Raw")),listOf(a,target),mapOf("entry" to "a"))
+        val rename=MerchantOperationInput(MerchantOperationType.RENAME,"a",name="Renamed")
+        assertEquals(original,s.copy(draft=original).prepareMerchantOperation(rename).after.draft)
+        val merge=MerchantOperationInput(MerchantOperationType.MERGE,"a","target")
+        val edited=s.copy(draft=original).prepareMerchantOperation(merge).after.draft!!
+        assertEquals("Raw",edited.merchant);assertNull(edited.merchantId);assertEquals(original.merchantBaseline,edited.merchantBaseline)
+        val fresh=original.copy(id=null,merchantBaseline=null)
+        val merged=s.copy(draft=fresh).prepareMerchantOperation(merge).after.draft!!
+        assertEquals("target",merged.merchantId);assertEquals("Target",merged.merchant);assertEquals(1L,merged.merchantSyncVersion)
+        val removed=s.copy(merchants=listOf(a,a.copy(id="duplicate")),draft=fresh).prepareMerchantOperation(MerchantOperationInput(MerchantOperationType.DELETE,"a")).after.draft!!
+        assertNull(removed.merchantId);assertEquals("Raw",removed.merchant)
+        val raw=fresh.copy(merchantId=null,merchant=" raw ")
+        assertEquals("Target",s.copy(draft=raw).prepareMerchantOperation(merge).after.draft!!.merchant)
+        val ambiguous=s.copy(merchants=s.merchants+a.copy(id="duplicate"),draft=raw).prepareMerchantOperation(merge).after.draft!!
+        assertEquals("duplicate",ambiguous.merchantId);assertEquals("Raw",ambiguous.merchant)
+        for(kind in listOf(EntryKind.INCOME,EntryKind.TRANSFER)) {
+            val draft=raw.copy(kind=kind)
+            assertEquals(draft,s.copy(draft=draft).prepareMerchantOperation(merge).after.draft)
+        }
+    }
+
 }

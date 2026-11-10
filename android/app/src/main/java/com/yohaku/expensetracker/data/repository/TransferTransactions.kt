@@ -18,7 +18,8 @@ internal suspend fun LedgerRepository.prepareTransfer(bookId:String,d:EntryDraft
     LocalDate.parse(d.date);LocalDate.parse(d.toDate);LocalDate.parse(d.rateDate)
     val old=d.id?.let{dao.event(bookId,it)?:error("原转账不存在 / 元の振替がありません")}
     require(old==null||old.kind==EntryKind.TRANSFER.name&&old.deletedAt==null)
-    val event=cardPayment(EventEntity(bookId,old?.id?:id(),EntryKind.TRANSFER.name,from.id,null,source.minor,source.currency.name,0,d.date,d.merchant.trim(),d.note,
+    val merchantDecision=d.resolveEditingMerchant(bookId,old?.let{MerchantBaseline(it.merchant,null)},emptyList())
+    val event=cardPayment(EventEntity(bookId,old?.id?:id(),EntryKind.TRANSFER.name,from.id,null,source.minor,source.currency.name,0,d.date,merchantDecision.value.name.trim(),d.note,
         revision=(old?.revision?:0)+1,createdAt=old?.createdAt?:clock.millis()),d,old,from)
     val previous=old?.let{dao.transfer(bookId,it.id)}
     val priorSettlement=old?.let{dao.settlement(bookId,it.id)}
@@ -45,7 +46,7 @@ internal suspend fun LedgerRepository.prepareTransfer(bookId:String,d:EntryDraft
             if(AccountType.valueOf(payer.type).debt)fee.minor else -fee.minor,payer.currency,date,confirmed)
         listOf(ExpenseComponentEntity(bookId,event.id+":fee",event.id,payer.id,fee.minor,payer.currency,base.minor,date,confirmed,d.feePosition.name,originalFee.minor,originalFee.currency.name))
     }
-    return PreparedLedgerChange(old,event,settlement,postings,transfer,components,cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,d))
+    return PreparedLedgerChange(old,event,settlement,postings,transfer,components,merchantConflict=merchantDecision.conflict,cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,d))
 }
 
 fun TransferEntity.inTransit()=fromConfirmed&&!toConfirmed

@@ -810,3 +810,16 @@ C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用�
 - CSV 用例确认 `sourceMatchKey` 修改会阻止整行删除，原值恢复后来源键与导入关系行一起删除。首轮新增断言曾因夹具同时新建分类、其 CSV 保存配置保留真实引用而失败；改用预先存在的分类后通过，未放宽生产引用检查。
 - 补充定向回归 `CommandExecutionTest#undoEntryEditAfterMerchantDeletionKeepsTextWithoutRestoringMissingLink`、`CommandWorkflowExecutionTest#csvBatchTrashRetainsLaterEditsAndUndoRestoresExactRows`：**2/2 通过，2.767 秒**；输出 `/tmp/yohaku-c2-regression.log`。结束时核对模拟器仍为 `1170×2532 / density 480`。
 - 三份协议逐字一致。本批未改能力定义/命令输入 schema，未手改或重生成能力 JSON。最终全量仪器输出见 `/tmp/yohaku-c2-instrumentation-final.log`，构建日志 `/tmp/yohaku-c2-unit-final.log`、`/tmp/yohaku-c2-install-final.log`。
+
+### 商户改造 D 验证（2026-11-10）
+
+完成编辑草稿的最小商户基线、保存/预览统一取值与冲突确认、新建草稿来源组同步、打开表单与排队保存校验，以及模板/周期编辑器本地副本和事务保存同步。切换账本复用同一草稿保存路径。云端改记录保留本机编辑意图；撤销恢复草稿时递增同步版本，业务恢复比较不把版本当作用户字段。详见 `docs/implementation-spec.md` §1.13。
+
+- Gradle 始终单进程串行执行，使用 `--offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process`。最终 `:app:testDebugUnitTest`：**193 项，192 通过、1 项既有跳过、0 失败**（跳过 `CsvParserTest.localSampleStatistics`）。`:app:installDebug :app:installDebugAndroidTest` 构建并安装成功；未运行会卸载应用的 `connectedDebugAndroidTest`。
+- `emulator-5580` 默认参数 `am instrument`：`CommandLedgerExecutionTest` 全类（18）、`MerchantFlowTest` 全类（5）、`DraftEditingFlowTest` 相关方法（12）及 `CommandExecutionTest#undoEntryEditAfterMerchantDeletionKeepsTextWithoutRestoringMissingLink`（1），**36/36 通过，95.547 秒**。日志 `/tmp/yohaku-merchant-d-instrumentation-final.log`。
+- 草稿相关 12 方法：`retainedDraftPreviewsCurrentMerchantAndChecksConcurrentEdits`、`queuedDraftSaveCannotOverwriteMerchantSyncOrAnotherSession`、`queuedTemplateAndRecurrenceInputsReadTheirCurrentMerchantInTransaction`、`openEditingFormTracksExternalMerchantAndRefreshesItsBaseline`、`untouchedDraftAndUnchangedEditLeaveWithoutPrompt`、`editSurvivesThemeAndLanguageSwitchAndCancelKeepsOriginal`、`switchingBooksKeepsDraftOnlyInItsOwnBook`、`resumedEditCancelOpensOriginalDetailThenReturnsHome`、`inlineEditCancelReturnsToOriginalDetailAndSaveRevisesSameId`、`consecutiveSaveRequestsCreateOnlyOneNewExpense`、`revisionHistoryShowsOnlyRealChangesInEveryThemeAndLanguage`、`unreadableRevisionShowsErrorAndCanRetryWithoutChangingEntry`。
+- 最后收窄商户操作为只清除本次删除/合并造成的失效草稿 ID，避免备注/启停操作顺带清理旧异常。全量 JVM 再次通过；`CommandLedgerExecutionTest#merchantProfileAndRenameUseSharedScopesAndWriteCloudHistoryOnlyOnCommit` 与 `DraftEditingFlowTest#retainedDraftPreviewsCurrentMerchantAndChecksConcurrentEdits` 定向复验 **2/2 通过，3.36 秒**。日志 `/tmp/yohaku-merchant-d-targeted-final.log`。
+- 冲突提示：临时设为 S24 Ultra `1080×2340 / density 450`，运行 `DraftEditingFlowTest#merchantConflictConfirmationAcrossLooks`，参数 `looks=all visual=true captureSuffix=-s24`，**1/1 通过，17.171 秒**，方法内部覆盖三主题×中日文×并发冲突/无基线旧草稿共 12 场景，并实际确认保存。日志 `/tmp/yohaku-merchant-d-visual-final.log`。
+- 12 张系统截图已下载并查看，位于 `/tmp/yohaku-merchant-d-review/{magazine,journal,objects}-{zh,ja}-{concurrent,legacy}.png`，另有两张 `overview-*.png` 汇总图。设备原件在应用内部 `files/verification/merchant-conflict--s24/`（现有截图助手会为传入的 `-s24` 再加一个连字符）。提示、前后商户、长名称换行均完整，复用三主题现有 `YSheet`/`ThemeAuditPanel`。**结束后已恢复 `1170×2532 / density 480`**。
+- 既有撤销精确恢复断言按新规则保留所有业务字段比较，单独排除并验证同步版本递增；没有删除失效断言。截图测试限定冲突面板内的文字，并让各语言场景使用不同的用户输入，避免背景同名记录和“输入其实未变”的夹具干扰。
+- 本批不执行全外观矩阵、系统/性能专项；迁移整理和旧撤销日志兼容留 E，互请/计划/CSV 判重留 F，云端协议扩展留 G，商户历史 UI 与三主题正式精修留 H。

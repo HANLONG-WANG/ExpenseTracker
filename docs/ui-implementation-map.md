@@ -94,7 +94,7 @@
 | UI02 | 外壳、底部导航、账本切换 | 顶部品牌与当前账本；四页导航+中央记账；真实系统栏、返回栈、草稿提示 | `app.html`、`app.js`、`themes.js` | P02,P03,P05 |
 | UI03 | 首页 `home` | 预算余量、预留后可花、日均/剩余天数、今日消费、独立活动与全部净消费、实际资金、近期安排 | `experience.js`、`completion.js` | P05,P10,P18 |
 | UI04 | 分类选择与分类管理 `categories` | 中央记账先选分类；支出/收入独立两级树、未细分、常用/最近、搜索/新建/编辑、预算 | `capture.js`、`hierarchy.js`、`completion.js` | P06,P10 |
-| UI05 | 收支录入、草稿、原记录编辑 | 原币/入账/统计金额；账户/日期/商户/活动；无拆分类；编辑原ID；切主题保留；空账户创建后继续 | `capture.js`、`experience.js`、`completion.js` | P06,P07,P08 |
+| UI05 | 收支录入、草稿、原记录编辑 | 原币/入账/统计金额；账户/日期/商户/活动；无拆分类；编辑原ID；商户并发/旧草稿归属确认（`EntryReviewSheet`、主题 `YSheet`/`ThemeAuditPanel`）；切主题保留；空账户创建后继续 | `capture.js`、`experience.js`、`completion.js` | P06,P07,P08 |
 | UI06 | 流水 `ledger`、记录详情 | 类型与时间列表、搜索商户/备注/金额/小票商品名（`LedgerSearch.kt`，商品命中时行内提示）、列表/日历切换（每日净支出、日均预算进度、选中日流水与「记在这一天」）、实际金额、原币、关联资料、编辑/退款/删除入口、修改记录 | `views.js`、`capture.js`、`completion.js` | P06,P07,P23 |
 | UI07 | 退款 | 全额/部分/分次、待到账/已到账、原币与实际到账、原消费月净额影响、关联编辑 | `completion.js`、`capture.js` | P08 |
 | UI08 | 转账/换汇 | 同币/异币自动判断；实扣/实收、预计反推、费用位置、在途/到账、双侧核对；全宽单日历 | `experience.js`、`completion.js`、`themes.js` | P09,P19 |
@@ -601,3 +601,5 @@ CommandAssistantRoundTripTest使用磁盘测试库、真实任务准备/advance�
 额度关系中的各项上限只显示一次；预览中变化的上限只在差异区展示，未变化的上限仍在关系区显示，关系说明保留一句。不适用的额度字段不显示；关系切换导致旧上限被删除时，差异明确列出旧金额与“已移除”。
 
 2026-11-06：支出「备注和其他」新增不计入预算，`HistoricalOpeningToggle.kt` 内抽取参数化 `EntryOptionToggle`，历史补录外观与标签保留；相邻开关共用分隔线。`TemplateScreens.kt` 支出模板共用新开关。详情与 `RevisionHistory.kt`、云端 `CommandEffectViews.kt` 显示字段。`LedgerCalendar.kt` 保留实际金额，以 `dailyExpense(budgetOnly=true)` 计算颜色/超支/剩余预算及小物摘要进度；无预算仍按实际金额。验证：`EntryExperienceFlowTest#expenseBudgetExclusionSavesAndClearsOnIncomeAcrossLooks`（`looks=all visual=true`，`files/verification/entry-experience/*-budget-excluded.png`、`*-budget-income.png`）；本轮仅编译仪器测试，设备与视觉验证待用户执行。
+
+2026-11-10 商户批次 D：UI05 保存预览新增商户归属确认，区分双方修改与无基线旧草稿，中日文列出当前/本次商户；使用三主题现有 `YSheet` 与 `ThemeAuditPanel`，显式确认按钮及返回编辑入口。打开的记账、模板、周期编辑器同步未修改商户及基线，已修改商户保持输入。验证方法 `DraftEditingFlowTest#merchantConflictConfirmationAcrossLooks`；S24 三主题×中日文实际结果与截图路径见 `android/README.md` 批次 D 记录。
