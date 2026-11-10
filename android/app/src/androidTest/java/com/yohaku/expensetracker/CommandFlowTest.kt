@@ -352,6 +352,7 @@ class CommandFlowTest {
             alignCommandStep("command-step-merchant")
             ui.onNodeWithText("駅前珈琲 → 駅前カフェ").assertExists()
             ui.onNodeWithText(if(language=="ja")"未整理の位置：1"else"待整理位置：1").assertExists()
+            ui.onAllNodes(hasText("：0",substring=true) and hasAnyAncestor(hasTestTag("command-merchant-impact"))).assertCountEquals(0)
             shot("$theme-$language-merchant-original-${if(assign)"assign"else"create"}")
             ui.runOnIdle{vm.navigate("home")}
         }

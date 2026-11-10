@@ -26,6 +26,7 @@ import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.domain.ledger.*
+import com.yohaku.expensetracker.domain.merchant.MerchantObjectType
 import com.yohaku.expensetracker.domain.category.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
@@ -77,6 +78,8 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     var pendingRecordAction by rememberSaveable{mutableStateOf("edit")}
     var selectedEventId by rememberSaveable{mutableStateOf<String?>(null)}
     val selectedEvent=snapshot?.events?.find{it.id==selectedEventId}
+    var recordMerchantHistory by rememberSaveable(selectedEventId){mutableStateOf(false)}
+    val detailScroll=rememberSaveable(selectedEventId,saver=ScrollState.Saver){ScrollState(0)}
     var selectedAccountId by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedDestination by rememberSaveable{mutableStateOf<String?>(null)}
     var recurringInitialMonth by rememberSaveable{mutableStateOf<String?>(null)}
@@ -308,9 +311,11 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                 YBottomNav(baseRoute,{p->if(openEntry){requestLeave(p)}else vm.navigate(p)},{if(!openEntry)requestEntry()})
             }
             if(route=="detail"&&sheet==null&&entryReview==null)selectedEvent?.let{event->
-                YSheet(word("这一笔的详情","この一筆の詳細"),{vm.back()}){Detail(snapshot,event,{if(event.kind in listOf(EntryKind.BORROWING.name,EntryKind.REPAYMENT.name))sheet="finance-edit" else if(snapshot.draft!=null){pendingRecordAction="edit";sheet="record-existing-draft"}else vm.editEntry(snapshot,event)},{sheet="delete"},vm,
+                if(recordMerchantHistory)MerchantHistorySheet(snapshot.book.id,vm,MerchantHistoryScope(
+                    objectType=if(event.kind==EntryKind.REFUND.name)MerchantObjectType.REFUND else MerchantObjectType.EVENT,objectId=event.id),{recordMerchantHistory=false})
+                else YSheet(word("这一笔的详情","この一筆の詳細"),{vm.back()},detailScroll){Detail(snapshot,event,{if(event.kind in listOf(EntryKind.BORROWING.name,EntryKind.REPAYMENT.name))sheet="finance-edit" else if(snapshot.draft!=null){pendingRecordAction="edit";sheet="record-existing-draft"}else vm.editEntry(snapshot,event)},{sheet="delete"},vm,
                     onRefund={if(snapshot.draft!=null)sheet="refund-existing-draft"else vm.startRefund(snapshot,event)},
-                    onConfirm={if(snapshot.draft!=null){pendingRecordAction="confirm";sheet="record-existing-draft"}else vm.confirmActual(snapshot,event)},onRecord={selectedEventId=it.id})}
+                    onConfirm={if(snapshot.draft!=null){pendingRecordAction="confirm";sheet="record-existing-draft"}else vm.confirmActual(snapshot,event)},onRecord={selectedEventId=it.id},onMerchantHistory={recordMerchantHistory=true})}
             }
             if(openEntry&&sheet==null&&entryReview==null&&negativeBalanceReview==null&&occurrenceLinkReview==null) {
                 val activeDraft=draft!!
@@ -442,7 +447,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     }
 }
 
-@Composable private fun Detail(s:BookSnapshot,e:EventEntity,onEdit:()->Unit,onDelete:()->Unit,vm:AppViewModel,onRefund:()->Unit,onConfirm:()->Unit,onRecord:(EventEntity)->Unit) {
+@Composable private fun Detail(s:BookSnapshot,e:EventEntity,onEdit:()->Unit,onDelete:()->Unit,vm:AppViewModel,onRefund:()->Unit,onConfirm:()->Unit,onRecord:(EventEntity)->Unit,onMerchantHistory:()->Unit) {
     RecordDetailCore(s,e)
     s.settlements.find{it.eventId==e.id}?.takeIf{it.accountCurrency!=e.currency||!it.confirmed||e.kind==EntryKind.REFUND.name}?.let{settlement->
         RecordFacts(listOf(
@@ -498,6 +503,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     }
     s.reserveUses.filter{it.eventId==e.id}.forEach{u->YText(word("使用预留：","使用した確保：")+s.reserves.first{it.id==u.reserveId}.name+" · "+Money(Currency.valueOf(s.book.currency),u.amountMinor).display(),13)}
     RecordMediaPanel(s,e,vm)
+    YLink(word("商户操作历史","お店の操作履歴"),onMerchantHistory,Modifier.testTag("record-merchant-history"))
     RevisionHistory(s,e,vm)
     YLink(word("移至回收站","ごみ箱に移動"),onDelete,Modifier.testTag("record-trash-preview"))
 }

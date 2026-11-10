@@ -6,12 +6,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
-import com.yohaku.expensetracker.domain.merchant.MerchantOperationType
+import com.yohaku.expensetracker.domain.merchant.*
 import com.yohaku.expensetracker.ui.features.*
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
@@ -52,6 +53,21 @@ class MerchantFlowTest {
         val viewport=ui.onNodeWithTag("sheet-scroll").getUnclippedBoundsInRoot().bottom.value
         if(bottom>viewport)ui.onNodeWithTag("sheet-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,(bottom-viewport+8)*density)}
         ui.waitForIdle();return node
+    }
+    private fun settledSheetTap(tag:String) {
+        val node=ui.onNodeWithTag(tag)
+        var previous:List<androidx.compose.ui.unit.DpRect>?=null
+        var stable=0
+        // A real touch must wait for the IME/window geometry as well as Compose idleness.
+        // Reposition against the sticky header while those insets settle; do not retry the click.
+        ui.waitUntil(10000) {
+            clearHeader(node)
+            Thread.sleep(100)
+            val bounds=listOf(node.getUnclippedBoundsInRoot(),ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot(),ui.onNodeWithTag("sheet-scroll").getUnclippedBoundsInRoot())
+            stable=if(bounds==previous)stable+1 else 0;previous=bounds
+            stable>=2&&bounds[0].top>=bounds[1].bottom&&bounds[0].bottom<=bounds[2].bottom
+        }
+        node.performClick()
     }
     private fun imeVisible()=android.view.inspector.WindowInspector.getGlobalWindowViews().any{view->androidx.core.view.ViewCompat.getRootWindowInsets(view)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}
     private fun waitForSheet(title:String,editorAbsent:Boolean=false) {
@@ -99,14 +115,19 @@ class MerchantFlowTest {
                 val category=repo.saveCategory(book,"咖啡",EntryKind.EXPENSE,null)
                 repo.dao.putMerchant(MerchantEntity(book,"one","Cafe",note="北门"))
                 repo.dao.putMerchant(MerchantEntity(book,"two","ＣＡＦＥ",note="南门",active=false))
+                repo.saveMerchantLocation(book,"one","北口・駅前",35.0,139.0)
+                repo.saveMerchantLocation(book,"two","南口・二階",35.01,139.01)
                 val event=repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="100",merchant="cafe"))
                 vm.preferences.select(book);book to event
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==ids.first}
             ui.runOnIdle{vm.navigate("merchants")}
+            ui.onNodeWithTag("merchant-duplicate-group").performScrollTo().assertIsDisplayed()
+            shot("$theme-$language-duplicate-identification")
             ui.onNodeWithTag("merchant-card-one").assertTextContains(if(language=="ja")"0 件"else"0 笔",substring=true)
             ui.onNodeWithTag("merchant-card-two").assertTextContains(if(language=="ja")"0 件"else"0 笔",substring=true)
-            ui.onNodeWithTag("merchant-card-recorded-${ids.second}").performScrollTo().assertIsDisplayed()
+            ui.onNodeWithTag("merchant-card-recorded-${ids.second}").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+                .assertTextContains(if(language=="ja")"同名のお店が複数あります。統合するか名前を変えて区別してください"else"存在多个同名商户，需先合并或改名区分",substring=true)
             shot("$theme-$language-ambiguous-original")
         }
     }
@@ -132,7 +153,7 @@ class MerchantFlowTest {
             val book=ids[0];val source=ids[1];val target=ids[2];val third=ids[3];val event=ids[4];val adopted=ids[5]
             fun snapshot()=(vm.state.value as AppState.Ready).snapshot!!
             fun tag(name:String)=ui.onNodeWithTag(name)
-            fun sheetTap(name:String)=clearHeader(tag(name)).performClick()
+            fun sheetTap(name:String)=settledSheetTap(name)
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("merchants")}
             tag("merchant-card-$source").performScrollTo();shot("$theme-$language-compact-list")
@@ -169,6 +190,7 @@ class MerchantFlowTest {
             tag("merchant-merge").performScrollTo().performClick()
             clearHeader(tag("field-"+text("搜索商户","お店を検索"))).performTextReplacement("书店")
             tag("merchant-merge-target-$target").assertDoesNotExist()
+            shot("$theme-$language-merge-choice")
             sheetTap("merchant-merge-target-$third");tag("merchant-name-impact").assertTextContains("2",substring=true)
             sheetTap("merchant-merge-confirm")
             ui.waitUntil(10000){!vm.busy.value&&snapshot().merchants.size==2}
@@ -422,6 +444,136 @@ class MerchantFlowTest {
             assertEquals(if(userEdited)"My choice"else"Renamed",fields.name)
             assertEquals(if(userEdited)saved.merchants.single{it.name=="My choice"}.id else target,fields.id)
             assertNull(vm.error.value)
+        }
+    }
+
+    @Test fun historyPagesProfilesMergeSourcesAndRecordEntrancesAcrossLooks() {
+        for((theme,language) in testLooks(this@MerchantFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val ids=runBlocking {
+                val book=repo.createBook("History $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val account=repo.saveAccount(book,"Bank",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+                val category=repo.saveCategory(book,"Coffee",EntryKind.EXPENSE,null)
+                val event=repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="100",date="2026-10-02",merchant="駅前珈琲"))
+                val purged=repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="100",date="2026-10-03",merchant="駅前珈琲"))
+                val refund=repo.saveRefund(book,RefundInput(event,Money(Currency.JPY,10),account,Money(Currency.JPY,10),Money(Currency.JPY,10),"2026-10-04",true))
+                val source=repo.saveMerchant(book,"駅前珈琲","北口・窓際の席")
+                repo.saveMerchant(book,"駅前カフェ","北口・窓際の席",source)
+                val target=repo.saveMerchant(book,"街角喫茶","南口・二階",active=false)
+                repo.mergeMerchants(book,source,target)
+                val before=repo.dao.merchant(book,target)!!
+                repo.changeMerchantNote(book,target,"Cloud memo",MerchantHistoryContext(MerchantOperationSource.CLOUD,"history-plan","history-execution"))
+                // Restore the profile and write the production inverse together, as the cloud undo does.
+                db.withTransaction {
+                    repo.dao.putMerchant(before)
+                    repo.recordMerchantCloudUndoInTransaction(book,"history-plan","history-execution","history-undo")
+                    repo.dao.putEvent(repo.dao.event(book,purged)!!.copy(deletedAt=1))
+                    repo.purgeEntryGroup(book,purged)
+                }
+                repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="50",date="2026-10-05",merchant="星巴克咖啡"))
+                val createdFromOriginal=repo.commitMerchantOperation(repo.previewMerchantOperation(book,MerchantOperationInput(
+                    MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,name="星巴克",originalName="星巴克咖啡")))!!
+                repo.deleteMerchant(book,createdFromOriginal)
+                val history=db.merchantHistoryDao()
+                val operations=history.page(book,100)
+                val merge=operations.single{it.type==MerchantOperationType.MERGE}.id
+                val rename=operations.single{it.type==MerchantOperationType.RENAME}.id
+                val undo=operations.single{it.type==MerchantOperationType.CLOUD_UNDO}.id
+                val original=operations.single{it.undoneByOperationId==undo}.id
+                assertNull(repo.dao.merchant(book,source))
+                assertTrue(history.forObject(book,MerchantObjectType.REFUND,refund,20).any{it.id==merge})
+                assertTrue(history.impacts(book,merge,20).any{it.objectId==purged&&it.oldMerchantName=="駅前カフェ"})
+                // Older migration rows exercise the list boundary without manufacturing business changes.
+                repeat(21){index->history.insert(MerchantOperationEntity(book,"upgrade-$index",repo.clock.millis()-100000-index,
+                    MerchantOperationType.HISTORY_CLEANUP,MerchantOperationSource.UPGRADE))}
+                history.insertImpacts(listOf(MerchantOperationImpactEntity(book,"upgrade-0",MerchantObjectType.EVENT,"old-record",oldMerchantName="街角",newMerchantName="街角喫茶",newMerchantId=target)))
+                assertTrue(history.forMerchant(book,target,100).any{it.id=="upgrade-0"})
+                vm.preferences.select(book)
+                listOf(book,target,event,refund,purged,merge,rename,undo,original,
+                    operations.single{it.type==MerchantOperationType.CREATE&&it.targetMerchantId==source}.id,
+                    operations.single{it.type==MerchantOperationType.CREATE_FROM_ORIGINAL_NAME}.id,
+                    operations.single{it.type==MerchantOperationType.DELETE}.id)
+            }
+            val book=ids[0];val target=ids[1];val event=ids[2];val refund=ids[3];val purged=ids[4];val merge=ids[5];val rename=ids[6];val undo=ids[7];val original=ids[8]
+            fun tag(name:String)=ui.onNodeWithTag(name)
+            fun sheetTap(name:String)=clearHeader(tag(name)).performClick()
+            fun closeSheet(backToRecord:Boolean=false){tag("sheet-close").performClick();ui.waitUntil(10000){if(backToRecord)ui.onAllNodesWithTag("record-merchant-history").fetchSemanticsNodes().isNotEmpty()else ui.onAllNodesWithTag("theme-sheet").fetchSemanticsNodes().isEmpty()}}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
+            ui.runOnIdle{vm.navigate("merchants")}
+            tag("merchant-history-open").performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-$merge").fetchSemanticsNodes().isNotEmpty()}
+            shot("$theme-$language-history-list")
+            for((id,summary,scene) in listOf(
+                Triple(ids[9],text("新建：駅前珈琲","新規：駅前珈琲"),"create"),
+                Triple(ids[10],text("原名 星巴克咖啡 → 星巴克","元の名前 星巴克咖啡 → 星巴克"),"create-original"),
+                Triple(ids[11],text("删除：星巴克","削除：星巴克"),"delete"))) {
+                sheetTap("merchant-history-detail-$id")
+                ui.onNode(hasText(summary) and hasAnyAncestor(hasTestTag("merchant-history-detail"))).assertExists()
+                ui.onNode(hasText(if(scene=="delete")text("已删除","削除済み")else text("尚未创建","未作成")) and hasAnyAncestor(hasTestTag("merchant-history-profile"))).assertExists()
+                clearHeader(tag("merchant-history-profile"))
+                shot("$theme-$language-history-$scene-detail")
+                sheetTap("merchant-history-back")
+            }
+            sheetTap("merchant-history-detail-$original")
+            tag("merchant-history-undone").assertExists()
+            shot("$theme-$language-history-undone")
+            sheetTap("merchant-history-back")
+            sheetTap("merchant-history-detail-$undo")
+            tag("merchant-history-undo-origin").assertExists()
+            shot("$theme-$language-history-cloud-undo")
+            sheetTap("merchant-history-back")
+            sheetTap("merchant-history-more")
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-row-upgrade-20").fetchSemanticsNodes().isNotEmpty()}
+            tag("merchant-history-more").assertDoesNotExist()
+            closeSheet()
+            expand(target);tag("merchant-open-$target").performScrollTo().performClick()
+            tag("merchant-related-history").performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-$merge").fetchSemanticsNodes().isNotEmpty()}
+            shot("$theme-$language-history-related")
+            sheetTap("merchant-history-detail-$merge")
+            shot("$theme-$language-history-merge-detail")
+            sheetTap("merchant-history-source")
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-$rename").fetchSemanticsNodes().isNotEmpty()}
+            shot("$theme-$language-history-source")
+            sheetTap("merchant-history-detail-$rename")
+            tag("merchant-history-detail").assertExists()
+            clearHeader(tag("merchant-history-profile"))
+            shot("$theme-$language-history-profile")
+            sheetTap("merchant-history-back");sheetTap("merchant-history-back")
+            clearHeader(tag("merchant-impact-$purged"))
+            tag("merchant-impact-$purged").onChildren().filter(hasText("修改前 · 駅前カフェ") or hasText("変更前 · 駅前カフェ")).assertCountEquals(1)
+            shot("$theme-$language-history-purged-impact")
+            closeSheet()
+            tag("event-$event").performScrollTo().performClick()
+            tag("record-merchant-history").performScrollTo().assertIsDisplayed()
+            shot("$theme-$language-record-history-entry")
+            tag("record-merchant-history").performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-$merge").fetchSemanticsNodes().isNotEmpty()}
+            shot("$theme-$language-record-history")
+            closeSheet(backToRecord=true)
+            // The refund entrance uses REFUND, not EVENT, even though both are event rows.
+            ui.onNode(hasTestTag("event-$refund") and hasAnyAncestor(hasTestTag("refund-history"))).performScrollTo().performClick()
+            tag("record-merchant-history").performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-$merge").fetchSemanticsNodes().isNotEmpty()}
+            closeSheet(backToRecord=true)
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
+    @Test fun emptyMerchantHistoryAcrossLooks() {
+        for((theme,language) in testLooks(this@MerchantFlowTest)) {
+            val book=runBlocking {
+                repo.createBook("Empty history",Currency.JPY,startDate="2026-10-01",theme=theme,language=language).also {
+                    repo.updateBook(repo.dao.book(it)!!.copy(initialized=true));vm.preferences.select(it)
+                }
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
+            ui.runOnIdle{vm.navigate("merchants")}
+            ui.onNodeWithTag("merchant-history-open").performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-empty").fetchSemanticsNodes().isNotEmpty()}
+            shot("$theme-$language-history-empty")
+            ui.onNodeWithTag("sheet-close").performClick()
         }
     }
 

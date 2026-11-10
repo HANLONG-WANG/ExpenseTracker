@@ -31,7 +31,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 /** Two-column directory: editorial columns, receipt slips, or ruled handwritten entries. */
-@Composable internal fun MerchantPlaceCard(id:String,name:String,secondary:String,active:Boolean,expanded:Boolean?,onClick:()->Unit,modifier:Modifier=Modifier) {
+@Composable internal fun MerchantPlaceCard(id:String,name:String,secondary:String,active:Boolean,expanded:Boolean?,onClick:()->Unit,modifier:Modifier=Modifier,ambiguous:Boolean=false) {
     val t=LocalYohaku.current
     val state=if(expanded==true)word("已展开","展開済み")else word("可展开","折りたたみ")
     val action=if(expanded==null)word("保存商户","お店を保存")else if(expanded)word("收起商户","お店を折りたたむ")else word("展开商户","お店を展開")
@@ -45,13 +45,14 @@ import com.yohaku.expensetracker.ui.theme.*
             drawLine(t.line,Offset(10.dp.toPx(),size.height-5.dp.toPx()),Offset(size.width-10.dp.toPx(),size.height-5.dp.toPx()),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(),3.dp.toPx())))
         }
     }
-    Column(modifier.testTag("merchant-card-$id").semantics{if(expanded!=null)stateDescription=state}.clickable(role=Role.Button,onClickLabel=action,onClick=onClick).then(frame).padding(horizontal=10.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+    Column(modifier.testTag("merchant-card-$id").semantics{if(expanded!=null)stateDescription=state}.clickable(enabled=!ambiguous,role=Role.Button,onClickLabel=action,onClick=onClick).then(frame).padding(horizontal=10.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
         Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             YText(name,if(t.id=="journal")16 else 13,Modifier.weight(1f),bold=t.id=="magazine",maxLines=2,overflow=TextOverflow.Ellipsis)
             // Same disclosure mark as the other expandable rows of the app.
             if(expanded!=null)YText(if(expanded)"−" else "+",15,color=t.accent)
         }
         YText(secondary,10,color=t.muted,maxLines=1,overflow=TextOverflow.Ellipsis)
+        if(ambiguous)YText(word("存在多个同名商户，需先合并或改名区分","同名のお店が複数あります。統合するか名前を変えて区別してください"),11,color=t.accent)
         if(!active)YText(word("已停用","停止中"),10,color=t.accent)
     }
 }
@@ -94,4 +95,37 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(place,if(journal)10 else 8,color=t.muted,lineHeightMultiplier=if(journal)1.5f else 11f/8,cssLineBox=true)
         }
     }
+}
+
+/** Editorial index / notebook margin / receipt slip. Only list items receive numbers; sections use headings. */
+@Composable internal fun MerchantHistoryPaper(number:String?=null,modifier:Modifier=Modifier,heading:String?=null,content:@Composable ColumnScope.()->Unit) {
+    val t=LocalYohaku.current
+    val frame=when(t.id) {
+        "magazine"->Modifier.drawBehind {
+            drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx())
+            drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),.5.dp.toPx())
+        }
+        "journal"->Modifier.background(t.soft.copy(alpha=.5f)).drawBehind {
+            drawLine(t.warm.copy(alpha=.5f),Offset(7.dp.toPx(),0f),Offset(7.dp.toPx(),size.height),1.dp.toPx())
+            drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx())))
+        }
+        else->Modifier.shadow(2.dp,RoundedCornerShape(12.dp)).background(t.surface,RoundedCornerShape(12.dp)).drawBehind {
+            drawLine(t.line,Offset(12.dp.toPx(),size.height-7.dp.toPx()),Offset(size.width-12.dp.toPx(),size.height-7.dp.toPx()),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(),3.dp.toPx())))
+        }
+    }
+    Column(modifier.fillMaxWidth().then(frame).padding(start=if(t.id=="journal")17.dp else 12.dp,end=12.dp,top=12.dp,bottom=17.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        if(heading!=null)YText(heading,15,color=if(t.id=="journal")t.warm else t.ink)
+        else if(number!=null)YText(when(t.id){"magazine"->"INDEX / $number";"journal"->word("手记 · $number","覚え書き · $number");else->"YOHAKU / No. $number"},10,color=t.muted)
+        content()
+    }
+}
+
+@Composable internal fun MerchantHistoryStamp(text:String) {
+    val t=LocalYohaku.current
+    val frame=when(t.id) {
+        "magazine"->Modifier.drawBehind{drawLine(t.accent,Offset.Zero,Offset(0f,size.height),3.dp.toPx())}
+        "journal"->Modifier.rotate(-1f).drawBehind{drawRect(t.warm,style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),2.dp.toPx()))))}
+        else->Modifier.background(t.soft,RoundedCornerShape(12.dp)).border(1.dp,t.line,RoundedCornerShape(12.dp))
+    }
+    YText(text,11,Modifier.testTag("merchant-history-undone").then(frame).padding(8.dp),color=t.accent)
 }

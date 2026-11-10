@@ -57,9 +57,11 @@ interface MerchantHistoryDao {
     suspend fun operation(bookId:String,operationId:String):MerchantOperationEntity?
     @Query("SELECT * FROM merchant_operations WHERE bookId=:bookId ORDER BY timestamp DESC,id DESC LIMIT :limit OFFSET :offset")
     suspend fun page(bookId:String,limit:Int,offset:Int=0):List<MerchantOperationEntity>
-    @Query("""SELECT * FROM merchant_operations WHERE bookId=:bookId
-        AND (sourceMerchantId=:merchantId OR targetMerchantId=:merchantId)
-        ORDER BY timestamp DESC,id DESC LIMIT :limit OFFSET :offset""")
+    @Query("""SELECT o.* FROM merchant_operations o WHERE o.bookId=:bookId
+        AND (o.sourceMerchantId=:merchantId OR o.targetMerchantId=:merchantId OR EXISTS (
+            SELECT 1 FROM merchant_operation_impacts i WHERE i.bookId=o.bookId AND i.operationId=o.id
+            AND (i.oldMerchantId=:merchantId OR i.newMerchantId=:merchantId)))
+        ORDER BY o.timestamp DESC,o.id DESC LIMIT :limit OFFSET :offset""")
     suspend fun forMerchant(bookId:String,merchantId:String,limit:Int,offset:Int=0):List<MerchantOperationEntity>
     @Query("""SELECT o.* FROM merchant_operations o JOIN merchant_operation_impacts i
         ON i.bookId=o.bookId AND i.operationId=o.id

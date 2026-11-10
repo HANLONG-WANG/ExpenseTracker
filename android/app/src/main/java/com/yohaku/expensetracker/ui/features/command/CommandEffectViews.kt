@@ -64,10 +64,12 @@ import kotlinx.serialization.json.*
             val original=facts["originalName"]?.jsonPrimitive?.contentOrNull
             val target=facts["targetName"]?.jsonPrimitive?.contentOrNull
             if(target!=null)YText(listOfNotNull(original,target).joinToString(" → "),14)
+            val nonzero=facts.filter{(key,value)->key !in setOf("operation","originalName","targetName")&&value.jsonPrimitive.intOrNull!=0}
+            if(nonzero.isEmpty())YText(word("不影响其他记录","ほかの記録には影響しません"),12)
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val columns=if(maxWidth/LocalDensity.current.fontScale<260.dp)1 else 2
                 Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                    facts.filterKeys{it !in setOf("operation","originalName","targetName")}.entries.chunked(columns).forEach{row->
+                    nonzero.entries.chunked(columns).forEach{row->
                         Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             row.forEach{(key,value)->YText(fieldName(key)+"："+value.jsonPrimitive.content,12,modifier=Modifier.weight(1f))}
                             if(row.size<columns)Spacer(Modifier.weight(1f))

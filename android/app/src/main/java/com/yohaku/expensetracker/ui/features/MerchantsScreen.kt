@@ -25,12 +25,23 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
     var mergeTarget by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var deleting by rememberSaveable(s.book.id){mutableStateOf(false)}
     var organizing by rememberSaveable(s.book.id){mutableStateOf(false)}
-    val busy by vm.busy.collectAsStateWithLifecycle()
+    var history by remember(s.book.id){mutableStateOf<MerchantHistoryScope?>(null)}
+    val duplicateGroups=s.merchants.groupBy{normalizedMerchantName(it.name)}.filterValues{it.size>1}
     var locationFor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var locationId by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     YTitle(word("常去的地方，留下名字。","いつものお店を、その名前で。"),"PLACES OF EVERYDAY LIFE",pageFlow=true)
     val merchant=s.merchants.find{it.id==selected}
     if(merchant==null) {
+        YLink(word("操作历史","操作履歴"),{history=MerchantHistoryScope()},Modifier.testTag("merchant-history-open"))
+        duplicateGroups.values.forEach { group->
+            MerchantHistoryPaper(modifier=Modifier.testTag("merchant-duplicate-group"),heading=word("注意","注意")) {
+                YText(word("存在多个同名商户，需先合并或改名区分","同名のお店が複数あります。統合するか名前を変えて区別してください"),14)
+                group.forEach { m->
+                    YLink(m.name,{selected=m.id},Modifier.testTag("merchant-duplicate-${m.id}"))
+                    YText(listOf(m.note.ifBlank{word("暂无备注","メモなし")},s.merchantLocations.filter{it.merchantId==m.id}.joinToString(" · "){it.name}.ifBlank{word("未保存地点","場所未保存")},if(m.active)word("启用","有効")else word("停用","停止")).joinToString(" · "),12)
+                }
+            }
+        }
         if(s.merchants.isEmpty())YEmpty(word("保存常去商户与地点，记账时可以主动选择。","いつものお店と場所を保存すると、記録で選べます。"))
         val counts=s.visibleEvents.groupingBy{s.merchantKey(it)}.eachCount()
         val locations=s.merchantLocations.groupBy{it.merchantId}
@@ -55,7 +66,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
             names.values.toList().chunked(2).forEach{row->Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 row.forEach{events->val name=events.first().merchant
-                    MerchantPlaceCard("recorded-${events.first().id}",name,word("${events.size} 笔","${events.size} 件"),true,null,{newName=name;editing=""},Modifier.weight(1f).fillMaxHeight())
+                    MerchantPlaceCard("recorded-${events.first().id}",name,word("${events.size} 笔","${events.size} 件"),true,null,{newName=name;editing=""},Modifier.weight(1f).fillMaxHeight(),ambiguous=normalizedMerchantName(name) in duplicateGroups)
                 }
                 if(row.size==1)Spacer(Modifier.weight(1f))
             }}
@@ -64,6 +75,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         MerchantLocationPreferences(s,vm,onEntry)
     }else {
         YLink(word("全部商户","すべてのお店"),{selected=null})
+        YLink(word("相关历史","関連する履歴"),{history=MerchantHistoryScope(merchant.id,merchant.name)},Modifier.testTag("merchant-related-history"))
         YLead(merchant.name,word("改名后，名下记录、模板和周期账单会同步。","名前の変更は関連する記録・テンプレート・定期支払いにも反映します。"),"YOUR SAVED PLACES",pageFlow=true)
         Panel {
             YText(merchant.note.ifBlank{word("暂无备注","メモなし")},13)
@@ -102,10 +114,14 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         YSheet(word("选择合并到的商户","統合先のお店を選択"),{choosingMerge=false}) {
             YField(word("搜索商户","お店を検索"),query,{query=it})
             s.merchants.filter{it.id!=merchant.id&&normalizedMerchantName(it.name).contains(normalizedMerchantName(query))}.forEach{target->
-                YButton(target.name,{choosingMerge=false;mergeTarget=target.id},Modifier.testTag("merchant-merge-target-${target.id}"))
+                MerchantHistoryPaper(heading=word("可合并商户","統合先候補")) {
+                    YButton(target.name,{choosingMerge=false;mergeTarget=target.id},Modifier.testTag("merchant-merge-target-${target.id}"))
+                    YText(listOf(target.note,s.merchantLocations.filter{it.merchantId==target.id}.joinToString(" · "){it.name},if(target.active)word("启用","有効")else word("停用","停止")).filter{it.isNotBlank()}.joinToString(" · "),12)
+                }
             }
         }
     }
+    history?.let{MerchantHistorySheet(s.book.id,vm,it,{history=null})}
     val target=s.merchants.find{it.id==mergeTarget}
     if(merchant!=null&&target!=null)MerchantOperationConfirmation(s,MerchantOperationInput(MerchantOperationType.MERGE,merchant.id,target.id),vm,
         word("合并商户","お店を統合"),{mergeTarget=null},{selected=target.id;mergeTarget=null},merge=true)
@@ -114,15 +130,14 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
 }
 private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val latitude:Double,val longitude:Double,val radius:String="100")
 
-@Composable private fun MerchantImpact(preview:MerchantOperationPreview) {
-    val c=preview.counts
+@Composable internal fun MerchantImpactCountsText(c:MerchantImpactCounts,modifier:Modifier=Modifier) {
     val rows=listOf(
         listOf(word("正常记录","通常の記録") to c.affectedRecords-c.trashedRecords,word("回收站","ごみ箱") to c.trashedRecords),
         listOf(word("新关联","新規関連") to c.newlyLinkedRecords,word("改名","名前変更") to c.renamedRecords,word("退款","返金") to c.linkedRefunds),
         listOf(word("模板","テンプレート") to c.templates,word("周期","定期") to c.recurrenceRules,word("草稿","下書き") to c.drafts),
         listOf(word("保存地点","保存場所") to c.savedLocations,word("待整理位置","未整理の位置") to c.pendingPlaces),
     ).mapNotNull { row->row.filter{it.second>0}.takeIf{it.isNotEmpty()}?.joinToString(" · "){"${it.first} ${it.second}"} }
-    YText(rows.joinToString("\n").ifEmpty{word("不影响其他记录","ほかの記録には影響しません")},12,Modifier.testTag("merchant-name-impact"))
+    YText(rows.joinToString("\n").ifEmpty{word("不影响其他记录","ほかの記録には影響しません")},12,modifier)
 }
 
 @Composable private fun MerchantEditor(s:BookSnapshot,old:MerchantEntity?,initialName:String,vm:AppViewModel,onDismiss:()->Unit,onMerged:(String)->Unit) {
@@ -146,7 +161,7 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
     if(!confirming)YSheet(word("商户资料","お店の情報"),onDismiss) {
         originalName?.let{YText(word("来源原名组：$it","元の名前グループ：$it"),13,Modifier.testTag("merchant-original-group"))}
         YField(word("商户名称","お店の名前"),name,{name=it})
-        calculated.getOrNull()?.let{MerchantImpact(it.preview)}
+        calculated.getOrNull()?.let{MerchantImpactCountsText(it.preview.counts,Modifier.testTag("merchant-name-impact"))}
         YField(word("备注","メモ"),note,{note=it},multiline=true)
         if(target==null)YToggle(word("启用候选选择","選択候補として有効"),active,{active=it})
         else YText(word("沿用「${target.name}」的名称和启停；备注加入目标资料。","「${target.name}」の名前・有効状態を保持し、メモを追加します。"),12)
@@ -190,7 +205,7 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
                 "統合元「${source?.name}」を削除し、場所をすべて移動します。重複を除いたメモを追加し、統合先の有効状態を保持します。分離できません。"),13)
             if(stable.type==MerchantOperationType.ASSIGN_ORIGINAL_NAME)YText(word("填写的备注及保留地点加入目标；目标名称和启停不变。","入力したメモと保存する場所を追加し、保存先の名前と有効状態を保持します。"),13)
         }
-        prepared.getOrNull()?.let{MerchantImpact(it.preview)
+        prepared.getOrNull()?.let{MerchantImpactCountsText(it.preview.counts,Modifier.testTag("merchant-name-impact"))
             if(it.preview.duplicateLocationIds.isNotEmpty())YText(word("有 ${it.preview.duplicateLocationIds.size} 个完全重复地点，全部保留，可稍后整理。","完全に重複する場所が ${it.preview.duplicateLocationIds.size} 件あります。すべて保持します。"),12)}
         places.forEachIndexed { index,p->val choice=choices[index]
             Panel(Modifier.testTag("recorded-place-$index")) {

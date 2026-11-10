@@ -258,7 +258,7 @@ adb shell settings put system font_scale 1.0
 - 商户同名统一 trim + NFKC + 忽略大小写。新建重名拒绝，编辑撞名可明确确认合并；旧数据重名不迁移，不改规范化名称仍能保存，未关联记录不任意选择一个商户。
 - 创建、原名创建/归入、改名、合并与删除分别计算明确关联和待认领集合，完整覆盖可恢复记录及退款、模板/周期、新建草稿，按最终状态重算受影响名称组。备注/启停仅改资料。普通收入/转账同名不动，明确关联收入跟随；退款沿原消费同步。来源原名组不会随输入丢失，目标唯一时可直接归入，多匹配须先在管理中区分。
 - 预览分类展示正常/回收站、新关联/改名/退款、引用和地点，提交事务重算并核对指纹。合并保留目标 ID、名称和启停，备注去重加入、全部地点迁移、来源删除，完全重复地点提示后保留；保存或明确放弃后才清理临时位置。商户资料有待整理位置入口。
-- 实际变化同事务写独立商户历史及影响明细，保留旧名/ID/资料；不增加 event revision 或改变最近保存、小票和金融事实。商户历史 UI 留 H；编辑已有记录草稿基线已在 D 完成。
+- 实际变化同事务写独立商户历史及影响明细，保留旧名/ID/资料；不增加 event revision 或改变最近保存、小票和金融事实。商户历史 UI 已在 H1 接入管理页、商户资料与记录详情；编辑已有记录草稿基线已在 D 完成。
 - 商户与原名目录均为两列、同行等高：最多两行名称、一行笔数/地点摘要及停用标记；已保存商户名称旁有「+ / −」展开标记。单项展开在该行下方显示全部地点、备注及操作，重复点击收起。杂志为细线双栏（展开项顶线加粗为强调色），手账为手写账目栏/虚线（展开项浅底），小物为带撕口的小票（展开项强调色描边）；确认弹层和选择器沿用主题 `YSheet`。定位说明/设置位于目录后。
 - 云端 `merchant.save` 复用共享创建/原名创建或归入/改名/备注业务与分类预览，`merchant.setActive` 仅改启停，未处理位置保留；正式合并/删除仍禁止云端。C2 已排除历史 ID 活引用，撤销保留并标记历史、追加对应撤销记录；整批检查只拒绝新增商户不一致。
 - 退款显示文字在消费修改或商户业务事务中同步，读取 `merchantKey` 只沿原消费判断归属，不写数据。
@@ -801,7 +801,7 @@ C1 返工验证（2026-11-10）：串行全量 JVM 190 项（189 通过、1 既�
 
 ### 商户改造 C2 验证（2026-11-10）
 
-C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用检查中排除、同事务标记原商户历史并追加一对一 `CLOUD_UNDO`、整批最终状态的新增一致性违反检查，以及 CSV 来源键整行冲突/删除验证。实现与取舍见 `docs/implementation-spec.md` §1.12。旧撤销日志迁移兼容留 E，草稿基线留 D，历史 UI 留 H。
+C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用检查中排除、同事务标记原商户历史并追加一对一 `CLOUD_UNDO`、整批最终状态的新增一致性违反检查，以及 CSV 来源键整行冲突/删除验证。实现与取舍见 `docs/implementation-spec.md` §1.12。旧撤销日志迁移兼容和草稿基线已分别在 E、D 完成；历史 UI 见 H1 验证记录。
 
 - 串行使用 `GRADLE_USER_HOME=/tmp/yohaku-desktop-gradle` 执行 `./gradlew --offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:testDebugUnitTest`：190 项，189 通过、1 项既有跳过，0 失败。
 - 然后执行同参数 `:app:installDebug :app:installDebugAndroidTest`：构建并安装成功。未使用会卸载应用的 `connectedDebugAndroidTest`。
@@ -822,7 +822,7 @@ C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用�
 - 冲突提示：临时设为 S24 Ultra `1080×2340 / density 450`，运行 `DraftEditingFlowTest#merchantConflictConfirmationAcrossLooks`，参数 `looks=all visual=true captureSuffix=-s24`，**1/1 通过，17.171 秒**，方法内部覆盖三主题×中日文×并发冲突/无基线旧草稿共 12 场景，并实际确认保存。日志 `/tmp/yohaku-merchant-d-visual-final.log`。
 - 12 张系统截图已下载并查看，位于 `/tmp/yohaku-merchant-d-review/{magazine,journal,objects}-{zh,ja}-{concurrent,legacy}.png`，另有两张 `overview-*.png` 汇总图。设备原件在应用内部 `files/verification/merchant-conflict--s24/`（现有截图助手会为传入的 `-s24` 再加一个连字符）。提示、前后商户、长名称换行均完整，复用三主题现有 `YSheet`/`ThemeAuditPanel`。**结束后已恢复 `1170×2532 / density 480`**。
 - 既有撤销精确恢复断言按新规则保留所有业务字段比较，单独排除并验证同步版本递增；没有删除失效断言。截图测试限定冲突面板内的文字，并让各语言场景使用不同的用户输入，避免背景同名记录和“输入其实未变”的夹具干扰。
-- 本批不执行全外观矩阵、系统/性能专项；迁移整理和旧撤销日志兼容留 E，互请/计划/CSV 判重留 F，云端协议扩展留 G，商户历史 UI 与三主题正式精修留 H。
+- 本批不执行全外观矩阵、系统/性能专项；迁移整理和旧撤销日志兼容留 E，互请/计划/CSV 判重留 F，云端协议扩展留 G，商户历史 UI 与商户范围主题收口见 H1，整链路收口留 H2。
 
 ### 商户改造 E 验证（2026-11-10）
 
@@ -851,8 +851,23 @@ C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用�
 
 - `merchant.save` 使用 `originalName` + `name` 从原名创建，或 `originalName` + `targetMerchant`（本账本 ID／前步 merchant 输出）归入已有商户；与编辑正式商户的 `merchant` 互斥。归入 name 可省略，若提供必须与目标规范化名称相同；保留目标名称及启停，备注非空行去重加入。来源无可处理支出／引用、最终目标重名歧义均明确拒绝。合并／删除继续只在应用内。
 - 复用本机业务，临时位置全部保留待整理。`merchantImpact` 返回操作、来源／目标、正常／回收站、新关联／改名／退款、模板／周期、草稿、保存地点与待整理位置；分类不相加。确认页常规双列，窄屏大字单列，沿用三主题原确认风格；`merchantScope` 同时覆盖新输入，数量不变而坐标、记录或目标资料变化也拒绝旧确认。
-- 三份协议集中为完整商户章节，覆盖解析、启停、意图、预览、历史与撤销、升级前日志冲突及 CSV 来源键非别名规则，清除“新字段留后续”及“删除后撤销静默清除所有失效业务关联”的旧描述。交接包 README、实现规格、产品说明与 UI 映射同步；历史 UI 和主题精修仍属 H。
+- 三份协议集中为完整商户章节，覆盖解析、启停、意图、预览、历史与撤销、升级前日志冲突及 CSV 来源键非别名规则，清除“新字段留后续”及“删除后撤销静默清除所有失效业务关联”的旧描述。交接包 README、实现规格、产品说明与 UI 映射同步；历史 UI 和商户范围主题收口见下方 H1 记录。
 - Gradle 始终串行，使用可写缓存 `GRADLE_USER_HOME=/tmp/yohaku-desktop-gradle`（默认缓存只读）、`--offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process`。`CommandCapabilitiesTest -Dyohaku.updateCapabilities=true` 生成两份 capabilities 样例及两份 command-plan schema，未手改 JSON；随后完整单元测试 **194 项：193 通过、1 项既有可选 CSV 样本测试跳过、0 失败**，catalog 摘要与产物一致。`:app:installDebug :app:installDebugAndroidTest` 成功。
 - `emulator-5580` 使用 `am instrument`：`CommandLedgerExecutionTest` 整类 22 项，首轮 21 通过；新增夹具先留草稿后记账导致草稿被正常清除，调整准备顺序后 `originalNameCreateAndAssignMatchLocalBusinessAndUndo` 单独复跑通过。最终 22 项均通过，包括本次未发生内存失败的 `batchFiveHundredNotesOnLargeLedgerLogsPerformance`。关键覆盖两种原名意图与本机结果一致、同名创建、引用输出、业务撤销及历史标记、歧义／空来源／ID 名称矛盾拒绝、范围变化拒绝。另跑 `AnalysisProjectionTest#originalGroupPreviewCommitLocationsAndHistoryAreOneTransaction`、`#linkedPendingPlacesSurviveProfileAndOrdinaryEntrySavesUntilOrganized`，2 项通过。
 - UI：`CommandFlowTest#merchantOriginalNamePreviewAcrossLooks` 与 `#ledgerCombinationPreviewAcrossLooks` 在 S24 Ultra `1080×2340 / density 450`、`looks=all visual=true captureSuffix=-s24` 下 **2 项通过**，覆盖三主题×中日文，24 张原图已查看。另以 `960×2496 / density 480`（320dp）/fontScale 1.3 对手账日文原名创建／归入执行前一方法，**1 项通过**；首轮发现双列日文换行过碎，改为窄屏大字单列后复验，2 张原图已查看。没有新增遮挡或截断；截图 `/tmp/yohaku-merchant-g-review/{s24,narrow}/`，目录根部另有四张六宫格总览。结束已恢复 `1170×2532 / density 480 / fontScale 1.0`。
 - 日志：`/tmp/merchant-g-capabilities.log`、`/tmp/merchant-g-unit-final.log`、`/tmp/merchant-g-install-final.log`、`/tmp/merchant-g-ledger-instrumentation.log`（含首轮夹具失败）、`/tmp/merchant-g-targeted-final.log`（修正项与两项本机业务复验）、`/tmp/merchant-g-visual-s24-final.log`、`/tmp/merchant-g-visual-narrow-final.log`。未使用 connectedDebugAndroidTest，未并行运行 Gradle。
+
+### 商户改造 H1：历史、重名提示与主题检查（2026-11-10）
+
+- 新增管理页「操作历史」、商户资料「相关历史」、记录详情「商户操作历史」。列表与影响明细每页 20 条，手动加载更多；合并详情可继续查询已删除来源商户，记录永久清理后仍读取历史快照。`forMerchant` 同时匹配影响明细，覆盖无单一来源/目标的升级整理。记录详情与历史互斥显示，返回保留记录滚动位置；不新增本机撤销。
+- 历史列表/详情/空状态与重名说明分别使用杂志细线编号、手账侧栏虚线、小物圆角小票；撤销标记分别为强调侧线、虚线印章、圆角标签。原名歧义组直接提示并禁用保存入口；重名商户和合并候选显示备注、地点、启停。全 UI 未发现「商户原名 / お店の元の名前」遗留，正式字段统一为「商户名称 / お店の名前」。云端商户整理范围只显示非零类别，全零显示「不影响其他记录」，字段仍完整。
+- 串行执行 `testDebugUnitTest`、`installDebug` / `installDebugAndroidTest`，均使用离线、max-workers=2、Kotlin in-process；可写 Gradle 缓存 `/tmp/yohaku-desktop-gradle`。JVM **194 项：193 通过、1 项既有跳过**。日志 `/tmp/merchant-h1-unit-final.log`、`/tmp/merchant-h1-install-final.log`；测试定位/动画等待调整后的安装日志 `/tmp/merchant-h1-install-settled.log`。
+- 最终默认参数直接 `am instrument` 运行四个完整类：MerchantFlowTest **8/8**、CommandFlowTest **10/10**、DraftEditingFlowTest **42/42**、LocationEntryFlowTest **4/4**，合计 **64/64 通过（196.282 秒）**。日志 `/tmp/merchant-h1-default-final.log`；首轮发现记录详情叠加历史弹层，已改为互斥切换后完整复验。未使用 connectedDebugAndroidTest，Gradle 始终串行。
+- S24 基准 **1080×2340 / density 450 / fontScale 1.0**，`looks=all visual=true captureSuffix=-s24`：MerchantFlowTest 的历史追溯、空状态、重名提示、双列/归入/合并、原名/待整理位置、停用/退款、地点编辑/删除等七个方法，CommandFlowTest 的 `merchantOriginalNamePreviewAcrossLooks` / `ledgerCombinationPreviewAcrossLooks`，以及 DraftEditingFlowTest 的 `merchantConflictConfirmationAcrossLooks`，共 **10 个方法最终通过**，均覆盖三主题×中日文。历史初次测试的退款行定位同时命中背景和详情，已限定到详情退款区；后续 8 方法 **8/8 通过（270.078 秒）**。日志 `/tmp/merchant-h1-history-s24.log`（含首次定位失败）、`/tmp/merchant-h1-visual-s24.log`。
+- 窄屏 **960×2078 / density 480 / fontScale 1.3**，`looks=all visual=true captureSuffix=-narrow`：历史、空状态、重名、双列/归入/合并、云端原名预览、草稿冲突，共 **6 个方法最终通过**。首轮 5/6；商户编辑后点击保存遇到键盘过渡超时，单独复现保存可达，连续截图显示窗口/键盘位置仍在变化。测试改为等待按钮、标题和可见区域坐标稳定且按钮完整可见，再执行一次真实点击，不重试点击或放宽业务断言；该方法六外观定向复验 **1/1 通过（96.145 秒）**。日志 `/tmp/merchant-h1-visual-narrow.log`、`/tmp/merchant-h1-compact-narrow-final.log`。
+- **342 张原图已检查**：S24 210 张、窄屏 132 张，均无新增横向溢出、遮挡或不可达操作；长内容通过纵向滚动阅读。本机目录 `/tmp/yohaku-merchant-h1-review/{s24,narrow}/`，商户截图位于 `phase-b-p12-merchants-{s24,narrow}/`，云端在 `cloud/`，冲突在 `merchant-conflict--{s24,narrow}/`；各配置的 `overview/` 是逐场景六外观对照图。关键文件后缀：`-history-list.png`、`-history-merge-detail.png`、`-history-source.png`、`-history-profile.png`、`-history-purged-impact.png`、`-history-undone.png`、`-history-cloud-undo.png`、`-record-history-entry.png`、`-record-history.png`、`-duplicate-identification.png`、`-ambiguous-original.png`、`-merge-choice.png`。每个文件前缀为 `{theme}-{language}`。
+- 视觉检查后恢复 **1170×2532 / density 480 / fontScale 1.0**。本批不替代 H2 的完整业务链路验证、发版专项或商户改造最终文档收口。
+
+H1 复核修正（2026-11-10）：重名提示、资料分区、合并候选、读取失败与空状态不再用符号填充编号头；保留三主题各自纸面样式，改用有意义的中日文标题或省略编号。历史摘要区分新建、原名改名创建与删除，资料空值分别显示「尚未创建 / 未作成」和「已删除 / 削除済み」；云端撤销引用同一摘要文案。相关产品/实现/UI 映射文档已同步。
+
+本次串行 JVM **193 通过、1 既有跳过**，APK 安装成功；默认 `MerchantFlowTest` **8/8 通过（49.161 秒）**。S24 `1080×2340 / density 450` 下以 `looks=all visual=true captureSuffix=-s24` 运行历史、重名、空状态、双列/归入/合并四个受影响方法，**4/4 通过（178.585 秒）**，三主题×中日文 **126 张截图已更新并查看**。目录仍为 `/tmp/yohaku-merchant-h1-review/s24/`，新增 `{theme}-{language}-history-{create,create-original,delete}-detail.png`；已有相关截图及 overview 覆盖更新。日志 `/tmp/merchant-h1-review-{unit,install,visual,default}.log`。结束恢复 `1170×2532 / density 480 / fontScale 1.0`。
