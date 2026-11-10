@@ -111,6 +111,8 @@
 
 ### 1.9 商户同步与合并（2026-11-10）
 
+本节为批次 0 的现行路径，待后续批次替换；批次 A 仅增加 1.10 的基础设施，不表示最终业务规则已接入。
+
 - `MerchantUpdates.kt` 集中 `saveMerchant` / `mergeMerchants` / 归入及文字变更数量预览。事务内读取一个 `BookSnapshot`，按改名前 `merchantKey` 归属选记录；快照包含回收站、排除 `purgedAt`，不需数据库迁移。
 - `normalizedMerchantName`（trim + NFKC + lowercase）统一保存查重、`merchantsByName` / `merchantKey` 回退、输入关联、原名目录及 `recordedPlaces`。历史重复名称不自动选择任意 ID；原名称规范化未改变时允许保存。新建/改名撞名由仓库双语拒绝，提示应用内合并。
 - 改名吸收新名字的未关联记录需要 `confirmAdoption=true`；新建正常归入。UI 显示数量后确认，云端 `merchant.save` 显式开启归入并在 capability 声明。`merchant.setActive` 走同一保存函数，顺带修复旧文字/关联，不触发新名字归入。
@@ -119,6 +121,16 @@
 - `CommandUndoJournal` 已收集 events / event_merchants / event_places / templates / recurrences / drafts / merchants 的完整行变化，无需扩大日志表集；新增仪器测试逐行比较执行前与撤销后，包括记录文字、关联和临时位置。
 - 改名不更新记录 revision、图片、小票 revision 或远端提交内容：远端任务 `inputRevision`、已导出小票（不会成为 `staleExport`）和“最近保存”默认值排序都不受影响。
 - 目录两列紧凑、单项展开后在同行下方全宽显示操作。名称两行省略，摘要一行省略，操作用 `YActionRow` 换行。杂志细线双栏、手账边线/虚线、小物小票；复用三主题 `YSheet`。`merchant-card/entry/open-$id` 标签保留，展开语义双语；删除计数按可见归属记录。
+
+### 1.10 商户改造批次 A：解析、预览与历史基础（2026-11-10）
+
+- `MerchantResolution.kt` 复用 `normalizedMerchantName`（trim、NFKC、Locale.ROOT 小写）。支出无 ID 时仅匹配同账本唯一正式商户，包含停用；多匹配返回 `Ambiguous`，无匹配返回 `None`。明确 ID 必须属于本账本并使用正式名称；非空名称与该名称规范化后不一致返回 `ID_NAME_MISMATCH`，不存在/跨账本 ID 返回 `INVALID_MERCHANT_ID`。收入仅支持明确 ID；转账等类型不按名称解析，也不接受独立商户 ID。退款必须传入原消费归属，尊重其有效 ID，不检查原消费旧显示副本、不解析退款自身文字、不建立退款独立关联。现有保存/输入路径尚未切换，批次 B 接入。
+- `MerchantOperations.kt` 定义创建、原名创建/归入、改名、合并、备注、启停、删除、历史整理、云端撤销及本机/云端/升级来源。预览包含受影响非退款记录总数（覆盖仅解除/改换 ID 的删除、同名合并），并区分新关联、改名、回收站、退款、模板、周期、保存地点、待整理位置和草稿；新关联/改名含可恢复的非退款记录，回收站是受影响非退款记录的子集，退款单列，各数不能直接求和。
+- 预览包含操作意图、对象前后状态、未变化但参与计算的依赖及 SHA-256 指纹。按对象和字段稳定排序，以长度前缀编码区分空值/分隔符；后续调用方须纳入旧/新名称组候选、来源/目标资料、退款关系、删除状态、相关地点资料和保留/修改/放弃选择，提交事务内重新计算整个集合，用 `requireCurrentMerchantPreview` 拒绝过期预览。本批未替换旧预览/执行路径。
+- Room **39→40**：`merchant_operations` 主键 `(bookId,id)`，字段包括时间、类型、来源、来源/目标 ID 与名称快照、来源原名、来源/目标各自前后资料（name/note/active）、上述总数及九类数量、cloudPlanId/cloudExecutionId/cloudCommandId、undoOfOperationId/undoneByOperationId/undoneAt。索引覆盖账本时间顺序、来源/目标商户、云端执行标识。
+- `merchant_operation_impacts` 主键 `(bookId,operationId,objectType,objectId)`，保存必要的旧/新商户文字和 ID；对象包括商户、记录、退款、模板、周期、保存地点、临时位置、草稿。`(objectType,objectId)` 和 `(bookId,objectType,objectId)` 索引供追溯，主键前缀供操作明细分页。主表只引用账本、明细只引用操作，不对 merchants/events 建外键；商户/记录删除保留历史，整本永久清理显式先删明细再删主表。
+- `MerchantHistoryDao` 按账本/商户/对象分页，明细亦分页，不进入 BookGraph/BookSnapshot。`writeMerchantOperationInTransaction` 仅在实际业务写入后、调用方已有事务内调用，`changed=false` 不写，预览不调用，失败传播使业务和历史一起回滚。当前商户操作尚未写历史；云端历史排除/一致性检查由 C 接入、旧日志兼容由 E 接入，命令和协议未改。
+- `csv_batch_events.sourceMatchKey` 为可空来源判重键，旧行 NULL；B 捕获原始导入值，F 回填旧批次，本批不改变判重。迁移结构 SQL 后调用暂为空的 `organizeMerchantHistoryV40`，供 E 增加一次性整理。备份为完整数据库文件，版本跟随 `DATABASE_VERSION`，`prepareRestore` 在暂存副本通过 `ALL_MIGRATIONS` 升级，无表白名单需要补充。迁移及备份仪器测试已补充新表、来源列、事务回滚、历史保留和整本清理覆盖。
 
 
 

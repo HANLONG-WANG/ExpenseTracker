@@ -2,11 +2,12 @@ package com.yohaku.expensetracker
 
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.data.db.*
-import com.yohaku.expensetracker.data.repository.LedgerRepository
-import com.yohaku.expensetracker.data.repository.expectedMoney
+import com.yohaku.expensetracker.data.repository.*
+import com.yohaku.expensetracker.domain.merchant.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
@@ -16,6 +17,76 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
+
+    @Test fun version39AddsMerchantHistoryAndCsvSourceWithoutChangingBusinessRows()=runBlocking<Unit> {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="upgrade-merchants-39-40.db";context.deleteDatabase(name)
+        val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
+        try {
+            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("com.yohaku.expensetracker.data.db.YohakuDatabase/39.json").bufferedReader().readText()).getJSONObject("database")
+            val entities=schema.getJSONArray("entities")
+            for(i in 0 until entities.length()) {
+                val entity=entities.getJSONObject(i);val table=entity.getString("tableName")
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}",table))
+                val indices=entity.optJSONArray("indices")
+                for(j in 0 until (indices?.length()?:0))old.execSQL(indices!!.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",table))
+            }
+            val queries=schema.getJSONArray("setupQueries")
+            for(i in 0 until queries.length())old.execSQL(queries.getString(i))
+            old.execSQL("INSERT INTO books (id,name,currency,startDate,theme,language,initialized,budgetMinor,setupStep,archived,deletedAt) VALUES ('b','Existing','JPY','2026-01-01','journal','ja',1,NULL,4,0,NULL)")
+            old.execSQL("INSERT INTO accounts (bookId,id,name,type,currency,openingMinor,openingDate,active) VALUES ('b','bank','Bank','BANK','JPY',1000,'2026-01-01',1)")
+            old.execSQL("INSERT INTO events (bookId,id,kind,accountId,categoryId,amountMinor,currency,baseMinor,date,merchant,note,historicalIncluded,revision) VALUES ('b','e','EXPENSE','bank',NULL,100,'JPY',100,'2026-01-01','Coffee','',0,1)")
+            old.execSQL("INSERT INTO merchants (bookId,id,name,note,active) VALUES ('b','m','Coffee','old note',0)")
+            old.execSQL("INSERT INTO csv_batches (bookId,id,fileName,sha256,createdAt,rowCount,importedCount,skippedCount,accountId,undoGroupId) VALUES ('b','batch','input.csv','hash',1,1,1,0,'bank',NULL)")
+            old.execSQL("INSERT INTO csv_batch_events (bookId,eventId,batchId) VALUES ('b','e','batch')")
+            old.version=39
+        }finally{old.close()}
+        // Same migration entry point as prepareRestore's staged database copy.
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            val repo=LedgerRepository(db);val dao=db.merchantHistoryDao()
+            assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version)
+            assertEquals(100L,repo.dao.event("b","e")!!.amountMinor)
+            assertEquals("Coffee",repo.dao.event("b","e")!!.merchant)
+            assertNull(repo.dao.eventMerchant("b","e")) // Batch A deliberately performs no cleanup.
+            assertFalse(repo.dao.merchant("b","m")!!.active)
+            db.openHelper.readableDatabase.query("SELECT sourceMatchKey FROM csv_batch_events").use{assertTrue(it.moveToFirst());assertTrue(it.isNull(0))}
+            assertTrue(dao.page("b",10).isEmpty())
+            val operation=MerchantOperationEntity("b","operation",2,MerchantOperationType.RENAME,MerchantOperationSource.LOCAL,
+                sourceMerchantId="m",sourceMerchantName="Coffee",targetMerchantId="m",targetMerchantName="Tea",
+                sourceBefore=MerchantProfile("Coffee","old note",false),sourceAfter=MerchantProfile("Tea","old note",false),
+                counts=MerchantImpactCounts(affectedRecords=1,renamedRecords=1))
+            val impact=MerchantOperationImpactEntity("b",operation.id,MerchantObjectType.EVENT,"e","Coffee","Tea","m","m")
+            db.withTransaction {
+                assertFalse(repo.writeMerchantOperationInTransaction(operation,listOf(impact),changed=false))
+            }
+            assertTrue(dao.page("b",10).isEmpty())
+            val failed=runCatching { db.withTransaction {
+                repo.dao.putEvent(repo.dao.event("b","e")!!.copy(merchant="Tea"))
+                repo.writeMerchantOperationInTransaction(operation,listOf(impact),changed=true)
+                error("Rollback business and history together")
+            } }
+            assertTrue(failed.isFailure);assertTrue(dao.page("b",10).isEmpty());assertTrue(dao.impacts("b",operation.id,10).isEmpty())
+            assertEquals("Coffee",repo.dao.event("b","e")!!.merchant)
+            db.withTransaction { repo.writeMerchantOperationInTransaction(operation,listOf(impact),changed=true) }
+            assertEquals(operation,dao.page("b",1).single());assertTrue(dao.page("b",1,1).isEmpty())
+            assertEquals(operation,dao.forMerchant("b","m",10).single())
+            assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).single())
+            assertEquals(impact,dao.impacts("b",operation.id,10).single())
+            db.withTransaction {
+                db.openHelper.writableDatabase.execSQL("DELETE FROM events WHERE bookId='b' AND id='e'")
+                repo.dao.deleteMerchant("b","m")
+            }
+            assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).single())
+            val other=repo.createBook("Other",com.yohaku.expensetracker.domain.model.Currency.JPY)
+            db.withTransaction { repo.writeMerchantOperationInTransaction(operation.copy(bookId=other),listOf(impact.copy(bookId=other)),true) }
+            assertTrue(repo.commitBookOperation(repo.previewBookOperation("b",BookOperation.TRASH)))
+            assertTrue(repo.commitBookOperation(repo.previewBookOperation("b",BookOperation.PURGE)))
+            assertTrue(dao.page("b",10).isEmpty());assertTrue(dao.impacts("b",operation.id,10).isEmpty())
+            assertEquals(1,dao.page(other,10).size);assertEquals(1,dao.impacts(other,operation.id,10).size)
+            db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
 
     @Test fun version38AddsBudgetExclusionDefaultFalseToEventsAndTemplates()=runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -30,16 +101,12 @@ class DatabaseUpgradeTest {
         initial.close()
         val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
         try {
-            restoreFixtureTable(old,"com.yohaku.expensetracker.data.db.YohakuDatabase/38.json","events")
-            restoreFixtureTable(old,"com.yohaku.expensetracker.data.db.YohakuDatabase/38.json","entry_templates")
-            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("com.yohaku.expensetracker.data.db.YohakuDatabase/38.json").bufferedReader().readText()).getJSONObject("database")
-            old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")))
-            old.version=38
+            restoreFixtureDatabase(old,38,"com.yohaku.expensetracker.data.db.YohakuDatabase/38.json")
         }finally{old.close()}
         val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
         try {
             val snapshot=LedgerRepository(db).snapshot(db.dao().book(book)!!).first()
-            assertEquals(39,db.openHelper.readableDatabase.version)
+            assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version)
             assertEquals(event,snapshot.events.single().id);assertEquals(100L,snapshot.events.single().amountMinor)
             assertFalse(snapshot.events.single().budgetExcluded);assertFalse(snapshot.templates.single().budgetExcluded)
             db.dao().putEvent(snapshot.events.single().copy(budgetExcluded=true))
@@ -206,7 +273,7 @@ class DatabaseUpgradeTest {
             db.creditLimitDao().insertConfig(CreditLimitConfigEntity(book,"limit",card,1,"2026-01-01","JPY",10000,null,null,"TOTAL_ONLY",null,"2026-01-01",0,null,null,"{\"movements\":[]}","PAYMENT_DATE","PRINCIPAL_ONLY","TRANSACTION_DATE","Asia/Tokyo",0))
             db.close()
             val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
-            try {old.execSQL("DROP TABLE entry_templates");restoreFixtureTable(old,"room-v32-schema.json","recurrences");restoreFixtureTable(old,"room-v32-schema.json","events");restoreFixtureTable(old,"room-v32-schema.json","credit_limit_configs");restoreFixtureTable(old,"room-v32-schema.json","cloud_tasks");old.execSQL("DROP TABLE command_effects");old.execSQL("DROP TABLE command_plans");old.version=32}finally{old.close()}
+            try {restoreFixtureDatabase(old,32)}finally{old.close()}
             db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
             val config=db.creditLimitDao().graph(book).first()!!.configs.single()
             assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version);assertEquals(0,config.recoveryDelayDays);assertEquals("PAYMENT_DATE",config.recovery)

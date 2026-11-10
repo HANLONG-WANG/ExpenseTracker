@@ -3,6 +3,7 @@ package com.yohaku.expensetracker
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.backup.*
@@ -10,6 +11,7 @@ import com.yohaku.expensetracker.data.command.*
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.merchant.*
 import com.yohaku.expensetracker.domain.reminders.ReminderPreferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -53,6 +55,13 @@ class BackupRoundTripTest {
             val monthlyPlan=MonthlyPlanEntity(book,"月の計画を原文のまま保存")
             val monthlyReview=MonthlyReviewEntity(book,"2026-10","monthly-task","{\"plan\":\"snapshot\"}",1)
             db.monthlyDao().savePlan(monthlyPlan);db.monthlyDao().insert(monthlyReview)
+            val merchantOperation=MerchantOperationEntity(book,"merchant-operation",1,MerchantOperationType.RENAME,MerchantOperationSource.LOCAL,
+                sourceMerchantId="former-merchant",sourceMerchantName="旧店",targetMerchantName="お店",counts=MerchantImpactCounts(affectedRecords=1,renamedRecords=1))
+            val merchantImpact=MerchantOperationImpactEntity(book,merchantOperation.id,MerchantObjectType.EVENT,event.id,"旧店","お店")
+            db.withTransaction { repo.writeMerchantOperationInTransaction(merchantOperation,listOf(merchantImpact),changed=true) }
+            db.csvImportDao().putBatch(CsvBatchEntity(book,"csv","input.csv","hash",1,1,1,0,account))
+            val csvSource=CsvBatchEventEntity(book,event.id,"csv","original-source-key")
+            db.csvImportDao().putEvents(listOf(csvSource))
             val expectedPrefs=prefs.backup()
             val expected=repo.snapshot(repo.dao.book(book)!!).first()
             val expectedBooks=repo.books.first()
@@ -80,6 +89,11 @@ class BackupRoundTripTest {
             assertEquals(blob.checksum,BackupArchive.sha256(repo.mediaFile(blob)))
             assertNotNull(BitmapFactory.decodeFile(repo.mediaFile(blob).path))
             assertEquals(monthlyPlan,db.monthlyDao().plan(book));assertEquals(monthlyReview,db.monthlyDao().review(book,"2026-10"))
+            assertEquals(merchantOperation,db.merchantHistoryDao().operation(book,merchantOperation.id))
+            assertEquals(merchantImpact,db.merchantHistoryDao().impacts(book,merchantOperation.id,10).single())
+            db.openHelper.readableDatabase.query("SELECT sourceMatchKey FROM csv_batch_events WHERE bookId=? AND eventId=?",arrayOf(book,event.id)).use {
+                assertTrue(it.moveToFirst());assertEquals(csvSource.sourceMatchKey,it.getString(0))
+            }
             assertFalse(layout.journal.exists())
         }finally{db.close();scope.coroutineContext[Job]!!.cancelAndJoin();root.deleteRecursively()}
     }

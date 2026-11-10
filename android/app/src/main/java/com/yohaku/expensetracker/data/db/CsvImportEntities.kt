@@ -9,7 +9,7 @@ data class CsvBatchEntity(val bookId:String,val id:String,val fileName:String,va
     ForeignKey(entity=CsvBatchEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","batchId"],onDelete=ForeignKey.CASCADE),
     ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE)
 ],indices=[Index(value=["bookId","batchId"])])
-data class CsvBatchEventEntity(val bookId:String,val eventId:String,val batchId:String)
+data class CsvBatchEventEntity(val bookId:String,val eventId:String,val batchId:String,@ColumnInfo(defaultValue="NULL") val sourceMatchKey:String?=null)
 @Entity(tableName="csv_profiles",primaryKeys=["bookId","signature"],foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"],onDelete=ForeignKey.CASCADE)])
 data class CsvProfileEntity(val bookId:String,val signature:String,val settingsJson:String)
 @Dao interface CsvImportDao {

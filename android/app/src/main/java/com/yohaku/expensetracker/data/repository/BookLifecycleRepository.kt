@@ -57,8 +57,11 @@ internal fun LedgerRepository.purgeWholeBook(bookId:String) {
     val sql=db.openHelper.writableDatabase
     check(sql.inTransaction())
     sql.execSQL("PRAGMA defer_foreign_keys=ON")
+    // Historical snapshots outlive merchants/events, but never their whole ledger.
+    sql.execSQL("DELETE FROM merchant_operation_impacts WHERE bookId=?",arrayOf(bookId))
+    sql.execSQL("DELETE FROM merchant_operations WHERE bookId=?",arrayOf(bookId))
     val tables=sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use{cursor->buildList{while(cursor.moveToNext())add(cursor.getString(0))}}
-    for(table in tables) {
+    for(table in tables.filterNot{it in setOf("merchant_operation_impacts","merchant_operations")}) {
         val scoped=sql.query("PRAGMA table_info(`$table`)").use{cursor->var found=false;while(cursor.moveToNext())if(cursor.getString(1)=="bookId")found=true;found}
         if(scoped)sql.execSQL("DELETE FROM `$table` WHERE bookId=?",arrayOf(bookId))
     }

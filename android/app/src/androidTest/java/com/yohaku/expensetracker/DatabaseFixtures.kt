@@ -21,8 +21,8 @@ internal fun restoreFixtureTable(db:SQLiteDatabase,asset:String,name:String) {
 }
 
 /** Rebuild every table at an exported old version, keeping data in shared columns, so later migrations all apply. */
-internal fun restoreFixtureDatabase(db:SQLiteDatabase,version:Int) {
-    val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v$version-schema.json").bufferedReader().readText()).getJSONObject("database")
+internal fun restoreFixtureDatabase(db:SQLiteDatabase,version:Int,asset:String="room-v$version-schema.json") {
+    val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open(asset).bufferedReader().readText()).getJSONObject("database")
     val entities=schema.getJSONArray("entities").let{a->(0 until a.length()).map{a.getJSONObject(it)}}
     val existing=db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('room_master_table','android_metadata')",null).use{c->buildList{while(c.moveToNext())add(c.getString(0))}}
     (existing-entities.map{it.getString("tableName")}.toSet()).forEach{db.execSQL("DROP TABLE `$it`")}
