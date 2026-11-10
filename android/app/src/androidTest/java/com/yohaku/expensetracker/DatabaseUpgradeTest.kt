@@ -118,7 +118,11 @@ class DatabaseUpgradeTest {
             assertEquals("Coffee",repo.dao.event("b","e")!!.merchant)
             db.withTransaction { repo.writeMerchantOperationInTransaction(operation,listOf(impact),changed=true) }
             assertEquals(operation,dao.page("b",1).single());assertEquals(MerchantOperationType.HISTORY_CLEANUP,dao.page("b",1,1).single().type)
-            assertEquals(operation,dao.forMerchant("b","m",10).single())
+            // Merchant history includes cleanup rows matched through their impact IDs, even
+            // when the operation itself has no single source/target merchant.
+            val related=dao.forMerchant("b","m",10)
+            assertEquals(listOf(operation,dao.page("b",1,1).single()),related)
+            assertEquals(MerchantOperationType.HISTORY_CLEANUP,related.last().type)
             assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).first())
             assertEquals(impact,dao.impacts("b",operation.id,10).single())
             db.withTransaction {
@@ -127,6 +131,7 @@ class DatabaseUpgradeTest {
                 repo.dao.deleteMerchant("b","m")
             }
             assertEquals(operation,dao.forObject("b",MerchantObjectType.EVENT,"e",10).first())
+            assertEquals(related,dao.forMerchant("b","m",10))
             val other=repo.createBook("Other",com.yohaku.expensetracker.domain.model.Currency.JPY)
             db.withTransaction { repo.writeMerchantOperationInTransaction(operation.copy(bookId=other),listOf(impact.copy(bookId=other)),true) }
             assertTrue(repo.commitBookOperation(repo.previewBookOperation("b",BookOperation.TRASH)))

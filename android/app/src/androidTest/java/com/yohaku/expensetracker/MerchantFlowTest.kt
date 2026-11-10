@@ -10,6 +10,9 @@ import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
+import com.yohaku.expensetracker.data.command.*
+import com.yohaku.expensetracker.domain.csv.CsvParser
+import kotlinx.serialization.json.jsonObject
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.domain.merchant.*
@@ -106,6 +109,186 @@ class MerchantFlowTest {
             file.outputStream().use{requireNotNull(frame).compress(Bitmap.CompressFormat.PNG,100,it)}
         }finally { previous?.recycle();frame?.recycle() }
     }
+    /** One ledger through the real import, editor, merchant UI and cloud confirm/undo paths. */
+    @Test fun merchantUpgradeEndToEndAcrossLooks() {
+        for ((theme, language) in testLooks(this@MerchantFlowTest)) {
+            fun label(zh:String,ja:String)=if(language=="ja")ja else zh
+            val book=runBlocking {
+                repo.createBook("商户完整链路 $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language).also {
+                    repo.updateBook(repo.dao.book(it)!!.copy(initialized=true))
+                }
+            }
+            fun stored()=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            fun shown()=(vm.state.value as AppState.Ready).snapshot!!
+            fun tag(name:String)=ui.onNodeWithTag(name)
+            fun closeHistory() { tag("sheet-close").performClick();ui.waitUntil(10000){ui.onAllNodesWithTag("theme-sheet").fetchSemanticsNodes().isEmpty()} }
+            val account=runBlocking{repo.saveAccount(book,"Bank",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")}
+            val category=runBlocking{repo.saveCategory(book,"Coffee",EntryKind.EXPENSE,null)}
+            val bytes="日期,金额,类别,商户,备注\n2026-10-14,100,Coffee,星巴克咖啡,CSV 原始记录".toByteArray()
+            val document=CsvParser.read(bytes)
+            val settings=CsvParser.guess(document).copy(accountId=account,noteAsMerchant=false,
+                columns=mapOf("date" to 0,"amount" to 1,"category" to 2,"merchant" to 3,"note" to 4),rule="EXPENSE")
+            val imported=runBlocking {
+                val preview=repo.csvPreview(book,document,settings,emptyMap())
+                assertFalse(preview.rows.single().duplicate)
+                val batch=repo.importCsv(book,"original.csv",CsvParser.hash(bytes),document,settings,emptyMap(),preview)
+                db.csvImportDao().events(book,batch.id).single().id
+            }
+            // CSV has no GPS field: a second, ordinary save exercises today's captured location.
+            val located=runBlocking{repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="200",
+                date="2026-10-14",merchant="星巴克咖啡",capturedPlace=CapturedPlace(35.0,139.0,5.0)))}
+            val refund=runBlocking{repo.saveRefund(book,RefundInput(imported,Money(Currency.JPY,20),account,
+                Money(Currency.JPY,20),Money(Currency.JPY,20),"2026-10-14",true))}
+            runBlocking {
+                repo.saveTemplate(book,TemplateInput("咖啡",EntryKind.EXPENSE,category,account,Currency.JPY,merchant="星巴克咖啡"))
+                repo.saveRecurrence(book,RecurrenceInput("咖啡",account,category,Money(Currency.JPY,100),null,false,
+                    RecurrenceFrequency.MONTHLY,"2026-10-14",merchant="星巴克咖啡"))
+                vm.preferences.select(book)
+            }
+            assertEquals(located,stored().eventPlaces.single().eventId)
+            assertTrue(stored().eventMerchants.isEmpty())
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
+            ui.runOnIdle{vm.editEntry(shown(),shown().events.single{it.id==imported})}
+            ui.waitUntil(10000){!vm.busy.value&&vm.entry.value?.merchantBaseline!=null}
+            ui.runOnIdle{vm.changeEntry(book,vm.entry.value!!.copy(note="恢复后保存的备注"));vm.leaveEntry(book,true,"merchants")}
+            ui.waitUntil(10000){!vm.busy.value&&vm.entry.value==null&&shown().draft?.note=="恢复后保存的备注"}
+            val retained=stored().draft!!
+            assertEquals("星巴克咖啡",retained.merchantBaseline!!.name)
+            val financial=stored()
+            assertEquals(9720L,financial.balance(financial.accounts.single{it.id==account}))
+            fun assertFinancialUnchanged() {
+                val current=stored()
+                assertEquals(financial.postings.associateBy{it.id},current.postings.associateBy{it.id})
+                assertEquals(financial.settlements.associateBy{it.eventId},current.settlements.associateBy{it.eventId})
+                assertEquals(9720L,current.balance(current.accounts.single{it.id==account}))
+                assertEquals(financial.events.associate{it.id to it.amountMinor},current.events.associate{it.id to it.amountMinor})
+            }
+            // The original-name UI retains its source even after editing the final name.
+            val originalCard=shown().events.first{it.kind=="EXPENSE"}.id
+            tag("merchant-card-recorded-$originalCard").performScrollTo().performClick()
+            clearHeader(tag("field-"+label("商户名称","お店の名前"))).performTextReplacement("星巴克")
+            tag("merchant-original-group").assertTextContains("星巴克咖啡",substring=true)
+            shot("$theme-$language-h2-original-editor")
+            settledSheetTap("merchant-save")
+            waitForSheet(label("归入同名记录","同名の記録を取り込む"),editorAbsent=true)
+            tag("recorded-place-0").performScrollTo()
+            shot("$theme-$language-h2-original-places")
+            settledSheetTap("merchant-adoption-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&shown().merchants.any{it.name=="星巴克"}}
+            val source=stored().merchants.single().id
+            var current=stored()
+            assertEquals(setOf(imported,located),current.eventMerchants.map{it.eventId}.toSet())
+            assertTrue(current.eventMerchants.all{it.merchantId==source})
+            assertTrue(current.events.all{it.merchant=="星巴克"})
+            assertEquals(source,current.templates.single().merchantId);assertEquals("星巴克",current.templates.single().merchant)
+            assertEquals(source,current.recurrences.single().merchantId);assertEquals("星巴克",current.recurrences.single().merchant)
+            assertTrue(current.eventPlaces.isEmpty());assertEquals(source,current.merchantLocations.single().merchantId)
+            assertEquals(retained,current.draft)
+            assertFinancialUnchanged()
+            expand(source);tag("merchant-open-$source").performScrollTo().performClick()
+            shot("$theme-$language-h2-created-profile")
+            tap(label("编辑名称与备注","名前・メモを編集"))
+            clearHeader(tag("field-"+label("商户名称","お店の名前"))).performTextReplacement("星巴克 中关村")
+            settledSheetTap("merchant-save")
+            waitForSheet(label("归入同名记录","同名の記録を取り込む"),editorAbsent=true)
+            settledSheetTap("merchant-adoption-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&shown().merchants.single().name=="星巴克 中关村"}
+            assertEquals(source,stored().merchants.single().id)
+            val target=runBlocking{repo.saveMerchant(book,"目标咖啡",note="目标备注",active=false)}
+            ui.waitUntil(10000){shown().merchants.size==2}
+            tap(label("编辑名称与备注","名前・メモを編集"))
+            clearHeader(tag("field-"+label("商户名称","お店の名前"))).performTextReplacement("目标咖啡")
+            settledSheetTap("merchant-save")
+            waitForSheet(label("合并商户","お店を統合"),editorAbsent=true)
+            shot("$theme-$language-h2-merge-confirm")
+            settledSheetTap("merchant-merge-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&shown().merchants.size==1&&shown().events.all{it.merchant=="目标咖啡"}}
+            current=stored()
+            assertNull(runBlocking{repo.dao.merchant(book,source)})
+            assertFalse(current.merchants.single().active)
+            assertTrue(current.eventMerchants.all{it.merchantId==target})
+            assertEquals(target,current.templates.single().merchantId);assertEquals(target,current.recurrences.single().merchantId)
+            assertEquals(target,current.merchantLocations.single().merchantId)
+            assertEquals(financial.eventSaveTimes,current.eventSaveTimes)
+            assertEquals(financial.events.associate{it.id to it.revision},current.events.associate{it.id to it.revision})
+            assertFinancialUnchanged()
+            val history=db.merchantHistoryDao()
+            val chain=runBlocking{history.forObject(book,MerchantObjectType.EVENT,imported,20)}
+            assertEquals(setOf(MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,MerchantOperationType.RENAME,MerchantOperationType.MERGE),chain.map{it.type}.toSet())
+            val names=chain.map { operation -> runBlocking{history.impacts(book,operation.id,100)}.single{it.objectType==MerchantObjectType.EVENT&&it.objectId==imported}.let{it.oldMerchantName to it.newMerchantName} }.toSet()
+            assertEquals(setOf("星巴克咖啡" to "星巴克","星巴克" to "星巴克 中关村","星巴克 中关村" to "目标咖啡"),names)
+            assertEquals(chain.map{it.id}.toSet(),runBlocking{history.forObject(book,MerchantObjectType.REFUND,refund,20)}.map{it.id}.toSet())
+            val merge=chain.single{it.type==MerchantOperationType.MERGE}.id
+            tag("merchant-related-history").performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-$merge").fetchSemanticsNodes().isNotEmpty()}
+            shot("$theme-$language-h2-related-history")
+            settledSheetTap("merchant-history-detail-$merge")
+            settledSheetTap("merchant-history-source")
+            val adoption=chain.single{it.type==MerchantOperationType.CREATE_FROM_ORIGINAL_NAME}.id
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-$adoption").fetchSemanticsNodes().isNotEmpty()}
+            shot("$theme-$language-h2-source-chain")
+            closeHistory()
+            tag("event-$imported").performScrollTo().performClick()
+            tag("record-merchant-history").performScrollTo().performClick()
+            ui.waitUntil(10000){chain.all{ui.onAllNodesWithTag("merchant-history-detail-${it.id}").fetchSemanticsNodes().isNotEmpty()}}
+            shot("$theme-$language-h2-record-history")
+            tag("sheet-close").performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("record-merchant-history").fetchSemanticsNodes().isNotEmpty()}
+            ui.runOnIdle{vm.navigate("home")}
+            // The on-disk edit still has the original baseline; resume and save through the ViewModel.
+            assertEquals(retained,stored().draft)
+            ui.runOnIdle{vm.resumeEntry(shown())}
+            ui.waitUntil(10000){!vm.busy.value&&vm.entry.value?.merchantId==target}
+            assertEquals("目标咖啡",vm.entry.value!!.merchant)
+            ui.runOnIdle{vm.saveEntry(book)}
+            ui.waitUntil(10000){!vm.busy.value&&(vm.entryReview.value!=null||vm.entry.value==null)}
+            if(vm.entryReview.value!=null) {
+                assertNull(vm.entryReview.value!!.change.merchantConflict)
+                ui.runOnIdle{vm.confirmEntryReview(book)}
+            }
+            ui.waitUntil(10000){!vm.busy.value&&vm.entry.value==null&&shown().draft==null}
+            assertEquals(target,stored().merchantByEvent[imported]);assertEquals("目标咖啡",stored().events.single{it.id==imported}.merchant)
+            assertEquals("恢复后保存的备注",stored().events.single{it.id==imported}.note)
+            val duplicate=runBlocking{repo.csvPreview(book,document,settings,emptyMap())}.rows.single()
+            assertTrue(duplicate.duplicate);assertTrue(duplicate.skipped)
+            assertFinancialUnchanged()
+            // Use the production command protocol, preview, confirm and inverse plan (no simulated undo).
+            val commands=CommandRepository(repo)
+            val beforeCloud=runBlocking{CommandUndoJournal(repo,book).snapshot()}
+            val planId=runBlocking {
+                val plan=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),book,
+                    commands.registry.catalogDigest,repo.commandExports(book,RecordScope()).context.contextDigest,
+                    message="商户改名",steps=listOf(CommandStep("rename","merchant.save",1,
+                        commandJson.parseToJsonElement("""{"merchant":"$target","name":"云端咖啡"}""").jsonObject)))
+                val row=commands.receive(commandClaim(plan),"https://example.test",plan.context_digest)
+                val preview=commands.preview(row.planId)
+                assertTrue(preview.executable);assertEquals(beforeCloud,CommandUndoJournal(repo,book).snapshot())
+                commands.confirm(row.planId,commandChecks(preview));row.planId
+            }
+            assertTrue(stored().events.all{it.merchant=="云端咖啡"})
+            val operation=runBlocking{history.page(book,100)}.single{it.cloudPlanId==planId}
+            runBlocking {
+                val undo=commands.prepareUndo(planId);val preview=commands.preview(undo.planId)
+                assertTrue(preview.conflicts.toString(),preview.executable)
+                commands.confirm(undo.planId,commandChecks(preview))
+                assertEquals(beforeCloud,CommandUndoJournal(repo,book).snapshot())
+            }
+            val undone=runBlocking{history.page(book,100)}.single{it.id==operation.id}
+            val inverse=runBlocking{history.page(book,100)}.single{it.undoOfOperationId==operation.id}
+            assertEquals(inverse.id,undone.undoneByOperationId)
+            assertEquals(operation,undone.copy(undoneAt=null,undoneByOperationId=null))
+            assertFinancialUnchanged()
+            ui.runOnIdle{vm.navigate("merchants")}
+            tag("merchant-history-open").performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("merchant-history-detail-${operation.id}").fetchSemanticsNodes().isNotEmpty()}
+            settledSheetTap("merchant-history-detail-${operation.id}")
+            tag("merchant-history-undone").assertExists()
+            shot("$theme-$language-h2-cloud-undone")
+            closeHistory()
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
     @Test fun ambiguousOriginalNamesRemainVisibleWithoutInferredOwnership() {
         for((theme,language) in testLooks(this@MerchantFlowTest)) {
             val ids=runBlocking {

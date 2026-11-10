@@ -35,4 +35,6 @@ smoke_test.py 由开发者在测试账本使用，会向真实网站创建任务
 
 助手往返首轮返工补充：按协议的统一约定合理推断并在message列假设，不因当前日期/日本信用卡默认一次付/可空额度政策未逐项填写而返回空方案。结构含asOfDate/zoneId、账本initialized/setupStep。任务context.source_files是初次提交源文件实际名称清单（无额外附件），补充源文件以当前input列表为准。离线export通过HTTP替身调用真实advance完成上传并保存fileId/uploadedAt，verify仍执行原附件校验；原PREPARED夹具须重建。
 
-商户协议批次 G（2026-11-10）：merchant.save 支持 originalName + name 从原名创建，或 originalName + 明确 targetMerchant（ID／前步 merchant 输出）归入已有商户；归入保持目标名称与启停，备注去重追加。临时位置保留待整理；effect 返回操作意图、来源／目标及分类影响，并绑定确认范围。合并／删除仍只在应用内；撤销恢复业务且保留已撤销历史。完整规则、拒绝条件、字段口径及旧日志升级冲突见 formats/yohaku-command-protocol-v1.md 的商户章节。
+商户协议最终行为（2026-11-10）：merchant.save 支持 originalName + name 从原名创建，或 originalName + 明确 targetMerchant（ID／前步 merchant 输出）归入已有商户；归入保持目标名称与启停，备注去重追加。临时位置保留待整理；effect 返回操作意图、来源／目标及分类影响，并绑定确认范围。合并／删除仍只在应用内；撤销恢复业务且保留已撤销历史。完整规则、拒绝条件、字段口径及旧日志升级冲突见 formats/yohaku-command-protocol-v1.md 的商户章节。
+
+商户完整链路与行为表逐行验证见 ../../android/README.md 的“商户改造最终验收”。测试通过真实 CommandRepository 接收、预览、确认和撤销验证本机云端命令执行链；不将本次离线测试冒充远端网站上传／领取实测。三份协议字节一致，能力／方案 schema 由生成测试校验，Room 保持 39→40。

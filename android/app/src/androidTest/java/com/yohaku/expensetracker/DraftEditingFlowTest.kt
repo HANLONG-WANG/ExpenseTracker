@@ -877,6 +877,25 @@ class DraftEditingFlowTest {
         if (visualEnabled()) java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,"verification/category-management$suffix/dimensions.csv").writeText(sizes.joinToString("\n"))
     }
     @Test fun bookMetadataCancelSaveAndEmptyCurrencyChangeStayIsolated(){
+        fun confirmBudget(text:String) {
+            // The review can enter semantics while the previous save/IME window is still
+            // settling. Wait for an enabled, visible, stable target before one real touch.
+            ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(hasText(text) and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
+            val node=ui.onNodeWithText(text)
+            var previous:List<androidx.compose.ui.unit.DpRect>?=null
+            var stable=0
+            var layoutChanges=0
+            ui.waitUntil(10000) {
+                node.performScrollTo();ui.waitForIdle()
+                Thread.sleep(100)
+                val bounds=listOf(node.getUnclippedBoundsInRoot(),ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot(),ui.onNodeWithTag("sheet-scroll").getUnclippedBoundsInRoot())
+                if(previous!=null&&bounds!=previous)layoutChanges++
+                stable=if(bounds==previous)stable+1 else 0;previous=bounds
+                stable>=2&&bounds[0].top>=bounds[1].bottom&&bounds[0].bottom<=bounds[2].bottom
+            }
+            println("Book budget confirmation: $layoutChanges window geometry changes before touch")
+            node.assertIsEnabled().performClick()
+        }
         for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             val ja=theme=="journal"
             ui.runOnIdle{vm.appearance(a,theme=theme,language=if(ja)"ja" else "zh");vm.navigate("settings")}
@@ -899,7 +918,7 @@ class DraftEditingFlowTest {
             tap(if(ja)"帳簿を保存" else "保存账本")
             if(previousLimit!=52000L){
                 assertEquals(old,snapshot(a).book.name)
-                tap(if(ja)"帳簿と予算を保存" else "确认保存账本与预算")
+                confirmBudget(if(ja)"帳簿と予算を保存" else "确认保存账本与预算")
             }
             ui.waitUntil(10000){snapshot(a).book.name=="日常 $theme"}
             val saved=snapshot(a)
@@ -917,7 +936,7 @@ class DraftEditingFlowTest {
         ui.onNodeWithTag("field-月予算・後から設定可").performScrollTo().performTextReplacement("12.34")
         tap("帳簿を保存")
         assertEquals("CNY",snapshot(b).book.currency)
-        tap("帳簿と予算を保存")
+        confirmBudget("帳簿と予算を保存")
         ui.waitUntil(10000){snapshot(b).book.currency=="USD"}
         assertEquals(1234L,snapshot(b).budgetProjection(java.time.YearMonth.now(repo.clock).toString()).limitMinor)
         assertTrue(snapshot(b).events.isEmpty());assertTrue(snapshot(b).accounts.isEmpty())

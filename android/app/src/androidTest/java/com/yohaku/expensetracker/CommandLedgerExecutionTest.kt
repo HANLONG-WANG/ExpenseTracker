@@ -327,8 +327,13 @@ class CommandLedgerExecutionTest {
     @Test fun originalNameAssignmentSupportsOutputReferencesAndSameNameCreation()=runBlocking<Unit> {
         val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
         r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",merchant="Raw"))
+        r.saveTemplate(book,TemplateInput("Same name",EntryKind.EXPENSE,category,bank,Currency.JPY,merchant="Raw"))
+        r.saveRecurrence(book,RecurrenceInput("Raw",bank,category,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-11-02"))
         cycle(book,listOf(step("same","merchant.save","""{"originalName":"raw","name":"Raw"}"""))) {_,s->
             assertEquals(s.merchants.single().id,s.eventMerchants.single().merchantId)
+            assertEquals(s.merchants.single().id,s.templates.single().merchantId)
+            assertEquals(s.merchants.single().id,s.recurrences.single().merchantId)
+            assertEquals("Raw",s.templates.single().merchant);assertEquals("Raw",s.recurrences.single().merchant)
         }
         cycle(book,listOf(step("target","merchant.save","""{"name":"Final"}"""),
             step("assign","merchant.save","""{"originalName":"Raw","targetMerchant":{"ref":"target","output":"merchant"}}"""),

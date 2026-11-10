@@ -314,7 +314,7 @@ UI09/P12同期对比已补三主题分类/商户/活动变化来源及两个期�
 
 UI09/P12模块预览已统一日期及三个筛选维度，复用正式三主题五类布局并去除只读预览的无效下钻；筛选取消/保存状态重建、历史数据与预览取消不保存已通过390dp和320dp/1.3六组合验证。置顶后的阅读摘要、首项重点与实际显示顺序同步，正式分类/商户/活动入口回归通过。完整进程、UI09/UI13几何与阶段B最终审查仍待完成。
 
-UI13/P12商户卡片/地点提示与主题详情已迁移，原稿记一笔入口实际预选商户并保护旧草稿；资料页与分析的唯一同名归属一致，退款不重复。2026-11-10 C1 更新：创建/原名创建或归入/改名/合并/删除按明确关联与显式认领计算范围，编辑器和确认仅显示正常/回收站、新关联/改名/退款及引用地点中的非零分类，全零显示「不影响其他记录」（中日双语）；备注/启停仅改资料。原名来源组固定展示，正式字段改称商户名称；归入沿用目标状态，合并保留目标启停及全部地点；待整理位置默认保留或明确放弃，商户资料提供整理入口。独立历史已写入，历史 UI 由 H1 提供（见文末）；复用各主题 YSheet；C1 返工的两个商户 UI 方法已在 S24 三主题×中日文运行通过，确认/位置截图已查看。测试等待新旧节点切换和实际画面稳定，解决 Android 窗口过渡期间截图重叠的问题。390dp与320dp/1.3真实IME六组合验证半坐标校验、两类地点/候选、草稿保护、关联新支出和改名保留事实。UI13完整几何/状态与最终阶段B覆盖审查继续进行，自动定位仍未提供。
+UI13/P12商户卡片/地点提示与主题详情已迁移，原稿记一笔入口实际预选商户并保护旧草稿；资料页与分析的唯一同名归属一致，退款不重复。商户最终行为：创建/原名创建或归入/改名/合并/删除按明确关联与显式认领计算范围，编辑器和确认仅显示正常/回收站、新关联/改名/退款及引用地点中的非零分类，全零显示「不影响其他记录」（中日双语）；备注/启停仅改资料。原名来源组固定展示，正式字段改称商户名称；归入沿用目标状态，合并保留目标启停及全部地点；待整理位置默认保留或明确放弃，商户资料提供整理入口。独立历史入口见文末，复用各主题 YSheet；商户流程在 S24 三主题×中日文验证，确认与位置截图已查看。测试等待新旧节点切换和实际画面稳定，解决 Android 窗口过渡期间截图重叠的问题。390dp与320dp/1.3真实IME六组合验证半坐标校验、两类地点/候选、草稿保护、关联新支出和改名保留事实。UI13 自动定位与最终商户流程的当前验收见文末及 Android README。
 
 UI23上传部分工作台已接最终三主题档案/纸页/票盒封面、状态页签、原图编号与原记账入口；原币金额/当前修订来自正式事件，第二版仅显示当前图且保留历史原图。显式390dp与320dp/1.3三主题中日文操作和稳定系统截图已验证，证据见阶段B状态。UI22其余媒体界面、整页几何和阶段B最终覆盖仍待完成，未勾选完整P13；ZIP/商品回填保持阶段D范围。
 
@@ -602,17 +602,12 @@ CommandAssistantRoundTripTest使用磁盘测试库、真实任务准备/advance�
 
 2026-11-06：支出「备注和其他」新增不计入预算，`HistoricalOpeningToggle.kt` 内抽取参数化 `EntryOptionToggle`，历史补录外观与标签保留；相邻开关共用分隔线。`TemplateScreens.kt` 支出模板共用新开关。详情与 `RevisionHistory.kt`、云端 `CommandEffectViews.kt` 显示字段。`LedgerCalendar.kt` 保留实际金额，以 `dailyExpense(budgetOnly=true)` 计算颜色/超支/剩余预算及小物摘要进度；无预算仍按实际金额。验证：`EntryExperienceFlowTest#expenseBudgetExclusionSavesAndClearsOnIncomeAcrossLooks`（`looks=all visual=true`，`files/verification/entry-experience/*-budget-excluded.png`、`*-budget-income.png`）；本轮仅编译仪器测试，设备与视觉验证待用户执行。
 
-2026-11-10 商户批次 D：UI05 保存预览新增商户归属确认，区分双方修改与无基线旧草稿，中日文列出当前/本次商户；使用三主题现有 `YSheet` 与 `ThemeAuditPanel`，显式确认按钮及返回编辑入口。打开的记账、模板、周期编辑器同步未修改商户及基线，已修改商户保持输入。验证方法 `DraftEditingFlowTest#merchantConflictConfirmationAcrossLooks`；S24 三主题×中日文实际结果与截图路径见 `android/README.md` 批次 D 记录。
+### 商户改造最终界面与验证入口（2026-11-10）
 
-商户改造 F（2026-11-10）：UI11/UI12 互请与朋友活动明细沿原消费读取最新商户，旧互请名称副本不覆盖当前记录；云端对象名称同步使用该显示规则。信用卡计划列表/摘要补“来源 / 対象”日期与当前商户，沿用三主题各自 `FinancialPlanRow`，计划名作为独立标题保留；期次页原有当前来源不变。CSV 预览沿用既有三主题问题/重复行组件，商户改名后原 CSV 的来源重复默认跳过，同文件相同行仍分别导入。S24 Ultra 1080×2340/density450、三主题×中日文流程与截图通过，30 张相关原图位于 `/tmp/yohaku-merchant-f-review/{activities,plans,csv}/`；已查看，未发现新增文字遮挡/异常换行。互请补拍滚动后的商户行；本批未替代 H 的历史 UI 和三主题精修验收。
-
-商户改造 G（2026-11-10）：云端确认页及逐项详情显示操作意图、来源原名→目标商户、分类影响及临时位置保留说明（H1 起只显示非零类别，字段仍完整），常规双列、窄屏大字单列；沿用杂志编号细线、手账账页、小物卡片各自容器。`CommandFlowTest#merchantOriginalNamePreviewAcrossLooks` 覆盖原名创建／归入，`#ledgerCombinationPreviewAcrossLooks` 覆盖既有组合。S24 Ultra 三主题×中日文 24 张、320dp/fontScale 1.3 手账日文 2 张最终原图已查看并通过，位于 `/tmp/yohaku-merchant-g-review/{s24,narrow}/`；模拟器配置已恢复。商户历史 UI 与商户范围的主题收口由 H1 提供（见下）。
-
-
-商户改造 H1（2026-11-10）：保留 UI13 紧凑双列目录，新增管理页「操作历史」、商户资料「相关历史」、UI06 记录详情「商户操作历史」。`MerchantHistory.kt` 按需分页读取列表/影响明细；合并详情继续进入已删除来源商户的历史，云端撤销详情可进入原操作。列表、详情、空状态、重名提示复用本轮 `MerchantHistoryPaper` 的三套布局：杂志 INDEX 编号与上下细线，手账手写栏/侧边线与虚线，小物带阴影的圆角小票与底部撕线。已撤销标记分别采用侧边强调线、轻微倾斜的虚线印章、圆角标签。
-
-原名歧义组直接显示「存在多个同名商户，需先合并或改名区分」（中日文）并禁用保存入口；上方重名说明列出地点、备注、启停和资料入口。合并目标选择器也列出辨认信息。原名编辑、归入/合并（含最终启停）/删除确认、位置整理沿用已有三主题 `YSheet` 的杂志刊头细线、手账横线/装订孔、小物圆角与静物插画；草稿冲突继续使用 `ThemeAuditPanel`，停用提示使用 `LocatedMerchantChip`。正式名称字段全 UI 检查无「商户原名 / お店の元の名前」残留；「原名」只用于未保存记录来源组。云端整理范围只展示非零类别，保持既有双列/窄屏单列和完整数据字段。
-
-H1 测试入口：`MerchantFlowTest#historyPagesProfilesMergeSourcesAndRecordEntrancesAcrossLooks`（历史/资料/已删除来源/已清理对象/记录与退款入口/分页）、`#emptyMerchantHistoryAcrossLooks`（空状态）、`#ambiguousOriginalNamesRemainVisibleWithoutInferredOwnership`（重名辨认与原名提示）；既有确认、位置、停用流程与 `DraftEditingFlowTest#merchantConflictConfirmationAcrossLooks`、云端预览方法一并检查。实际运行结果与截图目录见 `android/README.md` 的 H1 验证记录；H2 的整链路验证与最终商户改造收口不在本批。
-
-H1 复核修正：历史列表与影响明细保留编号卡片头；重名提示使用「注意」、合并候选使用「可合并商户 / 統合先候補」、资料分区直接使用商户资料/来源/目标标题，空状态不填编号，读取失败使用明确标签。保留各主题纸面、细线/虚线/小票样式，不再以 !、•、→ 填编号位。创建摘要为「新建：X / 新規：X」，从原名改名创建为「原名 X → Y / 元の名前 X → Y」，删除为「删除：X / 削除：X」；资料快照前后缺省分别说明尚未创建与已删除。
+- UI05：商户归属冲突区分双方修改与无基线旧草稿，列出当前／本次商户并显式确认；使用主题 `YSheet`／`ThemeAuditPanel`。未改商户的记账、模板、周期编辑器跟随系统更新并维护基线。测试 `DraftEditingFlowTest#merchantConflictConfirmationAcrossLooks`。
+- UI11/12/15/19：互请和朋友往来沿原消费显示当前商户；计划列表／摘要显示来源日期与当前商户，独立计划标题保留。CSV 重复预览使用当前值和导入来源键。测试 `ActivityTreatTest`、`FinancialPlanPagesTest`、`CsvImportRoundTripTest`。
+- UI13：保留紧凑双列目录；原名编辑固定来源组，正式字段称「商户名称 / お店の名前」；归入、撞名合并、删除和地点整理按实际分类显示影响，合并明确目标启停。历史重名组列出备注、地点、启停，歧义原名可见但禁用保存入口。
+- UI13／UI06：管理页「操作历史」、商户资料「相关历史」、记录详情「商户操作历史」按需分页；合并详情继续追溯已删除来源，已清理记录仍有历史快照，云端撤销保留原操作标记及对应撤销。记录详情和历史互斥显示，返回保留位置。`MerchantHistory.kt` 不把历史加入账本快照。
+- 杂志历史采用 INDEX 编号、上下细线和侧线撤销标记；手账采用手写栏、虚线和印章；小物采用圆角小票、阴影与标签。空状态不填编号，重名和合并选择用明确标题。创建／原名创建／删除摘要分别说明操作，空资料区分尚未创建／已删除。确认、地点整理和提示保持主题内一致与中日文。
+- UI30：云端确认及明细显示来源→目标、操作、非零分类与位置待整理说明，常规双列、窄屏大字单列，完整 effect 字段保留。测试 `CommandFlowTest#merchantOriginalNamePreviewAcrossLooks`、`#ledgerCombinationPreviewAcrossLooks`。
+- 端到端入口 `MerchantFlowTest#merchantUpgradeEndToEndAcrossLooks`；历史／来源链／分页／记录入口由 `#historyPagesProfilesMergeSourcesAndRecordEntrancesAcrossLooks` 覆盖，空状态与重名由 `#emptyMerchantHistoryAcrossLooks`、`#ambiguousOriginalNamesRemainVisibleWithoutInferredOwnership` 覆盖。S24 Ultra 与 320dp/fontScale 1.3 三主题×中日文截图、实际回归结果和行为表覆盖统一见 [Android 商户最终验收](../android/README.md#商户改造最终验收2026-11-10)。

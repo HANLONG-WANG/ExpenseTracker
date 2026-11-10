@@ -242,6 +242,11 @@ class AnalysisProjectionTest {
         db.withTransaction { repo.writeEntryCategoriesInTransaction(prepareEntryCategories(snapshot(),listOf(matched),child)) }
         assertEquals(shop,repo.dao.eventMerchant(book,matched)!!.merchantId)
         assertEquals("Ｃａｆｅ",repo.dao.event(book,matched)!!.merchant)
+        repo.saveMerchant(book,"Renamed cafe",id=shop,active=false)
+        assertEquals("Renamed cafe",repo.dao.event(book,explicitIncome)!!.merchant)
+        assertEquals(shop,repo.dao.eventMerchant(book,explicitIncome)!!.merchantId)
+        assertEquals("cafe",repo.dao.event(book,income)!!.merchant)
+        assertNull(repo.dao.eventMerchant(book,income))
     }
 
     @Test fun refundsFollowOriginalOwnershipIncludingTrashAndLegacyText()=runBlocking {

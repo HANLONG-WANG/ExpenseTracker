@@ -109,7 +109,7 @@ P01之后提供 `android/README.md`，记录JDK/SDK要求、构建/安装命令�
 | 账户/分类 | Account、OpeningPosition、Category | 账户类型固定；尚无交易引用的账户可调整币种，已有历史/关联事实不得重解释；期初资金/欠款不算收支；分类区分收支最多两级 |
 | 正式账目 | LedgerEvent、Posting、ExpenseComponent、FxSnapshot、Revision | 稳定原ID、实际/预计状态、发生/到账日期；一次事件多资金端；一个消费分类 |
 | 活动与互请 | Activity、ActivityBudget、Reserve、Friend、Participant、TreatEvent、TreatAllocation | 同账本同活动；本人整单不重复；别人付款不产生本人Posting |
-| 商户地点 | Merchant、SavedPlace、RecordMerchantSnapshot | 批次 B 已接入保存时唯一同名自动关联（含停用）、收入/转账边界、退款跟随及 CSV 来源捕获；商户操作重做/追溯等后续批次未完成；手动输入优先 |
+| 商户地点 | Merchant、SavedPlace、RecordMerchantSnapshot | 保存事务唯一同名自动关联（含停用）；原名创建／归入、改名／合并、退款与引用同步、草稿基线、地点整理、独立历史、CSV 来源判重及云端撤销完整闭环；手动输入优先 |
 | 周期安排 | Recurrence、Occurrence、ExpectedIncome | 固定实例ID；确认关联已存事件；预留/实际互斥，不自动记账 |
 | 金融规则 | FinancialRuleVersion、FeeTable、LimitPolicy、Deadline | 模式/生效期/时区/计息边界/舍入/验证；无机构名称预设 |
 | 金融计划 | DebtContract、PaymentPlan、PlanPeriod、Bill、BillLine、RepaymentAllocation | 单卡/逐笔合同、预测/手动/已确认；本金费用分开；实际还款关联义务 |
@@ -625,11 +625,4 @@ connected任务只在实际有兼容设备时运行；选择目标设备使用 `
 
 若后续用户修改规格，同时更新对应任务与验收；不保留互相矛盾的旧口径。没有新增修改时直接按本计划实施，不重复请求已经获得的确认。任务状态按实际实施和最终验收更新；不将尚未完成的后续阶段标为完成。
 
-2026-11-10 商户改造 C1：共享预览/事务提交接入原名创建或归入、正式改名/合并/删除、独立备注/启停，名称组最终状态重算、临时位置确认整理、商户历史写入及云端同业务调用。详细行为见 implementation-spec §1.9；C2 撤销适配、D 草稿基线、E 整理、F/G/H 后续范围不标完成。JVM/APK 验证见 android/README；设备截图未验。
-
-2026-11-10 商户改造 C2：历史表从撤销业务行日志及历史 ID 引用扫描中排除；成功撤销同事务标记原操作并写一对一 CLOUD_UNDO。整批内存合成撤销后状态，仅拒绝新增商户一致性违反，保留旧数据容忍与真实引用/后续修改保护。CSV 来源键随整行比较/删除，三份协议和结构导出说明同步。验证结果见 android/README；D/E/F/G/H 后续范围不标完成。
-
-
-2026-11-10 商户改造 E：在未发布的 Room 39→40 内实现历史商户整理（不再升版本），旧备份暂存恢复共用该迁移；按账本写 HISTORY_CLEANUP 及对象影响明细，兼作旧撤销日志升级冲突标记。日志记录数据库版本，旧日志只补已知列默认值后精确比较，保留 C2 一致性检查。删除 merchantKey 名称读取兜底，原名目录按持久化关联筛选。详细行为见 implementation-spec §1.14，实际验证见 android/README；F/G/H 不标完成。
-
-2026-11-10 商户改造 G：云端 merchant.save 明确支持 originalName + name 创建及 originalName + targetMerchant 归入（目标 ID／前步输出），同本机业务，临时位置保留待整理；分类预览与范围指纹覆盖新输入，撤销恢复业务且保留已撤销历史。三份商户协议集中整理，能力和方案 schema 双份产物由生成测试更新。JVM 194 项（193 通过、1 既有跳过），命令账本 22 项及本机关联 2 项最终均通过；S24 三主题×中日文和必要窄屏大字视觉复验通过，详见 android/README 的 G 记录。G 完成，H 历史 UI／主题精修不标完成。
+2026-11-10 商户改造：解析和持久化关联、原名整理、正式改名／合并、独立资料操作、草稿基线与编辑器同步、待整理位置、39→40 历史整理／旧备份恢复、CSV 来源判重、互请与计划来源、云端原名协议／撤销及三主题历史界面均已实现。最终规则按 [implementation-spec §1.9–1.17](../implementation-spec.md) 的业务主题组织；整链路、行为表逐行覆盖、默认回归及 S24／窄屏视觉结果统一记录在 [Android 商户最终验收](../../android/README.md#商户改造最终验收2026-11-10)。

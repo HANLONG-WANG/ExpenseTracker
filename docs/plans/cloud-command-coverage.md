@@ -2,7 +2,7 @@
 
 审计日期：2026-11-03。基线：阶段7 `5216585`。状态：阶段8已验收（2026-11-03 本机编译与设备测试）。
 
-共 **245 条写入路径**：命令 **113**、永久边界 **40**、内部编排 **92**。注册表为 **90 个命令**；触感反馈增量登记 `AppPreferences.setHapticsEnabled` 与 `AppViewModel.setHapticsEnabled` 两条路径，对应同一 `preferences.haptics` 命令。扫描阶段 4 增量登记 `AppPreferences.setScanAutoCapture` 与 `setScanAutoProcess`，分别对应两个扫描偏好命令。`cloud.task.discard` 与本机 `merchant.delete` 永久边界不变（forbidden 共59项）。未发现未下沉的UI DAO写入。
+2026-11-09 全量审计基线为 **245 条写入路径**：命令 **113**、永久边界 **40**、内部编排 **92**；商户函数拆分后的现行映射见下方商户补充，旧计数不作为重构后的函数总数。注册表为 **90 个命令**；触感反馈增量登记 `AppPreferences.setHapticsEnabled` 与 `AppViewModel.setHapticsEnabled` 两条路径，对应同一 `preferences.haptics` 命令。扫描阶段 4 增量登记 `AppPreferences.setScanAutoCapture` 与 `setScanAutoProcess`，分别对应两个扫描偏好命令。`cloud.task.discard` 与本机 `merchant.delete` 永久边界不变（forbidden 共59项）。未发现未下沉的UI DAO写入。
 
 2026-11-09 扫描阶段 4：两个扫描偏好的命令读写、展示、撤销/恢复、协议/schema 和能力快照已接入；与触感偏好一样沿用 DataStore 原值校验和原子效果凭据。设备执行与扫描视觉验收待用户运行。
 
@@ -51,11 +51,11 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 | [LedgerRepository.kt:140](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/LedgerRepository.kt#L140) `toggleCategoryFavorite` | 命令 → category.setFavorite | 云端传明确favorite，不用无条件toggle。 |
 | [CategoryManagementRepository.kt:81](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/CategoryManagementRepository.kt#L81) `commitCategoryOperation` · ARCHIVE/UNARCHIVE/REPARENT | 命令 → category.lifecycle / category.reparent | 归档/恢复/层级；编辑从属关系纳入撤销。 |
 | [CategoryManagementRepository.kt:81](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/CategoryManagementRepository.kt#L81) `commitCategoryOperation` · MERGE_DELETE/DELETE_EMPTY | 边界 → category.mergeDelete / category.deleteEmpty | 迁移后删除分类仍是永久删除；替代组合保留归档源分类及空预算历史。 |
-| [AnalysisRepository.kt:16](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt#L16) `saveMerchant` | 命令 → merchant.save / merchant.setActive | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
-| [EventPlaces.kt:36](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/EventPlaces.kt#L36) `saveMerchantWithLocations` | 命令 → merchant.save + merchantLocation.save | 地点逐个保存；新商户消费地点候选清理是关联编辑内部维护，不提供清表操作。 |
+| [MerchantUpdates.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/MerchantUpdates.kt) `saveMerchant` | 命令 → merchant.save | 按创建／原名创建或归入／改名／备注意图提交；启停由独立 setMerchantActive 处理。 |
+| [MerchantUpdates.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/MerchantUpdates.kt) `commitMerchantOperation`（原组合保存入口的替代） | 内部 → 共享商户事务 | 本机确认可保存／放弃临时位置；云端 merchant.save 不传地点决定，保留待整理。merchantLocation.save 不消费临时位置。 |
 | [AnalysisRepository.kt:22](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt#L22) `saveMerchantLocation` | 命令 → merchantLocation.save | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
 | [AnalysisRepository.kt:53](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt#L53) `removeMerchantLocation` | 边界 → merchantLocation.remove | 保存地点物理移除；可编辑地点或停用商户。 |
-| [AnalysisRepository.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt) `deleteMerchant` | 边界 → merchant.delete | 本机物理删除商户及保存地点、记录关联；模板/周期/草稿解除引用，历史文字保留。云端改用 merchant.setActive false。 |
+| [MerchantUpdates.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/MerchantUpdates.kt) `deleteMerchant` | 边界 → merchant.delete | 本机物理删除商户及保存地点、记录关联；模板/周期/草稿解除引用，历史文字保留。云端改用 merchant.setActive false。 |
 | [TreatRepository.kt:18](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/TreatRepository.kt#L18) `saveFriend` | 命令 → friend.save | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
 | [AnalysisRepository.kt:48](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt#L48) `setFriendActive` | 命令 → friend.setActive | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
 
@@ -355,3 +355,11 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 `entry.create`、`entry.update`（及共用字段的 `entry.confirmActual` / `entry.prepareDraft`）支持 `budgetExcluded` 布尔值：新记录默认 false，部分更新省略保留、显式 false 取消，不能为 null；仅 EXPENSE 可设 true，其他类型设 true 校验失败。仓库没有 `entry.save` 别名。排除月/分类预算及其待确认笔数、预算节奏与提醒，退款和手续费随原支出；分析、账户余额、日历实际金额与活动自身预算仍计入。`template.save` 是完整替换，budgetExcluded 默认 false，仅支出模板可为 true；`template.createEntry` 带入模板值并允许 set 覆盖。周期规则、实例和固定预留不新增字段。
 
 `yohaku.records` 每条记录导出 `budgetExcluded`；账本结构的 template.values 同样包含该字段。月评的 budgets 与 provisionalExpenseCount 使用排除后的口径，expenseMinor/categories 仍为实际净消费；确认页字段显示「不计入预算 / 予算に含めない」，撤销按原字段恢复。
+
+### 商户写入路径最终映射（2026-11-10）
+
+- `MerchantUpdates.saveMerchant`、`changeMerchantNote` 对应 `merchant.save`；`setMerchantActive` 对应 `merchant.setActive`，只改启停。
+- `commitMerchantEdits`／`commitMerchantOperation` 为本机表单及云端适配器共用的事务编排，校验预览指纹、维护名称组、退款、引用和位置；不是任意可调用的远端命令。`previewMerchantOperation` 只读。
+- `mergeMerchants`、`deleteMerchant` 仍为本机边界，不授权云端正式合并或物理删除。来源原名通过 `merchant.save(originalName, targetMerchant)` 归入已有商户，不是正式商户合并。
+- `synchronizeRefundMerchant` 是消费保存内部维护；`writeMerchantOperationInTransaction`、`recordMerchantCloudUndoInTransaction` 是对应操作及云端撤销的同事务历史维护，不是独立编辑历史能力。
+- 地点保存／删除边界保持；云端原名处理和正式地点保存均不会静默清理未决定的临时位置。只读历史快照的旧 ID 不作为活引用，但业务引用、后续修改及撤销后商户一致性继续校验。完整链路和执行撤销验收见 [Android README](../../android/README.md#商户改造最终验收2026-11-10)。
