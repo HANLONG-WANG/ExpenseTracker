@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.data.command.*
 import com.yohaku.expensetracker.data.repository.BookSnapshot
@@ -56,9 +57,27 @@ import kotlinx.serialization.json.*
 @Composable internal fun EffectSummary(effect:ObjectEffect,s:BookSnapshot,model:ConfirmationModel) {
     if(effect.type in workflowTypes){WorkflowSummary(effect,s,model);return}
     if(effect.type=="merchantImpact") {
-        YText(word("商户整理范围","お店の整理範囲"),14)
-        (effect.after as? JsonObject)?.forEach{(key,value)->YText(fieldName(key)+"："+value.jsonPrimitive.content,12)}
-        YText(word("临时位置保留待整理，可在商户资料中保存或放弃。","一時位置は保持します。お店の情報から保存・破棄してください。"),11)
+        val facts=effect.after.jsonObject
+        Column(Modifier.testTag("command-merchant-impact"),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+            YText(word("商户整理范围","お店の整理範囲"),14)
+            YText(merchantOperationLabel(facts["operation"]?.jsonPrimitive?.content.orEmpty()),13)
+            val original=facts["originalName"]?.jsonPrimitive?.contentOrNull
+            val target=facts["targetName"]?.jsonPrimitive?.contentOrNull
+            if(target!=null)YText(listOfNotNull(original,target).joinToString(" → "),14)
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val columns=if(maxWidth/LocalDensity.current.fontScale<260.dp)1 else 2
+                Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                    facts.filterKeys{it !in setOf("operation","originalName","targetName")}.entries.chunked(columns).forEach{row->
+                        Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                            row.forEach{(key,value)->YText(fieldName(key)+"："+value.jsonPrimitive.content,12,modifier=Modifier.weight(1f))}
+                            if(row.size<columns)Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+            YText(word("记录分类可重叠，数量不相加。临时位置保留待整理，可在商户资料中保存或放弃。",
+                "記録の分類は重複するため合算しません。一時位置は保持します。お店の情報から保存・破棄できます。"),11,color=LocalYohaku.current.muted)
+        }
         return
     }
     val before=effect.before as? JsonObject;val after=effect.after as? JsonObject
@@ -162,6 +181,8 @@ import kotlinx.serialization.json.*
             if(effect.type=="merchantScope") {
                 YText(word("确认时还会核对名称组、关联、退款、引用及待整理位置；即使数量相同，内容变化也需要刷新预览。",
                     "確定時に名前グループ・関連付け・返金・参照・未整理の位置も照合します。件数が同じでも内容が変わると再確認が必要です。"),12)
+            } else if(effect.type=="merchantImpact") {
+                EffectSummary(effect,s,model)
             } else if(effect.type=="revolvingBatchArchive") {
                 FinancialBatchSummary(commandJson.decodeFromJsonElement(com.yohaku.expensetracker.data.repository.BatchRestorationFacts.serializer(),effect.before))
             } else {
@@ -257,6 +278,16 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
         }
     }?:label("关联对象","関連する対象")
 }
+@Composable private fun merchantOperationLabel(operation:String):String=when(operation) {
+    "CREATE"->word("创建正式商户","お店を新規作成")
+    "CREATE_FROM_ORIGINAL_NAME"->word("从原名创建商户","元の名前からお店を作成")
+    "ASSIGN_ORIGINAL_NAME"->word("原名归入已有商户","元の名前を既存のお店に取り込み")
+    "RENAME"->word("商户改名","お店の名前を変更")
+    "CHANGE_NOTE"->word("修改商户备注","お店のメモを変更")
+    "CHANGE_ACTIVE"->word("商户启停状态","お店の有効状態")
+    else->operation
+}
+
 @Composable internal fun fieldValue(value:Pair<JsonElement,String?>?,key:String,currency:String,s:BookSnapshot,model:ConfirmationModel,zone:java.time.ZoneId?=null):String {
     if(value==null)return word("无此项","項目なし")
     val raw=value.first
@@ -322,6 +353,7 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
 @Composable internal fun fieldName(key:String):String {
     if(key.toIntOrNull()!=null)return word("第 $key 项","$key 件目")
     val names=mapOf(
+        "operation" to ("操作" to "操作"),"originalName" to ("来源原名" to "元の名前"),"targetName" to ("目标商户名称" to "保存先のお店名"),
         "normalRecords" to ("正常记录" to "通常の記録"),"affectedRecords" to ("受影响记录" to "対象記録"),"newlyLinkedRecords" to ("新关联记录" to "新規関連の記録"),"renamedRecords" to ("改名记录" to "名前を変更する記録"),
         "trashedRecords" to ("其中回收站记录" to "うちごみ箱の記録"),"linkedRefunds" to ("关联退款" to "関連する返金"),"templates" to ("模板" to "テンプレート"),
         "recurrenceRules" to ("周期规则" to "定期ルール"),"savedLocations" to ("保存地点" to "保存場所"),"pendingPlaces" to ("待整理位置" to "未整理の位置"),"drafts" to ("草稿" to "下書き"),

@@ -46,6 +46,26 @@ class CommandCapabilitiesTest {
         }
     }
 
+    @Test fun merchantSaveModesUseTypedTargetsAndRejectMixedIntents() {
+        val adapter=ContactAdapter("merchant")
+        fun validate(input:String,prior:Map<String,Map<String,String>> = emptyMap()) {
+            val value=commandJson.parseToJsonElement(input).jsonObject
+            validateSchema(value,adapter.capability.inputSchema,"input",prior)
+            adapter.validate(value)
+        }
+        listOf("""{"name":"New"}""", """{"merchant":"id","name":"Renamed","note":""}""",
+            """{"originalName":"Raw","name":"New"}""", """{"originalName":"Raw","name":"Raw","merchant":null,"targetMerchant":null}""",
+            """{"originalName":"Raw","targetMerchant":"id"}""").forEach{validate(it)}
+        val reference="""{"originalName":"Raw","targetMerchant":{"ref":"prior","output":"merchant"}}"""
+        validate(reference,mapOf("prior" to mapOf("merchant" to "merchant")))
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java){validate(reference,mapOf("prior" to mapOf("merchant" to "account")))}
+        listOf("{}", """{"originalName":"Raw"}""", """{"name":"New","targetMerchant":"id"}""",
+            """{"merchant":"id","originalName":"Raw","name":"New"}""", """{"merchant":"id","originalName":"Raw","targetMerchant":"other"}""",
+            """{"originalName":" ","name":"New"}""").forEach{input->
+            org.junit.Assert.assertThrows(input,IllegalArgumentException::class.java){validate(input)}
+        }
+    }
+
     @Test fun examplesMatchRegistryExport() {
         val root=File(System.getProperty("yohaku.repositoryRoot")?:"../..").canonicalFile
         val registry=CommandRegistry()

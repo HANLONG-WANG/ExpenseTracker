@@ -80,7 +80,8 @@ class CommandFlowTest {
     private fun shot(name:String) {
         if(!visualEnabled())return
         ui.waitForIdle();InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
-        val file=File(context.getExternalFilesDir(null),"cloud-command-stage-1/$name.png");file.parentFile!!.mkdirs()
+        val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix").orEmpty()
+        val file=File(context.getExternalFilesDir(null),"cloud-command-stage-1/$name$suffix.png");file.parentFile!!.mkdirs()
         file.outputStream().use{ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)}
     }
     private fun alignCommandStep(tag:String) {
@@ -320,6 +321,38 @@ class CommandFlowTest {
             ui.waitForIdle()
             // The detail uses the same theme-specific RecordFacts layout and translated labels.
             ui.onAllNodesWithText(if(language=="ja")"記録"else"记录",substring=true).onFirst().assertExists()
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
+    @Test fun merchantOriginalNamePreviewAcrossLooks() {
+        for((theme,language) in testLooks(this))for(assign in listOf(false,true)) {
+            val row=runBlocking {
+                val book=r.createBook("日常の帳簿",Currency.JPY,theme,language,startDate="2026-11-01")
+                r.updateBook(r.dao.book(book)!!.copy(initialized=true))
+                val account=r.saveAccount(book,"钱包・お財布",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-11-01")
+                val category=r.saveCategory(book,"咖啡・コーヒー",EntryKind.EXPENSE,null)
+                val raw=r.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="900",date="2026-11-02",merchant="駅前珈琲",capturedPlace=CapturedPlace(35.0,139.0,5.0)))
+                val trash=r.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="800",date="2026-11-02",merchant="駅前珈琲"))
+                r.dao.putEvent(r.dao.event(book,trash)!!.copy(deletedAt=r.clock.millis()))
+                r.saveRefund(book,RefundInput(raw,Money(Currency.JPY,100),account,Money(Currency.JPY,100),Money(Currency.JPY,100),"2026-11-02",true))
+                r.saveTemplate(book,TemplateInput("Coffee",EntryKind.EXPENSE,category,account,Currency.JPY,merchant="駅前珈琲"))
+                r.saveRecurrence(book,RecurrenceInput("Coffee",account,category,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-11-02",merchant="駅前珈琲"))
+                r.saveDraft(book,EntryDraft(merchant="駅前珈琲"))
+                val target=if(assign)r.saveMerchant(book,"駅前カフェ",active=false)else null
+                vm.preferences.select(book)
+                val input=buildJsonObject{put("originalName","駅前珈琲");if(target==null)put("name","駅前カフェ")else put("targetMerchant",target)}
+                val plan=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),book,cloud.commands.registry.catalogDigest,r.commandExports(book,RecordScope()).context.contextDigest,
+                    message=if(language=="ja")"元の名前を整理"else"整理原名记录",steps=listOf(CommandStep("merchant","merchant.save",1,input)))
+                cloud.commands.receive(commandClaim(plan),"https://example.test",plan.context_digest).also{cloud.commands.preview(it.planId)}
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-merchant-impact").fetchSemanticsNodes().isNotEmpty()}
+            alignCommandStep("command-step-merchant")
+            ui.onNodeWithText("駅前珈琲 → 駅前カフェ").assertExists()
+            ui.onNodeWithText(if(language=="ja")"未整理の位置：1"else"待整理位置：1").assertExists()
+            shot("$theme-$language-merchant-original-${if(assign)"assign"else"create"}")
             ui.runOnIdle{vm.navigate("home")}
         }
     }

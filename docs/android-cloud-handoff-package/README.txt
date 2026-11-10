@@ -30,7 +30,9 @@ smoke_test.py 由开发者在测试账本使用，会向真实网站创建任务
 当前90个命令，包含基础账本、规划、金融/额度、文件/偏好与月计划。preferences.haptics、preferences.scanAutoCapture 和 preferences.scanAutoProcess（enabled 必填），与照片保存偏好一样为本机所有账本共用，比较原值并支持完成后的撤销。transactional原子写账，post-commit/interactive另排队、重试或由本机用户完成。整批撤销只有完整证据且无冲突时可用；不可自动撤销的步骤在预览说明。
 恢复备份、连接凭据/设备管理、所有永久删除永远禁止，包括未提交任务的放弃（cloud.task.discard）；回收/归档/停用允许。助手不得声明USER_FACT或提供任意SQL/路径/网络调用。
 此补充及formats/协议覆盖Word中仅描述通用文本另存、早期客户端范围的流程；Word保留原HTTP/API接入基线，网站接口契约不变。正式当前客户端规格见 ../implementation-spec.md 的3.2/3.3（从本目录为上一级）。
-协议唯一应用源文本位于assets，formats/为同步副本。能力说明和示例来源是适配器注册表；能力样例及完整command-plan.v1.schema.json由CommandCapabilitiesTest用同一更新开关生成；后者随任务以yohaku-command-plan-v1.schema.json上传。本次由验收方重新生成，不能手写生成内容或digest。完整格式与docs/formats逐文件同步。
+协议唯一应用源文本位于assets，formats/为同步副本。能力说明和示例来源是适配器注册表；能力样例及完整command-plan.v1.schema.json由CommandCapabilitiesTest用同一更新开关生成；后者随任务以yohaku-command-plan-v1.schema.json上传。由开发者通过生成测试更新并校验，不能手写生成内容或digest。完整格式与docs/formats逐文件同步。
 离线独立助手工具见 ../../android/README.md 的“阶段8：独立助手往返工具”：export生成真实附件及持久测试库，verify接收plans/*.json并输出预览报告，不confirm。真实Work订阅和网站往返仍需用户实测，离线工具不证明网站链路通过。
 
 助手往返首轮返工补充：按协议的统一约定合理推断并在message列假设，不因当前日期/日本信用卡默认一次付/可空额度政策未逐项填写而返回空方案。结构含asOfDate/zoneId、账本initialized/setupStep。任务context.source_files是初次提交源文件实际名称清单（无额外附件），补充源文件以当前input列表为准。离线export通过HTTP替身调用真实advance完成上传并保存fileId/uploadedAt，verify仍执行原附件校验；原PREPARED夹具须重建。
+
+商户协议批次 G（2026-11-10）：merchant.save 支持 originalName + name 从原名创建，或 originalName + 明确 targetMerchant（ID／前步 merchant 输出）归入已有商户；归入保持目标名称与启停，备注去重追加。临时位置保留待整理；effect 返回操作意图、来源／目标及分类影响，并绑定确认范围。合并／删除仍只在应用内；撤销恢复业务且保留已撤销历史。完整规则、拒绝条件、字段口径及旧日志升级冲突见 formats/yohaku-command-protocol-v1.md 的商户章节。

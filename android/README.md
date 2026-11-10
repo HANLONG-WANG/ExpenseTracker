@@ -258,9 +258,9 @@ adb shell settings put system font_scale 1.0
 - 商户同名统一 trim + NFKC + 忽略大小写。新建重名拒绝，编辑撞名可明确确认合并；旧数据重名不迁移，不改规范化名称仍能保存，未关联记录不任意选择一个商户。
 - 创建、原名创建/归入、改名、合并与删除分别计算明确关联和待认领集合，完整覆盖可恢复记录及退款、模板/周期、新建草稿，按最终状态重算受影响名称组。备注/启停仅改资料。普通收入/转账同名不动，明确关联收入跟随；退款沿原消费同步。来源原名组不会随输入丢失，目标唯一时可直接归入，多匹配须先在管理中区分。
 - 预览分类展示正常/回收站、新关联/改名/退款、引用和地点，提交事务重算并核对指纹。合并保留目标 ID、名称和启停，备注去重加入、全部地点迁移、来源删除，完全重复地点提示后保留；保存或明确放弃后才清理临时位置。商户资料有待整理位置入口。
-- 实际变化同事务写独立商户历史及影响明细，保留旧名/ID/资料；不增加 event revision 或改变最近保存、小票和金融事实。商户历史 UI 留 H，编辑已有记录草稿基线留 D。
+- 实际变化同事务写独立商户历史及影响明细，保留旧名/ID/资料；不增加 event revision 或改变最近保存、小票和金融事实。商户历史 UI 留 H；编辑已有记录草稿基线已在 D 完成。
 - 商户与原名目录均为两列、同行等高：最多两行名称、一行笔数/地点摘要及停用标记；已保存商户名称旁有「+ / −」展开标记。单项展开在该行下方显示全部地点、备注及操作，重复点击收起。杂志为细线双栏（展开项顶线加粗为强调色），手账为手写账目栏/虚线（展开项浅底），小物为带撕口的小票（展开项强调色描边）；确认弹层和选择器沿用主题 `YSheet`。定位说明/设置位于目录后。
-- 云端 `merchant.save` 复用共享创建/改名/备注业务与分类预览，`merchant.setActive` 仅改启停，未处理位置保留；正式合并/删除仍禁止云端。C2 已排除历史 ID 活引用，撤销保留并标记历史、追加对应撤销记录；整批检查只拒绝新增商户不一致。
+- 云端 `merchant.save` 复用共享创建/原名创建或归入/改名/备注业务与分类预览，`merchant.setActive` 仅改启停，未处理位置保留；正式合并/删除仍禁止云端。C2 已排除历史 ID 活引用，撤销保留并标记历史、追加对应撤销记录；整批检查只拒绝新增商户不一致。
 - 退款显示文字在消费修改或商户业务事务中同步，读取 `merchantKey` 只沿原消费判断归属，不写数据。
 
 旧版本的 `AnalysisProjectionTest`、`CommandLedgerExecutionTest`、`AnalysisFlowTest`、`LocationEntryFlowTest` 与 `MerchantFlowTest` 以及标准/S24/窄屏截图曾完成验证；这些结果不代表 C1 的新行为与弹层已通过设备验证。本批仅运行 JVM 和 APK 构建，不启动模拟器；新增仪器方法及截图清单见本文末尾「商户改造 C1 验证」。能力产物通过生成测试更新，协议三份副本保持一致。
@@ -846,3 +846,13 @@ C2 保留 C1 业务实现，完成历史表从撤销行日志/历史 ID 引用�
 - 默认后续 `FinancialPlanPagesTest#renamedPurchaseSourceIsCurrentAndConfirmedBillsAndTitlesStayIndependent` 与 `BackupRoundTripTest` **3/3 通过，4.479 秒**，日志 `/tmp/merchant-f-instrument-followup.log`。合计 **31 项相关默认仪器用例最终通过**。迁移测试直接比较当前真实导入键与旧库首版修订回填键，覆盖无修订 NULL、旧撤销补键、后改来源冲突和整行删除；计划测试断言改名后完整金融图和预测过期状态不变。
 - S24 Ultra 基准 `1080×2340 / density 450`，`looks=all visual=true captureSuffix=-s24`：活动互请、计划来源、CSV 重复预览三个方法均遍历三主题×中日文，**3/3 通过，70.627 秒**，日志 `/tmp/merchant-f-visual.log`。只补跑互请截图定位，六种外观 **1/1 通过，54.806 秒**，避免截图助手回到顶部而未拍到商户行；日志 `/tmp/merchant-f-visual-treat.log`。30 张相关原图和五张对照总览位于 `/tmp/yohaku-merchant-f-review/`，已检查文字/布局；设备结束恢复 `1170×2532 / density 480`。
 - 不扩展云端协议（G）或历史/三主题精修（H）；不执行完整外观矩阵及系统、性能专项。
+
+### 商户改造 G：云端协议与预览验证（2026-11-10）
+
+- `merchant.save` 使用 `originalName` + `name` 从原名创建，或 `originalName` + `targetMerchant`（本账本 ID／前步 merchant 输出）归入已有商户；与编辑正式商户的 `merchant` 互斥。归入 name 可省略，若提供必须与目标规范化名称相同；保留目标名称及启停，备注非空行去重加入。来源无可处理支出／引用、最终目标重名歧义均明确拒绝。合并／删除继续只在应用内。
+- 复用本机业务，临时位置全部保留待整理。`merchantImpact` 返回操作、来源／目标、正常／回收站、新关联／改名／退款、模板／周期、草稿、保存地点与待整理位置；分类不相加。确认页常规双列，窄屏大字单列，沿用三主题原确认风格；`merchantScope` 同时覆盖新输入，数量不变而坐标、记录或目标资料变化也拒绝旧确认。
+- 三份协议集中为完整商户章节，覆盖解析、启停、意图、预览、历史与撤销、升级前日志冲突及 CSV 来源键非别名规则，清除“新字段留后续”及“删除后撤销静默清除所有失效业务关联”的旧描述。交接包 README、实现规格、产品说明与 UI 映射同步；历史 UI 和主题精修仍属 H。
+- Gradle 始终串行，使用可写缓存 `GRADLE_USER_HOME=/tmp/yohaku-desktop-gradle`（默认缓存只读）、`--offline --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process`。`CommandCapabilitiesTest -Dyohaku.updateCapabilities=true` 生成两份 capabilities 样例及两份 command-plan schema，未手改 JSON；随后完整单元测试 **194 项：193 通过、1 项既有可选 CSV 样本测试跳过、0 失败**，catalog 摘要与产物一致。`:app:installDebug :app:installDebugAndroidTest` 成功。
+- `emulator-5580` 使用 `am instrument`：`CommandLedgerExecutionTest` 整类 22 项，首轮 21 通过；新增夹具先留草稿后记账导致草稿被正常清除，调整准备顺序后 `originalNameCreateAndAssignMatchLocalBusinessAndUndo` 单独复跑通过。最终 22 项均通过，包括本次未发生内存失败的 `batchFiveHundredNotesOnLargeLedgerLogsPerformance`。关键覆盖两种原名意图与本机结果一致、同名创建、引用输出、业务撤销及历史标记、歧义／空来源／ID 名称矛盾拒绝、范围变化拒绝。另跑 `AnalysisProjectionTest#originalGroupPreviewCommitLocationsAndHistoryAreOneTransaction`、`#linkedPendingPlacesSurviveProfileAndOrdinaryEntrySavesUntilOrganized`，2 项通过。
+- UI：`CommandFlowTest#merchantOriginalNamePreviewAcrossLooks` 与 `#ledgerCombinationPreviewAcrossLooks` 在 S24 Ultra `1080×2340 / density 450`、`looks=all visual=true captureSuffix=-s24` 下 **2 项通过**，覆盖三主题×中日文，24 张原图已查看。另以 `960×2496 / density 480`（320dp）/fontScale 1.3 对手账日文原名创建／归入执行前一方法，**1 项通过**；首轮发现双列日文换行过碎，改为窄屏大字单列后复验，2 张原图已查看。没有新增遮挡或截断；截图 `/tmp/yohaku-merchant-g-review/{s24,narrow}/`，目录根部另有四张六宫格总览。结束已恢复 `1170×2532 / density 480 / fontScale 1.0`。
+- 日志：`/tmp/merchant-g-capabilities.log`、`/tmp/merchant-g-unit-final.log`、`/tmp/merchant-g-install-final.log`、`/tmp/merchant-g-ledger-instrumentation.log`（含首轮夹具失败）、`/tmp/merchant-g-targeted-final.log`（修正项与两项本机业务复验）、`/tmp/merchant-g-visual-s24-final.log`、`/tmp/merchant-g-visual-narrow-final.log`。未使用 connectedDebugAndroidTest，未并行运行 Gradle。

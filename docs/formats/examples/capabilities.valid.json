@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "7d37a8159dcb7492c98e67d86f8b9f47452a4b975e8e9867fffe34879fc7c77d",
+    "catalogDigest": "cc2474c0eaab24474d01b0fabf10ea6cada6f59cb28d93cb6c5d8490e62371e4",
     "commands": [
         {
             "comparisonFields": [
@@ -2397,13 +2397,148 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "name required; merchant omitted/null creates; active state preserved. note omitted/null preserves (new empty), empty string clears.",
-            "description": "Create or rename a merchant and synchronize explicit ownership plus uniquely adoptable expense name groups, including recoverable trash, templates, rules and new drafts. Note-only saves change only the note. Name-matched unlinked expenses become linked; Ordinary income/transfer text is not owned by name; explicitly linked income follows the merchant. Refund ownership and display text follow the original expense, including recoverable refunds, without independent links. A new name matching unlinked records adopts those records automatically. Recompute affected old/new name groups after the operation. Preview separates new links, name changes, trash, refunds, templates, rules and locations. Pending captured locations remain until explicitly organized in the app. Synchronization writes independent merchant history with old/new names and IDs, without entry revisions or save-order changes. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion and merging are only available in the app, never through cloud commands.",
+            "defaults": "Without originalName: name required, merchant omitted/null creates or merchant edits. With originalName: name creates from that group; targetMerchant assigns it to an explicit existing merchant ID or preceding merchant output (name optional, must match target if given). merchant cannot accompany originalName/targetMerchant. Omitted/null fields are absent. Existing active state preserved; new merchant active. note omitted/null preserves (new empty); empty clears on edit, assignment appends distinct nonblank lines to target note.",
+            "description": "Create (CREATE), create from originalName (CREATE_FROM_ORIGINAL_NAME), assign originalName to targetMerchant (ASSIGN_ORIGINAL_NAME), or rename (RENAME) a merchant and synchronize explicit ownership plus uniquely adoptable expense name groups, including recoverable trash, templates, rules and new drafts. Note-only saves change only the note. Name-matched unlinked expenses become linked; Ordinary income/transfer text is not owned by name; explicitly linked income follows the merchant. Refund ownership and display text follow the original expense, including recoverable refunds, without independent links. A new name matching unlinked records adopts those records automatically. Recompute affected old/new name groups after the operation. merchantImpact reports operation, originalName, targetName and affectedRecords/normalRecords/newlyLinkedRecords/renamedRecords/trashedRecords/linkedRefunds/templates/recurrenceRules/savedLocations/pendingPlaces/drafts; overlapping record subsets are not additive. merchantScope binds all relevant source/target dependencies; changes before confirmation require a new preview. Pending captured locations remain until explicitly organized in the app. Synchronization writes independent merchant history with old/new names and IDs, without entry revisions or save-order changes. Save the merchant first, then merchantLocation.save can reference its output. Disable with merchant.setActive; deletion and merging are only available in the app, never through cloud commands.",
             "example": {
-                "name": "咖啡店"
+                "note": "车站旁",
+                "originalName": "駅前珈琲",
+                "targetMerchant": "merchant-id"
             },
             "inputSchema": {
                 "additionalProperties": false,
+                "oneOf": [
+                    {
+                        "additionalProperties": false,
+                        "properties": {
+                            "merchant": {
+                                "anyOf": [
+                                    {
+                                        "anyOf": [
+                                            {
+                                                "minLength": 1,
+                                                "type": "string"
+                                            },
+                                            {
+                                                "$ref": "#/$defs/stepReference"
+                                            }
+                                        ],
+                                        "x-reference-type": "merchant"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "name": {
+                                "minLength": 1,
+                                "type": "string"
+                            },
+                            "note": {
+                                "anyOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "originalName": {
+                                "type": "null"
+                            },
+                            "targetMerchant": {
+                                "type": "null"
+                            }
+                        },
+                        "required": [
+                            "name"
+                        ],
+                        "type": "object"
+                    },
+                    {
+                        "additionalProperties": false,
+                        "properties": {
+                            "merchant": {
+                                "type": "null"
+                            },
+                            "name": {
+                                "minLength": 1,
+                                "type": "string"
+                            },
+                            "note": {
+                                "anyOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "originalName": {
+                                "minLength": 1,
+                                "type": "string"
+                            },
+                            "targetMerchant": {
+                                "type": "null"
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "originalName"
+                        ],
+                        "type": "object"
+                    },
+                    {
+                        "additionalProperties": false,
+                        "properties": {
+                            "merchant": {
+                                "type": "null"
+                            },
+                            "name": {
+                                "anyOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "note": {
+                                "anyOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "originalName": {
+                                "minLength": 1,
+                                "type": "string"
+                            },
+                            "targetMerchant": {
+                                "anyOf": [
+                                    {
+                                        "minLength": 1,
+                                        "type": "string"
+                                    },
+                                    {
+                                        "$ref": "#/$defs/stepReference"
+                                    }
+                                ],
+                                "x-reference-type": "merchant"
+                            }
+                        },
+                        "required": [
+                            "originalName",
+                            "targetMerchant"
+                        ],
+                        "type": "object"
+                    }
+                ],
                 "properties": {
                     "merchant": {
                         "anyOf": [
@@ -2425,7 +2560,14 @@
                         ]
                     },
                     "name": {
-                        "type": "string"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     },
                     "note": {
                         "anyOf": [
@@ -2436,11 +2578,38 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "originalName": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "targetMerchant": {
+                        "anyOf": [
+                            {
+                                "anyOf": [
+                                    {
+                                        "minLength": 1,
+                                        "type": "string"
+                                    },
+                                    {
+                                        "$ref": "#/$defs/stepReference"
+                                    }
+                                ],
+                                "x-reference-type": "merchant"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
-                "required": [
-                    "name"
-                ],
+                "required": [],
                 "type": "object"
             },
             "mode": "transactional",
@@ -2448,7 +2617,7 @@
             "outputs": {
                 "merchant": "merchant"
             },
-            "prerequisites": "Nonblank name; existing merchant ID must belong to this book. Names match after trim, case and width normalization. A new or renamed merchant cannot duplicate another saved merchant; merge in the app instead. Existing historical duplicates may be saved without changing the normalized name.",
+            "prerequisites": "Nonblank supplied names; merchant/targetMerchant must belong to this book. originalName must have unlinked recoverable expenses or eligible templates, rules or new expense draft. Names match after trim, NFKC and case normalization. Multiple matching target merchants are rejected: merge or distinguish names in the app first. Creation cannot duplicate a saved merchant; original-name assignment requires explicit targetMerchant, never inferred from name. Formal rename collisions require in-app merge. Existing historical duplicates may be edited without changing the normalized name.",
             "unavailable": "Reject the whole batch if this command's input or prerequisites fail; no step is skipped.",
             "undo": "Restore exact recorded existing rows; remove only execution-owned new objects and dependent rows, if unchanged and without external FK/JSON/draft references. Full row/relationship conflicts block the entire undo.",
             "version": 1

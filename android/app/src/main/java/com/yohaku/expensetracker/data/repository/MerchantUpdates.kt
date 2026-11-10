@@ -52,6 +52,17 @@ fun BookSnapshot.prepareMerchantOperation(input:MerchantOperationInput):Prepared
     val structural=op in setOf(MerchantOperationType.CREATE,MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,
         MerchantOperationType.ASSIGN_ORIGINAL_NAME,MerchantOperationType.RENAME,MerchantOperationType.MERGE,MerchantOperationType.DELETE)
     val creating=op in setOf(MerchantOperationType.CREATE,MerchantOperationType.CREATE_FROM_ORIGINAL_NAME)
+    if(op in setOf(MerchantOperationType.CREATE_FROM_ORIGINAL_NAME,MerchantOperationType.ASSIGN_ORIGINAL_NAME)) {
+        require(!input.originalName.isNullOrBlank()){"来源原名不能为空 / 元の名前を入力してください"}
+        val original=normalizedMerchantName(input.originalName)
+        fun belongs(name:String,id:String?)=id==null&&normalizedMerchantName(name)==original
+        require(events.any{it.purgedAt==null&&it.kind=="EXPENSE"&&belongs(it.merchant,merchantByEvent[it.id])}||
+            templates.any{it.kind=="EXPENSE"&&belongs(it.merchant,it.merchantId)}||
+            recurrences.any{belongs(it.merchant.ifBlank{it.name},it.merchantId)}||
+            draft?.let{it.id==null&&it.kind==EntryKind.EXPENSE&&belongs(it.merchant,it.merchantId)}==true) {
+            "来源原名没有可处理的未关联支出或引用，请刷新资料 / 元の名前に取り込める未関連の支出や参照がありません。情報を更新してください"
+        }
+    }
     if(creating||op==MerchantOperationType.RENAME)require(input.name.isNotBlank()){"请输入商户名称 / お店の名前を入力してください"}
     val matches=merchants.filter{it.id!=old?.id&&normalizedMerchantName(it.name)==normalizedMerchantName(input.name)}
     if(creating||op==MerchantOperationType.RENAME) {

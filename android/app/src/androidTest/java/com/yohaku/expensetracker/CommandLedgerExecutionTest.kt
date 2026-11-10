@@ -285,6 +285,97 @@ class CommandLedgerExecutionTest {
         })
     }
 
+    @Test fun originalNameCreateAndAssignMatchLocalBusinessAndUndo()=runBlocking<Unit> {
+        for(assign in listOf(false,true)) {
+            val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+            val raw=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",date="2026-11-02",merchant="Ｒａｗ",capturedPlace=CapturedPlace(35.0,139.0,5.0)))
+            val trash=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="200",date="2026-11-02",merchant="raw"))
+            r.dao.putEvent(r.dao.event(book,trash)!!.copy(deletedAt=now.toEpochMilli()))
+            r.saveRefund(book,RefundInput(raw,Money(Currency.JPY,20),bank,Money(Currency.JPY,20),Money(Currency.JPY,20),"2026-11-02",true))
+            r.saveTemplate(book,TemplateInput("Daily",EntryKind.EXPENSE,category,bank,Currency.JPY,merchant="raw"))
+            r.saveRecurrence(book,RecurrenceInput("Raw",bank,category,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-11-02"))
+            val target=if(assign)r.saveMerchant(book,"Final",note="existing",active=false)else null
+            if(target!=null)r.saveMerchantLocation(book,target,"Door",35.1,139.1)
+            else r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="50",merchant="FINAL"))
+            r.saveDraft(book,EntryDraft(merchant=" raw "))
+            val before=snapshot(book)
+            val type=if(assign)MerchantOperationType.ASSIGN_ORIGINAL_NAME else MerchantOperationType.CREATE_FROM_ORIGINAL_NAME
+            val input=if(assign)"""{"originalName":" raw ","targetMerchant":"$target","name":"ＦＩＮＡＬ","note":"existing\nnew"}"""
+                else """{"originalName":" raw ","name":"Final","note":"new"}"""
+            cycle(book,listOf(step("organize","merchant.save",input))) {preview,s->
+                val id=s.merchants.single().id
+                val local=before.prepareMerchantOperation(MerchantOperationInput(type,targetId=target,name="Final",originalName=" raw ",note=if(assign)"existing\nnew"else"new",createdId=id)).after
+                assertEquals(local.merchants,s.merchants);assertEquals(local.events,s.events)
+                assertEquals(local.eventMerchants.toSet(),s.eventMerchants.toSet());assertEquals(local.templates,s.templates)
+                assertEquals(local.recurrences,s.recurrences);assertEquals(local.draft,s.draft)
+                assertEquals(local.merchantLocations,s.merchantLocations);assertEquals(before.eventPlaces,s.eventPlaces)
+                assertEquals(before.eventSaveTimes,s.eventSaveTimes)
+                assertEquals(id,s.merchantByEvent[raw]);assertEquals(id,s.merchantByEvent[trash])
+                assertEquals("Final",s.events.single{it.kind=="REFUND"}.merchant)
+                assertEquals(!assign,s.merchants.single().active)
+                val counts=preview.steps.single().objects.single{it.type=="merchantImpact"}.after.jsonObject
+                val expected=mapOf("affectedRecords" to if(assign)2 else 3,"normalRecords" to if(assign)1 else 2,
+                    "newlyLinkedRecords" to if(assign)2 else 3,"renamedRecords" to if(assign)2 else 3,
+                    "trashedRecords" to 1,"linkedRefunds" to 1,"templates" to 1,"recurrenceRules" to 1,"drafts" to 1,"pendingPlaces" to 1,"savedLocations" to 0)
+                expected.forEach{(key,value)->assertEquals(key,JsonPrimitive(value),counts[key])}
+                assertEquals(JsonPrimitive(type.name),counts["operation"]);assertEquals(JsonPrimitive("Final"),counts["targetName"])
+                val history=db.merchantHistoryDao().page(book,100).single{it.source==MerchantOperationSource.CLOUD}
+                assertEquals(type,history.type);assertEquals(" raw ",history.originalName)
+            }
+        }
+    }
+    @Test fun originalNameAssignmentSupportsOutputReferencesAndSameNameCreation()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",merchant="Raw"))
+        cycle(book,listOf(step("same","merchant.save","""{"originalName":"raw","name":"Raw"}"""))) {_,s->
+            assertEquals(s.merchants.single().id,s.eventMerchants.single().merchantId)
+        }
+        cycle(book,listOf(step("target","merchant.save","""{"name":"Final"}"""),
+            step("assign","merchant.save","""{"originalName":"Raw","targetMerchant":{"ref":"target","output":"merchant"}}"""),
+            step("location","merchantLocation.save","""{"merchant":{"ref":"assign","output":"merchant"},"name":"Door"}"""))) {_,s->
+            assertEquals("Final",s.events.single().merchant)
+            assertEquals(s.merchants.single().id,s.merchantLocations.single().merchantId)
+        }
+    }
+    @Test fun originalNameRejectsAmbiguityMissingSourceAndChangedConfirmationScope()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"Food",EntryKind.EXPENSE,null)
+        val raw=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="100",date="2026-11-02",merchant="Raw",capturedPlace=CapturedPlace(35.0,139.0,5.0)))
+        val target=r.saveMerchant(book,"Final")
+        suspend fun rejects(input:String,reason:String) {
+            val before=CommandUndoJournal(r,book).snapshot();val history=db.merchantHistoryDao().page(book,100)
+            val row=receive(book,listOf(step("bad","merchant.save",input)))
+            val error=assertThrows(IllegalArgumentException::class.java){runBlocking{commands.preview(row.planId)}}
+            assertTrue(error.message,error.message.orEmpty().contains(reason))
+            assertEquals(before,CommandUndoJournal(r,book).snapshot());assertEquals(history,db.merchantHistoryDao().page(book,100))
+        }
+        rejects("""{"originalName":"Missing","targetMerchant":"$target"}""","没有可处理")
+        rejects("""{"originalName":"Raw","targetMerchant":"$target","name":"Other"}""","ID 与名称不一致")
+        rejects("""{"originalName":"Raw","name":"Final"}""","已有同名商户")
+        val duplicate=r.dao.merchant(book,target)!!.copy(id="duplicate",name="ＦＩＮＡＬ")
+        r.dao.putMerchant(duplicate)
+        rejects("""{"originalName":"Raw","targetMerchant":"$target"}""","合并或改名区分")
+        rejects("""{"originalName":"Raw","name":"final"}""","合并或改名区分")
+        r.dao.deleteMerchant(book,duplicate.id)
+        for(assign in listOf(false,true)) {
+            val input=if(assign)"""{"originalName":"Raw","targetMerchant":"$target"}"""else """{"originalName":"Raw","name":"New"}"""
+            val row=receive(book,listOf(step("organize","merchant.save",input)))
+            suspend fun stale(change:suspend ()->Unit,restore:suspend ()->Unit) {
+                val preview=commands.preview(row.planId);val history=db.merchantHistoryDao().page(book,100)
+                change()
+                assertThrows(CommandRepreviewRequired::class.java){runBlocking{commands.confirm(row.planId,commandChecks(preview))}}
+                assertEquals(history,db.merchantHistoryDao().page(book,100));assertNull(snapshot(book).merchantByEvent[raw])
+                restore()
+            }
+            val place=snapshot(book).eventPlaces.single()
+            stale({r.dao.putEventPlace(place.copy(latitude=36.0))},{r.dao.putEventPlace(place)})
+            val event=r.dao.event(book,raw)!!
+            stale({r.dao.putEvent(event.copy(note="changed"))},{r.dao.putEvent(event)})
+            if(assign) {
+                val merchant=r.dao.merchant(book,target)!!
+                stale({r.dao.putMerchant(merchant.copy(active=false))},{r.dao.putMerchant(merchant)})
+            }
+        }
+    }
     @Test fun merchantLocationAndFriend()=runBlocking<Unit> {
         val (book,_)=setup()
         cycle(book,listOf(

@@ -13049,6 +13049,139 @@
         },
         "merchant.save": {
             "additionalProperties": false,
+            "oneOf": [
+                {
+                    "additionalProperties": false,
+                    "properties": {
+                        "merchant": {
+                            "anyOf": [
+                                {
+                                    "anyOf": [
+                                        {
+                                            "minLength": 1,
+                                            "type": "string"
+                                        },
+                                        {
+                                            "$ref": "#/$defs/stepReference"
+                                        }
+                                    ],
+                                    "x-reference-type": "merchant"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "name": {
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        "note": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "originalName": {
+                            "type": "null"
+                        },
+                        "targetMerchant": {
+                            "type": "null"
+                        }
+                    },
+                    "required": [
+                        "name"
+                    ],
+                    "type": "object"
+                },
+                {
+                    "additionalProperties": false,
+                    "properties": {
+                        "merchant": {
+                            "type": "null"
+                        },
+                        "name": {
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        "note": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "originalName": {
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        "targetMerchant": {
+                            "type": "null"
+                        }
+                    },
+                    "required": [
+                        "name",
+                        "originalName"
+                    ],
+                    "type": "object"
+                },
+                {
+                    "additionalProperties": false,
+                    "properties": {
+                        "merchant": {
+                            "type": "null"
+                        },
+                        "name": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "note": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "originalName": {
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        "targetMerchant": {
+                            "anyOf": [
+                                {
+                                    "minLength": 1,
+                                    "type": "string"
+                                },
+                                {
+                                    "$ref": "#/$defs/stepReference"
+                                }
+                            ],
+                            "x-reference-type": "merchant"
+                        }
+                    },
+                    "required": [
+                        "originalName",
+                        "targetMerchant"
+                    ],
+                    "type": "object"
+                }
+            ],
             "properties": {
                 "merchant": {
                     "anyOf": [
@@ -13070,7 +13203,14 @@
                     ]
                 },
                 "name": {
-                    "type": "string"
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 },
                 "note": {
                     "anyOf": [
@@ -13081,11 +13221,38 @@
                             "type": "null"
                         }
                     ]
+                },
+                "originalName": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "targetMerchant": {
+                    "anyOf": [
+                        {
+                            "anyOf": [
+                                {
+                                    "minLength": 1,
+                                    "type": "string"
+                                },
+                                {
+                                    "$ref": "#/$defs/stepReference"
+                                }
+                            ],
+                            "x-reference-type": "merchant"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
-            "required": [
-                "name"
-            ],
+            "required": [],
             "type": "object"
         },
         "merchant.setActive": {
