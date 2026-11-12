@@ -363,7 +363,7 @@ class FinancialProductionOverviewTest {
         val original=runBlocking{repo.snapshot(repo.dao.book(b)!!).first()}
         fun backToImportant() {
             InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-            ui.waitUntil(10000){ui.onAllNodesWithTag("important-payment-bill:$bill").fetchSemanticsNodes().isNotEmpty()}
+            ui.waitUntil(10000){ui.onAllNodesWithTag("important-payment-bill:$card:2026-10-25:$bank:JPY").fetchSemanticsNodes().isNotEmpty()}
         }
         for((theme,language) in testLooks(this@FinancialProductionOverviewTest)) {
             runBlocking{if(repo.dao.occurrence(b,occurrence)!!.status=="CANCELLED")repo.restoreOccurrence(b,occurrence);repo.updateAppearance(b,theme,language);app.preferences.select(b)}
@@ -372,17 +372,19 @@ class FinancialProductionOverviewTest {
                 ui.waitUntil(10000){ui.onAllNodesWithTag("important-deadline-$bill-INSTALLMENT").fetchSemanticsNodes().isNotEmpty()}
                 ui.onAllNodesWithTag("important-deadline-$bill-INSTALLMENT").assertCountEquals(1)
                 ui.onNodeWithTag("important-deadline-$bill-INSTALLMENT").assert(hasText(if(language=="ja")"2026年10月20日 18:00・Asia/Tokyo"else"2026年10月20日 18:00 · Asia/Tokyo",substring=true))
-                ui.onNodeWithTag("important-payment-bill:$bill").assert(hasText("¥1,500"))
+                ui.onNodeWithTag("important-payment-bill:$card:2026-10-25:$bank:JPY").assert(hasText("¥1,500"))
                 ui.onNodeWithTag("important-budget").assert(hasText("¥600"))
                 ui.onNodeWithTag("important-risk-$bank").assert(hasText("¥1,800"))
                 ui.onNodeWithTag("important-risk-$bank").assert(hasText("≈ ¥0",substring=true))
                 ui.onNodeWithTag("important-payment-occurrence:$occurrence").assertExists()
                 ui.onNodeWithTag("page-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)}
                 shot("$theme-$language-important-cover")
+                center(ui.onNodeWithTag("important-payment-bill:$card:2026-10-25:$bank:JPY"));shot("$theme-$language-important-payment-group")
+                center(ui.onNodeWithTag("important-settings"));shot("$theme-$language-important-actions")
                 center(ui.onNodeWithTag("important-deadline-$bill-INSTALLMENT"));shot("$theme-$language-important-deadline")
                 tap("important-deadline-$bill-INSTALLMENT")
                 ui.onNodeWithTag("statement-bill-$bill").assertExists();ui.onNodeWithTag("finance-tab-statement").assertIsSelected();ui.onNodeWithTag("lead-title").assertDoesNotExist();backToImportant()
-                tap("important-payment-bill:$bill");ui.onNodeWithTag("statement-bill-$bill").assertExists();ui.onNodeWithTag("finance-tab-statement").assertIsSelected();ui.onNodeWithTag("lead-title").assertDoesNotExist();backToImportant()
+                tap("important-payment-bill:$card:2026-10-25:$bank:JPY");ui.onNodeWithTag("statement-bill-$bill").assertExists();ui.onNodeWithTag("finance-tab-statement").assertIsSelected();ui.onNodeWithTag("lead-title").assertDoesNotExist();backToImportant()
                 tap("important-payment-occurrence:$occurrence")
                 tap("cancel-occurrence-$occurrence")
                 ui.waitUntil(10000){runBlocking{repo.dao.occurrence(b,occurrence)?.status=="CANCELLED"}}
@@ -393,7 +395,7 @@ class FinancialProductionOverviewTest {
                 tap("important-risk-$bank");ui.onNodeWithTag("risk-transfer-$bank").assertExists();tap("sheet-close")
                 tap("important-budget");ui.onNodeWithTag("forecast-budget-amount").assertTextEquals("¥200");backToImportant()
                 ui.onNodeWithTag("nav-accounts").performClick();tap("accounts-important")
-                ui.onNodeWithTag("important-payment-bill:$bill").assertExists()
+                ui.onNodeWithTag("important-payment-bill:$card:2026-10-25:$bank:JPY").assertExists()
                 val empty=runBlocking {
                     val id=repo.createBook("空白核对",Currency.JPY,theme,language,startDate="2026-10-01");additionalBooks+=id
                     repo.updateBook(repo.dao.book(id)!!.copy(initialized=true));app.preferences.select(id);id
@@ -401,7 +403,7 @@ class FinancialProductionOverviewTest {
                 ui.waitUntil(10000){ui.onAllNodesWithText("空白核对").fetchSemanticsNodes().isNotEmpty()}
                 ui.onNodeWithTag("nav-home").performClick();tap("home-important")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("important-empty").fetchSemanticsNodes().isNotEmpty()}
-                ui.onAllNodesWithTag("important-payment-bill:$bill").assertCountEquals(0)
+                ui.onAllNodesWithTag("important-payment-bill:$card:2026-10-25:$bank:JPY").assertCountEquals(0)
                 ui.onAllNodesWithTag("important-risk-$bank").assertCountEquals(0)
                 shot("$theme-$language-important-empty")
                 assertTrue(runBlocking{repo.snapshot(repo.dao.book(empty)!!).first().events.isEmpty()})

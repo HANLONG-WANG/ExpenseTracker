@@ -19,14 +19,7 @@ suspend fun LedgerRepository.reminderItems(preferences:AppPreferences):List<Remi
         val state=financialReviewState(book.id);val s=state.ledger;val f=state.finance
         val stale=f.plans.filter{financialPredictionStale(s,f,it)}.map{it.id}.toSet()
         val timeline=s.cashTimeline(f,today,through,stale,rates)
-        // A card bank-debit forecast is not a reminder: the purchase is reminded on its own date,
-        // and once recorded its CARD_ENTRY bill brings the repayment reminder.
-        for(payment in s.importantPayments(f,timeline).filter{it.item.kind!="CARD_RECURRENCE"}) {
-            val i=payment.item
-            result+=ReminderItem(book.id,i.id,if(i.kind=="BILL")"REPAYMENT"else"RECURRING",i.scheduledDate,i.currency,payment.outstandingMinor,
-                i.name,s.accounts.firstOrNull{it.id==(if(i.kind=="BILL")i.sourceId else i.accountId)}?.name.orEmpty(),
-                i.estimated||i.issue!=null,targetAccountId=i.sourceId.takeIf{i.kind=="BILL"})
-        }
+        result+=s.paymentReminders(s.importantPayments(f,timeline))
         val cards=s.accounts.filter{it.type==com.yohaku.expensetracker.domain.model.AccountType.CREDIT.name}.associateBy{it.id}
         for(o in s.copy(occurrences=s.forecastOccurrences(today,through)).pendingOccurrences().filter{it.accountId in cards})
             result+=ReminderItem(book.id,"occurrence:${o.id}","RECURRING",maxOf(o.scheduledDate,today.toString()),o.currency,o.amountMinor,o.name,cards.getValue(o.accountId).name,o.estimated)
@@ -52,4 +45,24 @@ suspend fun LedgerRepository.reminderItems(preferences:AppPreferences):List<Remi
             if(book.language=="ja")"今月の予算超過"else"本月预算超支",estimated=actual==null,risk=true,basisMinor=pace.limitMinor?:0)
     }
     result
+}
+
+/** Shared bill groups feed repayment reminders; recurring purchases retain their own identity. */
+internal fun BookSnapshot.paymentReminders(payments:List<ImportantPayment>):List<ReminderItem> {
+    val repayments=payments.billGroups().map{group->
+        val i=group.item
+        val account=accounts.first{it.id==i.sourceId}.name
+        // The notification already names the account; the title says what is due there.
+        val title=if(group.count==1)i.name else if(book.language=="ja")"請求${group.count}件"else"${group.count}笔账单"
+        ReminderItem(book.id,"repayment:${group.key.stableKey}","REPAYMENT",i.scheduledDate,i.currency,group.outstandingMinor,
+            title,account,group.estimated,targetAccountId=i.sourceId)
+    }
+    // A card bank-debit forecast is not a reminder: the purchase is reminded on its own date,
+    // and once recorded its CARD_ENTRY bill brings the repayment reminder.
+    val recurring=payments.filter{it.item.kind!="BILL"&&it.item.kind!="CARD_RECURRENCE"}.map{payment->
+        val i=payment.item
+        ReminderItem(book.id,i.id,"RECURRING",i.scheduledDate,i.currency,payment.outstandingMinor,
+            i.name,accounts.firstOrNull{it.id==i.accountId}?.name.orEmpty(),i.estimated||i.issue!=null)
+    }
+    return repayments+recurring
 }

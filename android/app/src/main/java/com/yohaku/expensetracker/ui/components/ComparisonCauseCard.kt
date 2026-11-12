@@ -29,7 +29,9 @@ import com.yohaku.expensetracker.ui.theme.*
                 YText(value,14,number=true)
             }
         }
-        onCurrent?.let{YLink(word("查看本期流水","今期の記録を見る"),it,Modifier.testTag("comparison-current-$id"))}
-        onPrevious?.let{YLink(word("查看对照流水","比較期間の記録を見る"),it,Modifier.testTag("comparison-previous-$id"))}
+        YActionRow {
+            onCurrent?.let{YLink(word("查看本期流水","今期の記録を見る"),it,Modifier.testTag("comparison-current-$id"))}
+            onPrevious?.let{YLink(word("查看对照流水","比較期間の記録を見る"),it,Modifier.testTag("comparison-previous-$id"))}
+        }
     }
 }

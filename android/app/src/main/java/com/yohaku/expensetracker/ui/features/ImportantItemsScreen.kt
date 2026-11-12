@@ -34,7 +34,7 @@ import com.yohaku.expensetracker.ui.theme.*
         is FinancialOutlookRead.Failure->{YText(value.message,12);YButton(word("重新读取","再読込"),{attempt++})}
         is FinancialOutlookRead.Ready->{
             YText(value.timeline.asOf+" → "+value.timeline.through,11)
-            val payments=value.payments.filter{it.item.kind=="BILL"}
+            val payments=value.payments.billGroups()
             val recurring=value.payments.filter{it.item.kind in listOf("RECURRENCE","CARD_RECURRENCE")}
             val risks=value.risks.filter{it.currentGapMinor?.let{n->n>0}==true||it.firstRiskDate!=null||it.incompleteDate!=null}
             val pace=value.pace
@@ -45,17 +45,35 @@ import com.yohaku.expensetracker.ui.theme.*
                 rows.forEach{payment->
                     val item=payment.item
                     val bank=s.accounts.firstOrNull{it.id==item.accountId}?.name?:word("付款账户未定","引落口座未定")
-                    val obligation=outlookAmount(item.currency,payment.outstandingMinor,item.kind=="BILL"&&!payment.confirmed)
-                    val cash=outlookAmount(item.currency,item.amountMinor)
-                    val name=if(item.kind=="BILL")(s.accounts.first{it.id==item.sourceId}.name+" · "+item.name)else item.name
-                    ImportantEvent(item.scheduledDate+" · "+name,bank+" · "+item.currency,
-                        obligation,if(item.kind=="BILL")(if(payment.confirmed)word("已确认待清偿 / 仍需备款：","確定未返済額・今後必要な資金：")else word("本地预测待付 / 仍需备款：","ローカル未払予測・今後必要な資金："))+obligation+" / "+cash
-                        else if(item.estimated)word("预计金额，确认实际执行后解除。","見込み額です。実行確認後に解消します。")else word("尚未确认实际执行。","実際の処理は未確認です。"),
+                    val obligation=outlookAmount(item.currency,payment.outstandingMinor)
+                    ImportantEvent(item.scheduledDate+" · "+item.name,bank+" · "+item.currency,
+                        obligation,if(item.estimated)word("预计金额，确认实际执行后解除。","見込み額です。実行確認後に解消します。")else word("尚未确认实际执行。","実際の処理は未確認です。"),
                         "important-payment-${item.id}",{onItem(item)},warning=item.issue!=null||item.scheduledDate<value.timeline.asOf,last=payment===rows.last())
                     item.issue?.let{YText(cashIssue(it),11,color=LocalYohaku.current.warm)}
                 }
             }
-            if(payments.isNotEmpty()) {ThemeSection(word("待还款与待确认清偿","支払・返済確認待ち"),"PAYMENTS");paymentRows(payments)}
+            if(payments.isNotEmpty()) {
+                ThemeSection(word("待还款与待确认清偿","支払・返済確認待ち"),"PAYMENTS")
+                payments.forEach{group->
+                    val item=group.item
+                    val bank=s.accounts.firstOrNull{it.id==item.accountId}?.name?:word("付款账户未定","引落口座未定")
+                    val obligation=outlookAmount(item.currency,group.outstandingMinor,group.hasUnconfirmed)
+                    val cash=outlookAmount(item.currency,group.cashRequiredMinor)
+                    val status=when {
+                        !group.hasUnconfirmed->word("已确认待清偿","確定未返済額")
+                        group.confirmedCount==0->word("本地预测待付","ローカル未払予測")
+                        else->word("待清偿（含已确认与本地预测）","未返済額（確定・ローカル予測を含む）")
+                    }
+                    val name=s.accounts.first{it.id==item.sourceId}.name+
+                        if(group.count>1)word(" · ${group.count}笔"," · ${group.count}件")else""
+                    ImportantEvent(item.scheduledDate+" · "+name,bank+" · "+item.currency,
+                        obligation,status+word(" / 仍需备款：","・今後必要な資金：")+obligation+" / "+cash+
+                            if(group.count>1)word(" · 已确认 / 预测笔数：","・確定 / 予測の件数：")+"${group.confirmedCount} / ${group.predictedCount}"else"",
+                        "important-payment-bill:${group.key.stableKey}",{onItem(item)},
+                        warning=group.issues.isNotEmpty()||item.scheduledDate<value.timeline.asOf,last=group===payments.last())
+                    group.issues.forEach{YText(cashIssue(it),11,color=LocalYohaku.current.warm)}
+                }
+            }
             if(value.deadlines.isNotEmpty()) {
                 ThemeSection(word("付款变更期限","支払方法の変更締切"),"DEADLINES")
                 value.deadlines.forEach{row->val d=row.deadline;val expired=vm.repository.clock.instant()>d.instant()
@@ -85,8 +103,10 @@ import com.yohaku.expensetracker.ui.theme.*
             FinancialAttentionList(s,value,onAttention)
         }
     }
-    YLink(word("调整提醒","通知を設定"),{vm.navigate("notification-settings")},Modifier.testTag("important-settings"))
-    YButton(word("查看账户缺口与预算风险","口座不足・予算リスクを見る"),onForecast,Modifier.testTag("important-forecast"))
+    YActionRow {
+        YLink(word("调整提醒","通知を設定"),{vm.navigate("notification-settings")},Modifier.testTag("important-settings"))
+        YButton(word("查看账户缺口与预算风险","口座不足・予算リスクを見る"),onForecast,Modifier.testTag("important-forecast"))
+    }
 }
 
 @Composable private fun ImportantEvent(title:String,subtitle:String,amount:String,note:String,tag:String,onClick:()->Unit,warning:Boolean=false,last:Boolean=false) {

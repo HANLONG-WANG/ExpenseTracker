@@ -234,6 +234,7 @@ class MerchantFlowTest {
             shot("$theme-$language-h2-record-history")
             tag("sheet-close").performClick()
             ui.waitUntil(10000){ui.onAllNodesWithTag("record-merchant-history").fetchSemanticsNodes().isNotEmpty()}
+            tag("record-trash-preview").performScrollTo();shot("$theme-$language-h2-record-actions")
             ui.runOnIdle{vm.navigate("home")}
             // The on-disk edit still has the original baseline; resume and save through the ViewModel.
             assertEquals(retained,stored().draft)

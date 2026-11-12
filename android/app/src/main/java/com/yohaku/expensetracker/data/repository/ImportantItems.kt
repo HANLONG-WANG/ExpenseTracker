@@ -5,6 +5,30 @@ import com.yohaku.expensetracker.domain.finance.*
 import kotlinx.serialization.json.Json
 
 data class ImportantPayment(val item:CashTimelineItem,val outstandingMinor:Long?,val confirmed:Boolean)
+data class ImportantBillGroupKey(val sourceId:String,val scheduledDate:String,val accountId:String?,val currency:String) {
+    val stableKey:String get()="$sourceId:$scheduledDate:${accountId?:"none"}:$currency"
+}
+data class ImportantBillGroup(val key:ImportantBillGroupKey,val payments:List<ImportantPayment>) {
+    val item:CashTimelineItem get()=payments.first().item
+    val count:Int get()=payments.size
+    val confirmedCount=payments.count{it.confirmed}
+    val predictedCount=count-confirmedCount
+    val hasUnconfirmed=predictedCount>0
+    val outstandingMinor=payments.map{it.outstandingMinor}.knownTotal()
+    val cashRequiredMinor=payments.map{it.item.amountMinor}.knownTotal()
+    val issues=payments.mapNotNull{it.item.issue}.distinct()
+    val estimated=payments.any{it.item.estimated}||issues.isNotEmpty()
+}
+
+private fun List<Long?>.knownTotal():Long? = fold(0L as Long?){total,amount->
+    if(total==null||amount==null)null else Math.addExact(total,amount)
+}
+
+/** Presentation/reminder groups only; the underlying obligations and cash timeline stay per bill. */
+fun List<ImportantPayment>.billGroups():List<ImportantBillGroup> = filter{it.item.kind=="BILL"}
+    .groupBy{val i=it.item;ImportantBillGroupKey(i.sourceId,i.scheduledDate,i.accountId,i.currency)}
+    .map{(key,payments)->ImportantBillGroup(key,payments)}
+
 data class FinancialDeadline(val accountId:String,val accountName:String,val currency:String,val planName:String,
     val billDate:String,val outstandingMinor:Long,val deadline:ChangeDeadline)
 

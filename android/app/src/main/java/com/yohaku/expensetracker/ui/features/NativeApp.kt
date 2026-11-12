@@ -503,9 +503,11 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     }
     s.reserveUses.filter{it.eventId==e.id}.forEach{u->YText(word("使用预留：","使用した確保：")+s.reserves.first{it.id==u.reserveId}.name+" · "+Money(Currency.valueOf(s.book.currency),u.amountMinor).display(),13)}
     RecordMediaPanel(s,e,vm)
-    YLink(word("商户操作历史","お店の操作履歴"),onMerchantHistory,Modifier.testTag("record-merchant-history"))
     RevisionHistory(s,e,vm)
-    YLink(word("移至回收站","ごみ箱に移動"),onDelete,Modifier.testTag("record-trash-preview"))
+    YActionRow {
+        YLink(word("商户操作历史","お店の操作履歴"),onMerchantHistory,Modifier.testTag("record-merchant-history"))
+        YLink(word("移至回收站","ごみ箱に移動"),onDelete,Modifier.testTag("record-trash-preview"))
+    }
 }
 
 @Composable private fun CategoryPicker(vm:AppViewModel,s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onCreate:(String?)->Unit,onChoose:()->Unit) {

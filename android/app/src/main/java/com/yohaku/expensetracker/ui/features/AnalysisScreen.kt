@@ -59,7 +59,11 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     }
     YTabs(listOf("spend" to word("消费","支出"),"budget" to word("预算","予算"),"future" to word("未来","未来")),tab,{tab=it})
     YText(start+" — "+end,13)
-    YButton(word("筛选时间、分类与商户","期間・カテゴリ・お店で絞込"),{filtering=true},Modifier.testTag("analysis-filter"))
+    YActionRow {
+        YButton(word("筛选时间、分类与商户","期間・カテゴリ・お店で絞込"),{filtering=true},Modifier.testTag("analysis-filter"))
+        if(tab=="spend"&&s.analysisPreferences!=null&&modules.isNotEmpty())
+            YButton(word("自定义分析","分析を設定"),{initialModule=null;editor=true},Modifier.testTag("analysis-customize"))
+    }
     if(category!=null||merchant!=null||activity!=null)RecordFacts(listOf(word("分类","カテゴリ") to (category?.let{s.path(it)}?:word("全部","すべて")),word("商户","お店") to (merchant?.let{s.merchantLabel(it).ifBlank{word("未填写","未入力")}}?:word("全部","すべて")),word("活动","シーン") to (activity?.let{id->s.activities.find{it.id==id}?.name?:word("日常","日常")}?:word("全部","すべて"))))
     when(tab) {
         "spend"->{
@@ -75,7 +79,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
                 else AnalysisModule.entries.chunked(2).forEach{row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(if(LocalYohaku.current.id=="magazine")20.dp else 13.dp)){row.forEach{choice(it,Modifier.weight(1f))};if(row.size==1)Spacer(Modifier.weight(1f))}}
                 YButton(word("选择分析模块","分析項目を選ぶ"),{initialModule=null;editor=true},primary=true)
                 YText(word("未选择时不替你预设重点，偏好按账本保存。","未選択の視点は自動設定しません。帳簿ごとに保存。"),11,color=LocalYohaku.current.muted)
-            }else YButton(word("自定义分析","分析をカスタマイズ"),{initialModule=null;editor=true},Modifier.testTag("analysis-customize"))
+            }
             ordered.forEach{module->
                 AnalysisModuleHeading(analysisModuleName(module),analysisModuleNote(module),module==ordered.firstOrNull()||module in pinned)
                 when(module) {

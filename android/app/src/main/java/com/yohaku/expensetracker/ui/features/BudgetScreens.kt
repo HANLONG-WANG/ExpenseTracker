@@ -52,8 +52,10 @@ import java.time.YearMonth
 @Composable internal fun BudgetScreen(s:BookSnapshot,vm:AppViewModel,onRecurring:()->Unit,onCategories:()->Unit) {
     val today by vm.today.collectAsStateWithLifecycle()
     com.yohaku.expensetracker.ui.features.command.MonthlyPanel(word("月计划与评语","月の計画・振り返り"),"budget-monthly") {
-        YLink(word("编辑月度计划","月の計画を編集"),{vm.navigate("monthly-plan")},Modifier.testTag("budget-monthly-plan"))
-        YLink(word("月度评语与历史","月の振り返り・履歴"),{vm.navigate("monthly-history")},Modifier.testTag("budget-monthly-history"))
+        YActionRow {
+            YLink(word("编辑月度计划","月の計画を編集"),{vm.navigate("monthly-plan")},Modifier.testTag("budget-monthly-plan"))
+            YLink(word("月度评语与历史","月の振り返り・履歴"),{vm.navigate("monthly-history")},Modifier.testTag("budget-monthly-history"))
+        }
     }
     var month by rememberSaveable(s.book.id){mutableStateOf(YearMonth.from(today).toString())}
     val requestedMonth by vm.openBudgetMonth.collectAsStateWithLifecycle()

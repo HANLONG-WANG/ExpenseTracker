@@ -8,6 +8,28 @@ import org.junit.Test
 import java.time.LocalDate
 
 class ImportantItemsTest {
+    @Test fun billGroupsCombineSameDebitAndKeepPayersAndUnknownAmountsSeparate() {
+        val fixture=CashProjectionFixture(1000)
+        val s=fixture.snapshot()
+        val first=s.importantPayments(fixture.graph,s.cashTimeline(fixture.graph,
+            LocalDate.parse("2026-10-15"),LocalDate.parse("2026-11-30"))).single()
+        val second=first.copy(item=first.item.copy(id="bill:second",amountMinor=200,estimated=true,issue="PENDING_CLEARING"),
+            outstandingMinor=400,confirmed=false)
+        val payments=listOf(first.copy(item=first.item.copy(issue="PENDING_CLEARING")),second)
+        val group=payments.billGroups().single()
+        assertEquals("card:2026-10-20:bank:JPY",group.key.stableKey)
+        assertEquals(1400L,group.outstandingMinor);assertEquals(1200L,group.cashRequiredMinor)
+        assertEquals(2,group.count);assertEquals(1,group.confirmedCount);assertEquals(1,group.predictedCount)
+        assertTrue(group.hasUnconfirmed);assertTrue(group.estimated)
+        assertEquals(listOf("PENDING_CLEARING"),group.issues)
+        assertEquals(2,(payments+second.copy(item=second.item.copy(accountId="payer"))).billGroups().size)
+        assertEquals(2,(payments+second.copy(item=second.item.copy(currency="CNY"))).billGroups().size)
+        val unknown=listOf(first,second.copy(item=second.item.copy(amountMinor=null))).billGroups().single()
+        assertNull(unknown.cashRequiredMinor);assertEquals(1400L,unknown.outstandingMinor)
+        assertEquals(group.key,payments.reversed().billGroups().single().key)
+        assertTrue(listOf(first.copy(item=first.item.copy(kind="CARD_RECURRENCE"))).billGroups().isEmpty())
+    }
+
     @Test fun effectiveDeadlinesAndPendingClearingDisappearOnlyWhenTheirObligationsAreResolved() {
         val fixture=CashProjectionFixture(1000,"2026-10-26",bankOpening=100,payerOpening=10000)
         val b="b";val card=fixture.card.id;val payer=fixture.payer.id;val bill=fixture.bill

@@ -107,7 +107,13 @@ class CommandFlowTest {
                 vm.preferences.select(b);b
             }
             ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("budget")};tap("budget-monthly-plan")
+            ui.runOnIdle{vm.navigate("cloud")}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-history").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-history").performScrollTo();shot("$theme-$language-command-entry-links")
+            ui.runOnIdle{vm.navigate("budget")}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("budget-monthly-history").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("budget-monthly-history").performScrollTo();shot("$theme-$language-budget-monthly-links")
+            tap("budget-monthly-plan")
             ui.waitUntil(15000){ui.onAllNodesWithTag("monthly-plan-text").fetchSemanticsNodes().isNotEmpty()}
             ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("monthly-plan-text"))).performScrollTo().performTextReplacement(original)
             androidx.test.espresso.Espresso.closeSoftKeyboard();ui.waitForIdle()

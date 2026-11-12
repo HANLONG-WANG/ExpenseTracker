@@ -37,8 +37,10 @@ import java.time.format.DateTimeFormatter
 @Composable internal fun CommandEntry(vm:AppViewModel,connected:Boolean) {
     CloudHandoffStrip(word("云端办理","クラウド手続き"),word("说出需求，收到方案后在本机试运行，由你核对并确认。","要望を伝え、届いたプランを端末で試算。確認してから確定します。"),"command-entry") {
         YButton(word("提出办理需求","手続きを依頼"),{vm.navigate("command-submit")},Modifier.fillMaxWidth().testTag("command-new"),primary=true,enabled=connected)
-        YLink(word("月度评语与历史","月の振り返り・履歴"),{vm.navigate("monthly-history")},Modifier.testTag("command-monthly-history"))
-        YLink(word("方案历史","プランの履歴"),{vm.navigate("command-history")},Modifier.testTag("command-history"))
+        YActionRow {
+            YLink(word("月度评语与历史","月の振り返り・履歴"),{vm.navigate("monthly-history")},Modifier.testTag("command-monthly-history"))
+            YLink(word("方案历史","プランの履歴"),{vm.navigate("command-history")},Modifier.testTag("command-history"))
+        }
     }
 }
 

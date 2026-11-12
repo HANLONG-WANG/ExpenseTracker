@@ -351,6 +351,8 @@ class AnalysisFlowTest {
             println("Analysis comparison UI: $theme $language")
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("analysis")}
+            ui.onNodeWithTag("analysis-customize").assertExists()
+            shot("$theme-$language-analysis-actions",false)
             ui.onNodeWithTag("comparison-current-period").assertTextEquals("2026-10-01 — 2026-10-14")
             ui.onNodeWithTag("comparison-previous-period").assertTextContains("2026-09-01 — 2026-09-14",substring=true)
             ui.onNodeWithTag("comparison-change-category:$parent").assertTextEquals("¥1,000")
