@@ -446,13 +446,16 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun openCommandPlan(id:String){commandPlanId.value=id;navigate("command-preview")}
     fun saveEntry(bookId:String) {
         if(savingEntry)return
-        val d=entry.value ?: return
+        var d=entry.value ?: return
         savingEntry=true
         var saved=false
         var review:LedgerChangeReview?=null
         var negative:PendingEntrySave?=null
         var stale=false
         execute(onSuccess={if(saved)entrySaved(bookId,d)else {negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=stale;if(negative!=null||stale)haptic(Haptic.Warning)}},onComplete={savingEntry=false}) {
+            val account=repository.dao.account(bookId,d.accountId?:error("请选择账户 / 口座を選択してください"))?:error("账户不存在 / 口座がありません")
+            val resolved=if(d.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))runCatching{d.resolveAmountExpression(Currency.valueOf(account.currency))}.getOrElse{haptic(Haptic.Error);return@execute}else d
+            if(resolved!=d){d=resolved;entry.value=d;check(repository.saveDraft(bookId,d){entry.value==d}){"草稿已更新，请重试 / 下書きが更新されました。再試行してください"}}
             val prepared=repository.previewEntry(bookId,d)
             val needsReview=prepared.change.merchantConflict!=null||repository.entryNeedsReview(bookId,d)
             if(prepared.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(prepared,needsReview)

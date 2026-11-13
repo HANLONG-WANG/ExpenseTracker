@@ -571,23 +571,22 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     }
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         Column(Modifier.fillMaxWidth().padding(bottom=4.dp)){
-            YField(word("金额","金額")+" · "+currency,accountText,{changeAccountAmount(it)},Modifier.focusRequester(amountFocus).testTag("entry-amount"),numeric=true,emphasizeAmount=true,amountSymbol=Currency.valueOf(currency).symbol.takeLast(1),displayLabel=(if(confirmingOccurrence&&d.settlementConfirmed)word("实际支付金额","実際の支払額")else if(!d.settlementConfirmed)word("预计入账金额","計上見込額")else if(foreign||currency!=s.book.currency)word("账户实际入账金额","口座の実際の計上額")else word("金额","金額"))+" · "+currency)
+            YField(word("金额","金額")+" · "+currency,accountText,{changeAccountAmount(it)},Modifier.focusRequester(amountFocus).testTag("entry-amount"),numeric=true,emphasizeAmount=true,expressionCurrency=Currency.valueOf(currency),amountSymbol=Currency.valueOf(currency).symbol.takeLast(1),displayLabel=(if(confirmingOccurrence&&d.settlementConfirmed)word("实际支付金额","実際の支払額")else if(!d.settlementConfirmed)word("预计入账金额","計上見込額")else if(foreign||currency!=s.book.currency)word("账户实际入账金额","口座の実際の計上額")else word("金额","金額"))+" · "+currency)
             EntryCurrencyControls(d,currency,onChange)
             if(foreign&&referenceService!=null)ReferenceRatePanel(referenceService,d.originalCurrency!!,Currency.valueOf(currency),d.referenceQueryDate?:d.date,
                 enabled=!d.settlementConfirmed,autoKey=d.amount+"/"+d.accountAmount+"/"+d.settlementConfirmed,
                 onAuto={q->if(d.id==null&&!d.settlementConfirmed&&d.accountAmount.isBlank()&&runCatching{Money.parse(d.amount,q.base).minor>0}.getOrDefault(false))onChange(applyReferenceAccountAmount(d,Currency.valueOf(currency),q))},
                 onUse={q->onChange(applyReferenceAccountAmount(d,Currency.valueOf(currency),q))})
             val baseText=if(currency==s.book.currency)accountText else d.baseAmount
-            val base=if(baseText.isBlank()){if(currency==s.book.currency)Money(Currency.valueOf(s.book.currency),0) else null} else runCatching{Money.parse(baseText,Currency.valueOf(s.book.currency))}.getOrNull()
+            val base=if(baseText.isBlank()){if(currency==s.book.currency)Money(Currency.valueOf(s.book.currency),0) else null} else runCatching{if(currency==s.book.currency)AmountExpression.money(baseText,Currency.valueOf(s.book.currency))else Money.parse(baseText,Currency.valueOf(s.book.currency))}.getOrNull()
             YText(word("本位币参考","基準通貨の参考")+" "+(base?.display()?:"—"),if(t.id=="journal")11 else 9,Modifier.padding(top=16.dp).testTag("entry-base-caption"),color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
-            if(d.kind==EntryKind.EXPENSE&&currency=="JPY")Box(Modifier.padding(top=13.dp)){EntryQuickAmount(accountText){changeAccountAmount(it)}}
-            YLink(word("查看 / 手动填写换算","換算を確認・手入力"),onRate)
+            if(foreign||currency!=s.book.currency)YLink(word("查看 / 手动填写换算","換算を確認・手入力"),onRate)
         }
         if(currency!=s.book.currency) {
             YField(word("本位币统计金额","基準通貨の集計額")+" · "+s.book.currency,d.baseAmount,{onChange(d.copy(baseAmount=it,referenceBaseLinked=false))},numeric=true)
             if(referenceService!=null)ReferenceRatePanel(referenceService,Currency.valueOf(currency),Currency.valueOf(s.book.currency),d.referenceQueryDate?:d.date,
                 autoKey=accountText+"/"+d.baseAmount,
-                onAuto={q->if(d.id==null&&d.baseAmount.isBlank()&&runCatching{Money.parse(accountText,q.base).minor>0}.getOrDefault(false))onChange(applyReferenceBaseAmount(d,Currency.valueOf(currency),Currency.valueOf(s.book.currency),q))},
+                onAuto={q->if(d.id==null&&d.baseAmount.isBlank()&&runCatching{AmountExpression.money(accountText,q.base).minor>0}.getOrDefault(false))onChange(applyReferenceBaseAmount(d,Currency.valueOf(currency),Currency.valueOf(s.book.currency),q))},
                 onUse={q->onChange(applyReferenceBaseAmount(d,Currency.valueOf(currency),Currency.valueOf(s.book.currency),q))})
         }
         if(eligible.isNotEmpty())YSelect(if(d.kind==EntryKind.INCOME)word("到账账户","入金口座") else word("付款账户","支払口座"),d.accountId,eligible.map{it.id as String? to it.name},{id->
@@ -632,7 +631,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
             YText(if(existingId==null&&!d.settlementConfirmed)word("这笔消费按预计入账金额计入预算，保存后解除原周期预留，避免双算。账户实际金额仍待确认；已记过时请选择已有流水。","この支出は計上見込額で予算に含め、保存後に元の定期予定を解除して二重計算を防ぎます。口座の実額は確認待ちです。記録済みなら既存記録を選んでください。")else if(existingId==null)word("已手动记过时请选择对应流水，避免重复记账。实际确认后解除这次预留。","手動記録済みなら関連する記録を選択。重複せず、実際の確認後に予定を解除します。")else word("采用所选已有支出的金额和日期，不使用本表单输入，也不新增记录或附件；确认后解除这次预留。","選択した既存支出の金額・日付を使用します。このフォームの入力や添付は追加せず、確認後に予定を解除します。"),11,Modifier.testTag("occurrence-payment-note"),color=t.muted)
         }
         // Docked in the sheet footer normally; inline while the keyboard is up, where its own 12dp above and below keep the former 25dp / 14dp gaps.
-        val saveAmount=if(existingId!=null)null else runCatching{Money.parse(accountText,Currency.valueOf(currency))}.getOrNull()?.takeIf{it.minor>0}?.display()
+        val saveAmount=if(existingId!=null)null else runCatching{AmountExpression.money(accountText,Currency.valueOf(currency))}.getOrNull()?.takeIf{it.minor>0}?.display()
         Box(Modifier.padding(top=13.dp)){EntrySaveArea(d.id!=null,busy,existingId!=null||a!=null,{existingId?.let(onPreviewExisting)?:onSave()},onCancelEdit,if(existingId!=null)word("预览关联已有支出","既存支出との関連を確認")else if(confirmingOccurrence&&!d.settlementConfirmed)word("记录消费并解除预留","支出を記録して予定を解除")else if(confirmingOccurrence)word("确认付款并解除预留","支払を確認して予定を解除")else null,saveAmount)}
         if(d.id==null&&d.occurrenceId==null&&d.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))Box(Modifier.fillMaxWidth().padding(top=2.dp),contentAlignment=Alignment.Center){YLink(word("把这笔存为模板","この記録をテンプレートに保存"),onSaveTemplate,Modifier.testTag("entry-save-template"))}
     }

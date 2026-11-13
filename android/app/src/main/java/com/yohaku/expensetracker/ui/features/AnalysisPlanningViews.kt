@@ -36,11 +36,7 @@ import java.time.YearMonth
     val roots=s.categories.filter{s.categoryEnabled(it.id)&&it.kind==EntryKind.EXPENSE.name&&it.parentId==null}
     if(roots.isEmpty())YEmpty(word("先创建自己的支出分类。","自分の支出カテゴリから。"))
     val ordered=roots.flatMap{root->listOf(root)+s.categories.filter{it.active&&it.parentId==root.id}}
-    val projections=ordered.associate{it.id to s.budgetProjection(selected,it.id)}
-    BudgetLimitList(ordered,ordered.map{projections.getValue(it.id).let{cp->if(cp.limitMinor==null)money(cp.spentMinor)else money(cp.remainingMinor)}}) {c,modifier->
-        val cp=projections.getValue(c.id)
-        BudgetLimitRow(c.id,c.name,resolveCategoryIcon(c.id,s.categories),c.parentId!=null,cp.spentMinor,cp.limitMinor,money(cp.spentMinor),money(cp.limitMinor),money(cp.remainingMinor),{haptics.perform(Haptic.Select);onScope(c.id)},modifier)
-    }
+    BudgetLimitList(ordered.map{c->val p=s.budgetProjection(selected,c.id);MonthlyBudgetItem(c.id,c.parentId,c.name,resolveCategoryIcon(c.id,s.categories),p.spentMinor,p.limitMinor)},Currency.valueOf(s.book.currency)){haptics.perform(Haptic.Select);onScope(it)}
     ThemeSection(word("预留来源明细","確保の内訳"),"PLANNED USES")
     RecordFacts(listOf(word("待付固定支出预留","固定費の未払い予定") to money(p.fixedReserveMinor),word("本月活动预算预留","今月のシーン予算の確保") to money(p.activityReserveMinor),word("全部活动资金预留","全シーンの資金確保") to money(p.fundReserveMinor)),audit=true)
     YButton(word("管理月预算","月予算を管理"),{onManage(selected)},Modifier.testTag("analysis-budget-manage"),primary=true)

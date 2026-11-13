@@ -415,23 +415,18 @@ class SetupPresentationTest {
             if(ui.onAllNodesWithTag(noteField).fetchSemanticsNodes().isNotEmpty()!=expanded)ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
             ui.onNodeWithTag("entry-summary").performScrollTo()
             val top=ui.onNodeWithTag("entry-summary").getUnclippedBoundsInRoot().top
-            val tags=mapOf("summary" to "entry-summary","amount" to "entry-amount","quick" to "entry-quick-amount","base" to "entry-base-caption","account" to if(l=="zh")"select-field-付款账户" else "select-field-支払口座","merchant" to "entry-merchant-input","date" to "date-field-grid","notes" to "entry-notes","historical" to if(l=="zh")"toggle-历史补录：已包含在期初余额" else "toggle-履歴追加：期首残高に含まれる","save" to "entry-save-button")
+            val tags=mapOf("summary" to "entry-summary","amount" to "entry-amount","base" to "entry-base-caption","account" to if(l=="zh")"select-field-付款账户" else "select-field-支払口座","merchant" to "entry-merchant-input","date" to "date-field-grid","notes" to "entry-notes","historical" to if(l=="zh")"toggle-历史补录：已包含在期初余额" else "toggle-履歴追加：期首残高に含まれる","save" to "entry-save-button")
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
-                // "备注和其他" (2026-11-05) folds the historical toggle into the notes section, so it, the save area below and the expanded section height leave the source layout.
-                val expected=nodes.getJSONObject(j);val key=expected.getString("key");if(key=="tools"||key=="historical"||key=="save")continue;val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
-                // B/C add original-currency selection and an explicit manual-rate action.
-                // Compare the retained A anchors after removing only those measured additions.
-                val currencyField=ui.onNodeWithTag(if(l=="zh")"select-field-消费 / 收付原币" else "select-field-取引の原通貨").getUnclippedBoundsInRoot()
-                val rateAction=ui.onNode(hasText(if(l=="zh")"查看 / 手动填写换算" else "換算を確認・手入力") and hasClickAction()).getUnclippedBoundsInRoot()
-                val extension=when(key){"summary","tools","amount"->0f;"base","quick"->(currencyField.bottom-currencyField.top).value+12f;else->(currencyField.bottom-currencyField.top).value+12f+(rateAction.bottom-rateAction.top).value}
-                // Removing the tools row also removes its two collapsed gaps; the sheet keeps its normal 15dp gap.
-                val removedTools=if(key=="summary")0f else (0 until nodes.length()).map{nodes.getJSONObject(it)}.first{it.getString("key")=="tools"}.getDouble("height").toFloat()+28f
-                val actualTop=(r.top-top).value-extension+removedTools;val actualHeight=(r.bottom-r.top).value
+                val expected=nodes.getJSONObject(j);val key=expected.getString("key")
+                // The amount redesign changes subsequent positions, while the other field heights remain comparable.
+                if(key in setOf("tools","quick","historical","save"))continue
+                val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
+                val actualTop=(r.top-top).value;val actualHeight=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$expanded,$key,$actualTop,$actualHeight\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
-                    if(kotlin.math.abs(actualTop-expected.getDouble("top"))>1)errors+="$t/$l/$expanded/$key top: $actualTop vs ${expected.getDouble("top")}" 
-                    if(!(expanded&&key=="notes")&&kotlin.math.abs(actualHeight-expected.getDouble("height"))>1)errors+="$t/$l/$expanded/$key height: $actualHeight vs ${expected.getDouble("height")}" 
+                    if(key=="summary"&&kotlin.math.abs(actualTop-expected.getDouble("top"))>1)errors+="$t/$l/$expanded/$key top: $actualTop vs ${expected.getDouble("top")}"
+                    if(key!="amount"&&!(expanded&&key=="notes")&&kotlin.math.abs(actualHeight-expected.getDouble("height"))>1)errors+="$t/$l/$expanded/$key height: $actualHeight vs ${expected.getDouble("height")}"
                 }
             }
             assertEquals(expanded,ui.onAllNodesWithTag(tags.getValue("historical")).fetchSemanticsNodes().isNotEmpty())

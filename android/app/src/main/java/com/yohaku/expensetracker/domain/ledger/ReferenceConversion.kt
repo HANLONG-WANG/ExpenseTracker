@@ -13,12 +13,12 @@ fun applyReferenceTransfer(d:EntryDraft,from:Currency,to:Currency,rate:Reference
 fun applyReferenceAccountAmount(d:EntryDraft,accountCurrency:Currency,rate:ReferenceRateSnapshot):EntryDraft {
     require(!d.settlementConfirmed){"已确认金额不能被参考估算覆盖 / 確認済みの金額は参考見積もりで上書きできません"}
     require(rate.base==(d.originalCurrency?:accountCurrency)&&rate.quote==accountCurrency)
-    val amount=rate.convert(Money.parse(d.amount,rate.base))
+    val amount=rate.convert(AmountExpression.money(d.amount,rate.base))
     return d.withReference(rate).copy(accountAmount=amount.decimal.toPlainString(),manualRate=rate.rate,referenceExpectedAccountMinor=amount.minor,referenceAccountLinked=true)
 }
 fun applyReferenceBaseAmount(d:EntryDraft,accountCurrency:Currency,baseCurrency:Currency,rate:ReferenceRateSnapshot):EntryDraft {
     require(rate.base==accountCurrency&&rate.quote==baseCurrency)
     val text=if((d.originalCurrency?:accountCurrency)==accountCurrency)d.amount else d.accountAmount
-    val amount=rate.convert(Money.parse(text,accountCurrency))
+    val amount=rate.convert(AmountExpression.money(text,accountCurrency))
     return d.withReference(rate).copy(baseAmount=amount.decimal.toPlainString(),referenceExpectedBaseMinor=amount.minor,referenceBaseLinked=true)
 }

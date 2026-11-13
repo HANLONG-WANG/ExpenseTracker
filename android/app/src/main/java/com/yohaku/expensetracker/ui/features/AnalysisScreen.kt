@@ -81,19 +81,21 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
                 YText(word("未选择时不替你预设重点，偏好按账本保存。","未選択の視点は自動設定しません。帳簿ごとに保存。"),11,color=LocalYohaku.current.muted)
             }
             ordered.forEach{module->
-                AnalysisModuleHeading(analysisModuleName(module),analysisModuleNote(module),module==ordered.firstOrNull()||module in pinned)
+                AnalysisModuleHeading(analysisModuleName(module),analysisModuleNote(module),module==ordered.firstOrNull()||module in pinned,when(module) {
+                    AnalysisModule.CATEGORIES->({YLink(word("管理分类","カテゴリ管理"),onCategories,Modifier.testTag("analysis-manage-categories"))})
+                    AnalysisModule.MERCHANTS->({YLink(word("商户与地点","お店と場所"),{vm.navigate("merchants")},Modifier.testTag("analysis-manage-merchants"))})
+                    else->null
+                })
                 when(module) {
                     AnalysisModule.CATEGORIES->{
                         val groups=s.categoryGroups(report)
                         if(groups.isEmpty())YEmpty(word("这个区间暂无分类消费。","この期間の支出はありません。"))
                         else AnalysisCategoryList(analysisCategoryItems(s,report,currency),{detail=if(it=="FEES")"fees"else"category:$it"})
-                        YLink(word("管理分类","カテゴリ管理"),onCategories)
                     }
                     AnalysisModule.MERCHANTS->{
                         val groups=report.groups{it.merchantKey}
                         if(groups.isEmpty())YEmpty(word("记录商户后在这里查看。","お店を記録すると表示されます。"))
                         else AnalysisMerchantList(analysisMerchantItems(s,report,currency),Money(currency,report.total).display(),{detail="merchant:$it"})
-                        YLink(word("商户与保存地点","お店と保存した場所"),{vm.navigate("merchants")})
                     }
                     AnalysisModule.ACTIVITIES->AnalysisActivityModule(s,report,currency,{detail="activity:$it"},{vm.openActivity.value=it;vm.navigate("life")})
                     AnalysisModule.TREND->AnalysisTrend(report,currency,{detail=it})
@@ -153,7 +155,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         YText(Money(currency,comparison.current.total).display(),27,number=true)
         YText(word("对照：","比較：")+comparison.previousStart+" — "+comparison.previousEnd,11,Modifier.testTag("comparison-previous-period"))
         YText(Money(currency,comparison.previous.total).display()+" → "+Money(currency,comparison.current.total).display(),18,number=true)
-        YText(word("变化：","変化：")+Money(currency,comparison.change).display(),20,number=true)
+        YText(word("变化：","変化：")+signedMoney(currency,comparison.change),20,number=true)
     }
     val categoryCauses=analysisCauses(s.categoryGroups(comparison.current),s.categoryGroups(comparison.previous))
     val merchantCauses=analysisCauses(comparison.current.groups{it.merchantKey},comparison.previous.groups{it.merchantKey})
@@ -161,7 +163,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     if(categoryCauses.isEmpty()&&merchantCauses.isEmpty())YText(word("这个区间暂无净消费变化。","この期間の純支出に変化はありません。"),12)
     fun display(n:Long)=Money(currency,n).display()
     @Composable fun cause(c:AnalysisCause,key:String,name:String) {
-        ComparisonCauseCard(key,name,display(c.before),display(c.after),display(c.change),onDetail?.let{action->{action("current",key)}},onDetail?.let{action->{action("previous",key)}})
+        ComparisonCauseCard(key,name,display(c.before),display(c.after),signedMoney(currency,c.change),c.change>0,onDetail?.let{action->{action("current",key)}},onDetail?.let{action->{action("previous",key)}})
     }
     if(categoryCauses.isNotEmpty())ThemeSection(word("主要分类变化","主なカテゴリの変化"),"BY CATEGORY")
     categoryCauses.take(5).forEach{c->cause(c,if(c.key=="FEES")"fees"else"category:${c.key}",s.categories.find{it.id==c.key}?.name?:word("明确费用","確定手数料"))}

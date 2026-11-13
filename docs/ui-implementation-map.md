@@ -168,7 +168,7 @@ UI26新增管理概览/库页见`management.html`，正式管理弹层见`manage
 
 已有分类选择恢复常用→最近→搜索次序、原星号与芯片/搜索行盒；多个父组独立展开，搜索保留目录和未细分入口，六组合实际路径通过。原稿缺失search symbol时，原生使用明确放大镜作为图标微调。父子行全部装饰与长名称尚待整页对照，未将UI04全量标为通过。
 
-分类展开目录已恢复制式行高、未细分样式、子类及新增入口，标准六组合代表状态与窄屏操作有直接证据。记账表单补回原JPY支出三个快捷加金额入口，三主题采用原边框链接/纸签/收纳按钮；实际保存原ID及金额、收入隐藏已验证。商户和日期标签恢复原稿。来源及结果见阶段A记录；长名称及记账整页上下段仍待验，UI04/05不因此全量勾选。
+分类展开目录已恢复制式行高、未细分样式、子类及新增入口，标准六组合代表状态与窄屏操作有直接证据。记账主金额已于2026-11-13改为算式输入，原固定增量入口移除；旧版该区域的原稿几何不再适用，新版三主题视觉待验证。商户和日期标签恢复原稿。来源及结果见阶段A记录；长名称及记账整页上下段仍待验，UI04/05不因此全量勾选。
 
 历史补录恢复原exp-toggle标题/说明/账本开始日和三套独立开关；六组合标准高度及更新后的窄屏真实Gboard备注/保存流程通过。备注展开标记恢复原行盒。2026-11-05 起备注、历史补录与“原样保存”合并为默认折叠的“备注和其他”，历史补录及其下保存区的位置不再对照原稿（`entryFormMatchesSourceFromSelectedCategoryThroughSave` 仅比对其上的节点和折叠标题）。说明与媒体、活动等后续字段不混作已实现；十二状态表单主体的连续区块现已对照，具体范围见下节；小物阴影及长内容仍按实际差异审查。
 
@@ -613,3 +613,12 @@ CommandAssistantRoundTripTest使用磁盘测试库、真实任务准备/advance�
 - 端到端入口 `MerchantFlowTest#merchantUpgradeEndToEndAcrossLooks`；历史／来源链／分页／记录入口由 `#historyPagesProfilesMergeSourcesAndRecordEntrancesAcrossLooks` 覆盖，空状态与重名由 `#emptyMerchantHistoryAcrossLooks`、`#ambiguousOriginalNamesRemainVisibleWithoutInferredOwnership` 覆盖。S24 Ultra 与 320dp/fontScale 1.3 三主题×中日文截图、实际回归结果和行为表覆盖统一见 [Android 商户最终验收](../android/README.md#商户改造最终验收2026-11-10)。
 
 UI01／UI21首页核对提示（2026-11-13）：`HomeStatementDue.kt` 在日均面板下方按 `statementDuePeriods` 显示一行合并提示，无到期期间时不占位；点开为期间弹层（`ThemeAuditPanel`+`RecordFacts`），「去核对」带账户与期间进入导入页并直接打开云端流水转换弹层，「本期不核对」写入跳过记录。杂志为上下发丝线与 RECONCILE 刊头小字，手账为红笔「核对」斜章与虚线，小物为浅底圆角收纳条与彩色圆点。测试 `StatementDueTest`（期间切分、半期、多期、拼接覆盖、跳过）与 `StatementDueFlowTest#closedUncoveredPeriodsShowOnHomeUntilImportedOrSkipped`（三主题中日文，含截图）。
+
+### 2026-11-13 周期账单 / 月分类预算 / 金额算式
+
+- UI20：`RecurringLayout.kt`紧凑行与今天卡，`RecurrenceScreens.kt`分组、更多菜单、已处理两级折叠；现有付款/关联/恢复/规则操作复用。新增`recurring-group-due|soon|later|pending`、`recurring-processed-toggle`、`occurrence-more-$id`、`occurrence-details-$id`，原状态与操作tag保留（处理后状态在可点击头部的unmerged tree）。
+- 月预算：`BudgetLayout.kt`月分类重载、`AnalysisPlanningViews.kt`和`BudgetScreens.kt`共用分组。保留每个`budget-category-$id`，增加`budget-group-$id`、`budget-children-$id`、`budget-unspecified-$id`。小物父子不再同排；测试改断言子项在父组中且在一级下方。
+- UI04/05：`NativeApp.kt`只为主金额传入`YField.expressionCurrency`。新增`entry-operators`、`entry-operator-＋|−|×|÷|(|)`、`entry-expression-result`、`entry-expression-equals`；`entry-amount`保留。主金额及其后区块不再使用旧快捷金额版的top/height基准；摘要与独立备注区的适用断言保留。
+- 复核调整：杂志/手账「确认付款」改为紧凑按钮（小物保留宽按钮），7天内的「N天后」用正文色、暖色只留给过期和今天；已处理折叠头改为三主题各自的整行分组头（`RecurringProcessedHeader`）。运算符按钮以“加/减/乘/除/括号”作读屏描述并清除字形语义，避免“×”与弹层关闭按钮混淆。
+- UI09分析（同日）：同期对比的变化额统一写作“+¥ / −¥”，增加用`t.warm`、减少用主题墨色；小物变化卡片改为奶白底加抬起边，不再用灰绿底。分类、商户模块的管理入口移到模块标题右侧（`AnalysisModuleHeading`的`action`，tag `analysis-manage-categories` / `analysis-manage-merchants`）。
+- 验证：JVM单测、相关仪器测试（周期/预算/分析/记账/草稿/金融总览等）通过；S24 Ultra尺寸下三主题中文截图逐页对照设计稿。320dp/fontScale1.3窄屏矩阵与日文长文案留待发版前矩阵。

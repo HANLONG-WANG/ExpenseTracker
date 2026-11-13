@@ -38,11 +38,15 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun AnalysisModuleHeading(title:String,note:String,pinned:Boolean) {
+/** [action] sits at the right of the title line: a module's own management link, never a second heading. */
+@Composable internal fun AnalysisModuleHeading(title:String,note:String,pinned:Boolean,action:(@Composable ()->Unit)?=null) {
     val t=LocalYohaku.current
     Column(Modifier.fillMaxWidth().padding(top=7.dp,bottom=4.dp).then(if(t.id=="magazine")Modifier.drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx())}.padding(top=19.dp)else Modifier)) {
         YText(if(pinned)word("重点关注","注目")else word("我的分析","マイ分析"),if(t.id=="journal")11 else 8,if(t.id=="objects")Modifier.background(Color(0xffe6d7be),RoundedCornerShape(5.dp)).padding(horizontal=9.dp,vertical=5.dp)else Modifier,color=if(t.id=="journal")t.warm else if(t.id=="objects")Color(0xffaa8058)else t.muted)
-        YText(title,if(t.id=="objects")24 else 27,Modifier.padding(vertical=8.dp),lineHeightMultiplier=1.6f)
+        Row(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            YText(title,if(t.id=="objects")24 else 27,Modifier.weight(1f),lineHeightMultiplier=1.6f)
+            action?.invoke()
+        }
         YText(note,if(t.id=="journal")12 else 10,color=t.muted)
     }
 }

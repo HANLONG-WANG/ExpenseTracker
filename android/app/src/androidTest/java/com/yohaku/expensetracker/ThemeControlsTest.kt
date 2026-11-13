@@ -26,19 +26,21 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class ThemeControlsTest {
     @get:Rule val ui=createComposeRule()
-    @Test fun yenQuickAmountsUseOriginalThemeSizesAndAddToInput(){
-        val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val amount=mutableStateOf("")
+    @Test fun amountOperatorsInsertAtCursorAndResolve(){
+        val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val amount=mutableStateOf("12")
         ui.setContent{YohakuTheme(theme.value,language.value){Column(Modifier.fillMaxSize().safeDrawingPadding().padding(25.dp)){
-            com.yohaku.expensetracker.ui.features.EntryQuickAmount(amount.value){amount.value=it}
+            YField("amount",amount.value,{amount.value=it},numeric=true,emphasizeAmount=true,expressionCurrency=com.yohaku.expensetracker.domain.model.Currency.JPY)
         }}}
         for((t,l) in testLooks(this@ThemeControlsTest)){
-            ui.runOnIdle{theme.value=t;language.value=l;amount.value=""}
-            val r=ui.onNodeWithTag("entry-quick-amount").getUnclippedBoundsInRoot()
-            if(visualEnabled() && InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration.fontScale==1f)assertEquals("Original quick amount height",when(t){"journal"->40.390625f;"objects"->48f;else->36f},(r.bottom-r.top).value,1f)
-            for(n in listOf(100,500,1000))ui.onNodeWithTag("entry-quick-$n").performClick()
-            assertEquals("1600",amount.value)
-            ui.runOnIdle{amount.value="680"};ui.onNodeWithTag("entry-quick-100").performClick();assertEquals("780",amount.value)
-            ui.runOnIdle{amount.value="1.5"};ui.onNodeWithTag("entry-quick-100").assertIsNotEnabled()
+            ui.runOnIdle{theme.value=t;language.value=l;amount.value="12"}
+            ui.onNodeWithTag("field-amount").performClick().performTextInputSelection(androidx.compose.ui.text.TextRange(1))
+            ui.onNodeWithTag("entry-operator-＋").performClick()
+            assertEquals("1＋2",amount.value)
+            ui.onNodeWithTag("field-amount").assertIsFocused()
+            ui.onNodeWithTag("entry-expression-result").assertTextEquals("= ¥3")
+            ui.onNodeWithTag("entry-expression-equals").performClick();assertEquals("3",amount.value)
+            ui.onNodeWithTag("field-amount").performTextReplacement("1/0")
+            ui.onNodeWithTag("entry-expression-result").assertTextEquals(if(l=="zh")"不能除以 0"else"0では割れません")
         }
     }
     @Test fun categoryShortcutsAndSearchMatchOriginalLineBoxes(){

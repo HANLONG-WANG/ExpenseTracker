@@ -16,7 +16,7 @@
 | `Select` | 选中一项：菜单项、分类、日期、商户、筛选、模板列映射等 | 按下 |
 | `TabSwitch` | 底部导航、一级页签、分段切换（选中项改变时；重复点当前项不震） | 按下 |
 | `ToggleOn` / `ToggleOff` | 开关、勾选、收藏、进入/退出模式 | 按下 |
-| `Step` | 离散步进：换月箭头、快捷金额 +100/+500/+1000、上一页/下一页、上移/下移、上一张/下一张 | 按下 |
+| `Step` | 离散步进：换月箭头、上一页/下一页、上移/下移、上一张/下一张 | 按下 |
 | `PageTurn` | 流水日历横滑翻月成功 | 手势结束 |
 | `Limit` | 到边界被拒绝：翻到未来月、已是最后一页 | 手势结束/按下 |
 | `Compose` | 开始记一笔：底部“记一笔”、记在这一天、用模板记、从账户转账/补记收入 | 按下 |
@@ -56,7 +56,7 @@
 | `Warning` | `CLICK .6 →120→ CLICK .6` | `THUD .6 →140→ LOW_TICK .6` | `THUD .5 →110→ THUD .5` |
 | `Error` | `CLICK .9 →80→ CLICK .9 →80→ CLICK .9` | `THUD .9 →90→ THUD .9` | `THUD .9 →60→ QUICK_FALL .6` |
 
-快捷金额的 `Step` 按增量缩放强度：+100 ×0.8、+500 ×1.0、+1000 ×1.3（上限 1.0），三个主题都适用。
+主金额运算符使用 `Select`；点“=”成功只替换输入，不播放保存触感；无效算式点“=”或保存时播放 `Error`。
 
 **退化**：设备不支持某个原语时（用 `Vibrator.areAllPrimitivesSupported` 查询），整个词退回系统语义触感。`Select` / `TabSwitch` / `Step` / `Grab` / `Media` 退回 `SEGMENT_TICK` 或 `CLOCK_TICK`；`ToggleOn` / `ToggleOff` 退回 `TOGGLE_ON` / `TOGGLE_OFF`；`Saved` / `Done` / `Restored` / `Compose` / `PageTurn` 退回 `CONFIRM`；`Warning` / `Error` / `Limit` 退回 `REJECT`；`Removed` 退回 `EFFECT_HEAVY_CLICK`。Android 10（API 29）没有这些常量，改用 `createPredefined` 的 `EFFECT_CLICK` / `EFFECT_TICK` / `EFFECT_DOUBLE_CLICK` / `EFFECT_HEAVY_CLICK`。退化后三个主题的手感相同。
 
@@ -74,7 +74,7 @@
 | `LedgerCalendar` 横滑（`LedgerCalendar.kt:114`） | 超过 120px 翻月成功 `PageTurn`，翻到未来月被拒绝 `Limit`；拖动中不震 |
 | `ThemedAudio` | 播放/暂停 `Media`，按下进度条 `Grab` |
 | `ImageViewer` | 上一张/下一张 `Step`；边界按钮保持禁用、不震；放大/缩放不震 |
-| `EntryQuickAmount` | `Step`（按增量缩放） |
+| 主金额运算符 | `Select`；无效结算 `Error` |
 | `YButton` / `YLink` | 默认不震。需要按下触感的调用点通过新增参数 `haptic` 指定（`Compose`、`Step`、`Select` 等，见附录） |
 | `YField` / `YSearch` / `EntryNotes` | 不震（系统输入法自己负责逐键反馈） |
 | `YSheet` 关闭、遮罩点击、系统返回 | 不震 |
@@ -168,3 +168,9 @@
 - FINANCIAL-119 实际只有返回，不震；FINANCIAL-263 实为提交合同关联，成功发 `Done`；FINANCIAL-191 撤销被资料变化阻止时发 `Warning`；FINANCIAL-279 核对发现差异或不完整发 `Warning`。
 - 自动定位（进入页面时）失败不震，只有用户主动点“重新定位”等失败才发 `Error`。
 
+
+### 2026-11-13 交互更新
+
+- 对应表中旧`ENTRY-019`、`ENTRY-055`已随固定增量按钮移除，按本节覆盖其旧定义；对应表本轮保留用户未提交的编辑，不改写该文件。
+- 主金额运算符按下为`Select`，`=`成功不额外震动，非法算式结算/保存为`Error`；自动预览结果/错误不震动。最终保存仍仅成功后`Saved`。
+- 周期更多菜单、已处理开关与详情展开属于打开/关闭，不播放触感；取消/解除关联完成后仍为`Removed`，恢复完成后仍为`Restored`。月分类点击沿用原分析页`Select`及管理页编辑行为。

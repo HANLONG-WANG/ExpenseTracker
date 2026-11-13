@@ -28,33 +28,80 @@ import java.time.YearMonth
     Box(Modifier.fillMaxWidth().testTag("recurring-month")) {MonthChooser(month,{month=it})}
     val projection=s.budgetProjection(month)
     val journal=LocalYohaku.current.id=="journal"
-    Panel(Modifier.testTag("recurring-reserve-summary"),contentSpacing=0.dp) {
-        YText(word("本月尚未支付的预算预留","この月の未払い予算予定"),if(journal)11 else 10,color=LocalYohaku.current.muted,lineHeightMultiplier=if(journal)1.9f else 1.8f,cssLineBox=true)
-        YText(projection.fixedReserveMinor?.let{Money(projection.currency,it).display()}?:word("待填写 / 折算","金額・換算待ち"),if(projection.fixedReserveMinor!=null)37 else 29,Modifier.padding(top=6.dp),number=projection.fixedReserveMinor!=null)
-        YText(word("预留不是已花。确认新记账或关联已有支出后解除，不重复扣减。","予定は支出済みではありません。記録または既存支出との関連で解除し、二重控除しません。"),if(journal)11 else 10,Modifier.padding(top=10.dp,bottom=10.dp),color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
-    }
+    val current=month==YearMonth.from(today).toString()
     val pending=s.pendingOccurrences().map{it.id}.toSet()
-    val values=s.occurrences.filter{it.scheduledDate.startsWith(month)||(month==YearMonth.from(today).toString()&&it.id in pending&&it.scheduledDate<month+"-01")}.sortedBy{it.scheduledDate}
-    if(values.isEmpty())YEmpty(word("添加房租、账单或订阅。","家賃・請求・サブスクを追加。"))
-    values.forEach{o->
-    val recorded=s.visibleEvents.find{it.id==o.eventId&&it.kind==EntryKind.EXPENSE.name}
-    val rule=s.recurrences.first{it.id==o.recurrenceId}
-    val status=when {o.status=="CANCELLED"->word("已取消","取消済み");o.status=="WITHDRAWN"->word("规则已撤下","ルール対象外");o.id !in pending->word("已记账","記録済み");o.amountMinor==null->word("金额未定","金額未定");o.estimated->word("预计金额","予定金額");else->word("金额已确认 · 待付款","金額確定・未払い")}
-    RecurringCard(o.id,o.name,o.scheduledDate,(word("规则：","ルール：")+frequencyName(RecurrenceFrequency.valueOf(rule.frequency))+" · "+s.accounts.find{it.id==o.accountId}?.name.orEmpty()),recorded?.let{s.accountMoney(it).display()}?:o.amountMinor?.let{Money(Currency.valueOf(o.currency),it).display()}?:word("金额未定","金額未定"),recorded!=null||o.amountMinor!=null,status,o.id in pending&&(o.estimated||o.amountMinor==null),busy,if(o.id in pending)({onConfirm(o)})else null,{editor=o.recurrenceId},showDetails=recorded!=null||o.id in pending||o.status=="CANCELLED") {
+    val values=s.occurrences.filter{it.scheduledDate.startsWith(month)||(current&&it.id in pending&&it.scheduledDate<month+"-01")}.sortedBy{it.scheduledDate}
+    val waiting=values.filter{it.id in pending}
+    val processed=values.filter{it.id !in pending}
+    var processedOpen by rememberSaveable(s.book.id,month){mutableStateOf(false)}
+    var expanded by rememberSaveable(s.book.id,month){mutableStateOf<String?>(null)}
+    var more by rememberSaveable(s.book.id,month){mutableStateOf<String?>(null)}
+    val overdue=waiting.count{it.scheduledDate<today.toString()}
+    val due=waiting.count{it.scheduledDate==today.toString()}
+    val soon=waiting.count{it.scheduledDate>today.toString()&&it.scheduledDate<=today.plusDays(7).toString()}
+    Panel(Modifier.testTag("recurring-reserve-summary"),contentSpacing=if(current)6.dp else 0.dp) {
+        @Composable fun reserve() {
+            YText(word("本月尚未支付的预算预留","この月の未払い予算予定"),if(journal)11 else 10,color=LocalYohaku.current.muted,lineHeightMultiplier=if(journal)1.9f else 1.8f,cssLineBox=true)
+            YText(projection.fixedReserveMinor?.let{Money(projection.currency,it).display()}?:word("待填写 / 折算","金額・換算待ち"),if(current)22 else if(projection.fixedReserveMinor!=null)37 else 29,Modifier.padding(top=if(current)0.dp else 6.dp),number=projection.fixedReserveMinor!=null)
+            if(current) {
+                val unknown=waiting.count{it.amountMinor==null&&it.scheduledDate.startsWith(month)}
+                if(unknown>0)YText(word("+ $unknown 笔金额未定","+ $unknown 件 金額未定"),10,color=LocalYohaku.current.muted)
+                val counts=listOfNotNull(if(overdue>0)word("已过期 $overdue","期限超過 $overdue")else null,if(due>0)word("今天 $due","今日 $due")else null,if(soon>0)word("7天内 $soon","7日以内 $soon")else null)
+                if(counts.isNotEmpty())YText(counts.joinToString(" · "),10,color=LocalYohaku.current.warm)
+            }
+        }
+        if(current)RecurringToday(today){reserve()}else reserve()
+        YText(word("预留不是已花。确认新记账或关联已有支出后解除，不重复扣减。","予定は支出済みではありません。記録または既存支出との関連で解除し、二重控除しません。"),if(journal)11 else 10,Modifier.padding(top=if(current)0.dp else 10.dp,bottom=if(current)0.dp else 10.dp),color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
+    }
+    @Composable fun occurrence(o:OccurrenceEntity) {
+        val recorded=s.visibleEvents.find{it.id==o.eventId&&it.kind==EntryKind.EXPENSE.name}
+        val rule=s.recurrences.first{it.id==o.recurrenceId}
+        val isPending=o.id in pending
+        val days=java.time.temporal.ChronoUnit.DAYS.between(today,java.time.LocalDate.parse(o.scheduledDate)).toInt()
+        val urgent=current&&isPending&&days<=0
+        val inlineConfirm=isPending&&(!current||days<=7)
+        val status=when {o.status=="CANCELLED"->word("已取消","取消済み");o.status=="WITHDRAWN"->word("规则已撤下","ルール対象外");!isPending->word("已记账","記録済み");o.amountMinor==null->word("金额未定","金額未定");o.estimated->word("预计金额","予定金額");else->word("金额已确认","金額確定")}
+        RecurringCard(o.id,o.name,java.time.LocalDate.parse(o.scheduledDate),today,s.accounts.find{it.id==o.accountId}?.name.orEmpty(),recorded?.let{s.accountMoney(it).display()}?:o.amountMinor?.let{Money(Currency.valueOf(o.currency),it).display()}?:word("金额未定","金額未定"),recorded!=null||o.amountMinor!=null,status,if(current&&isPending)days else null,busy,if(inlineConfirm)({onConfirm(o)})else null,urgent,{more=o.id},if(!isPending)({expanded=if(expanded==o.id)null else o.id})else null,expanded==o.id) {
         if(recorded!=null&&s.settlements.any{it.eventId==recorded.id&&!it.confirmed})YText(word("账户入账金额仍待确认","口座の計上額は確認待ち"),11,Modifier.testTag("occurrence-settlement-pending-${o.id}"),color=LocalYohaku.current.warm)
         if(recorded!=null)YText(word("原预计：","元の見込み：")+(o.amountMinor?.let{Money(Currency.valueOf(o.currency),it).display()}?:word("金额未定","金額未定")),10,color=LocalYohaku.current.muted)
-        if(o.id in pending&&o.scheduledDate<today.toString())YText(word("到期仍待确认","期限後・確認待ち"),11,color=LocalYohaku.current.warm)
+        if(o.status=="WITHDRAWN")YText(word("规则已撤下","ルール対象外"),11,color=LocalYohaku.current.muted)
         if(o.status=="CANCELLED") {
             if(rule.includesScheduledDate(o.scheduledDate))YLink(word("恢复这次待办","この予定を復元"),{vm.execute{vm.repository.restoreOccurrence(s.book.id,o.id);vm.haptic(Haptic.Restored)}},Modifier.testTag("restore-occurrence-${o.id}"))
             else YText(word("先启用规则，并确认这次日期仍在安排范围内。","ルールを有効にし、予定日が範囲内か確認してください。"),10,color=LocalYohaku.current.muted)
         }
-        if(o.id in pending) {
-            YLink(word("关联已有支出","既存の支出に関連付け"),{linking=o.id},Modifier.testTag("link-occurrence-${o.id}"))
-            YLink(word("取消这次待办","この予定を取消"),{vm.execute{vm.repository.cancelOccurrence(s.book.id,o.id);vm.haptic(Haptic.Removed)}},Modifier.testTag("cancel-occurrence-${o.id}"))
-        }else o.eventId?.let{id->s.visibleEvents.find{it.id==id}?.let{event->
+        o.eventId?.let{id->s.visibleEvents.find{it.id==id}?.let{event->
             YButton(word("查看已存记录","保存済みの記録を見る"),{onRecord(event)})
             YLink(if(rule.includesScheduledDate(o.scheduledDate))word("解除关联，重新待确认","関連を解除して確認待ちへ")else word("解除关联，保留已记账事实","関連を解除し、記録済みの事実を保持"),{vm.execute{vm.repository.unlinkOccurrence(s.book.id,o.id);vm.haptic(Haptic.Removed)}})
         }}
+        }
+    }
+    if(values.isEmpty())YEmpty(word("添加房租、账单或订阅。","家賃・請求・サブスクを追加。"))
+    val groups=if(current)listOf(
+        Triple("due",word("先处理","先に確認"),waiting.filter{it.scheduledDate<=today.toString()}),
+        Triple("soon",word("7天内","7日以内"),waiting.filter{it.scheduledDate>today.toString()&&it.scheduledDate<=today.plusDays(7).toString()}),
+        Triple("later",word("本月稍后","今月のこの先"),waiting.filter{it.scheduledDate>today.plusDays(7).toString()})
+    )else listOf(Triple("pending",word("待确认","確認待ち"),waiting))
+    groups.filter{it.third.isNotEmpty()}.forEach{(tag,title,rows)->
+        Column(Modifier.fillMaxWidth().testTag("recurring-group-$tag"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            ThemeSection(title,"")
+            rows.forEach{occurrence(it)}
+        }
+    }
+    if(processed.isNotEmpty()) {
+        val total=processed.mapNotNull{o->s.visibleEvents.find{it.id==o.eventId&&it.kind==EntryKind.EXPENSE.name}}.distinctBy{it.id}.sumOf{it.baseMinor}
+        RecurringProcessedHeader(word("已处理","処理済み"),word("${processed.size} 笔","${processed.size} 件")+" · "+Money(projection.currency,total).display(),processedOpen){processedOpen=!processedOpen}
+        if(processedOpen)processed.forEach{occurrence(it)}
+    }
+    more?.let{id->values.find{it.id==id}?.let{o->
+        val inlineConfirm=o.id in pending&&(!current||o.scheduledDate<=today.plusDays(7).toString())
+        YSheet(o.name,{more=null}) {
+            if(o.id in pending) {
+                if(!inlineConfirm)YButton(word("确认付款","支払を確認"),{more=null;onConfirm(o)},Modifier.testTag("confirm-occurrence-$id"),enabled=!busy,primary=true)
+                YButton(word("关联已有支出","既存の支出に関連付け"),{more=null;linking=id},Modifier.testTag("link-occurrence-$id"),enabled=!busy)
+                YButton(word("取消这次待办","この予定を取消"),{more=null;vm.execute{vm.repository.cancelOccurrence(s.book.id,id);vm.haptic(Haptic.Removed)}},Modifier.testTag("cancel-occurrence-$id"),enabled=!busy)
+            }
+            YButton(word("编辑规则","ルールを編集"),{more=null;editor=o.recurrenceId},Modifier.testTag("edit-occurrence-$id"),enabled=!busy)
+        }
     }}
     ThemeSection(word("周期规则","定期ルール"),"SCHEDULE RULES")
     s.recurrences.forEach{rule->Panel(Modifier.testTag("recurrence-rule-${rule.id}")) {

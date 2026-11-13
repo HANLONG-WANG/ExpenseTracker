@@ -82,7 +82,7 @@ fun BookSnapshot.templateInput(d:EntryDraft,name:String,includeAmount:Boolean):T
     val currency=Currency.valueOf(account.currency)
     val amount=if(d.originalCurrency!=null&&d.originalCurrency!=currency)d.accountAmount else d.amount
     return TemplateInput(name,d.kind,d.categoryId?:error("请选择分类 / カテゴリを選択してください"),account.id,currency,
-        if(includeAmount)Money.parse(amount,currency).minor else null,d.merchant,d.merchantId,d.note,d.cardPaymentChoice,
+        if(includeAmount)AmountExpression.money(amount,currency).minor else null,d.merchant,d.merchantId,d.note,d.cardPaymentChoice,
         d.cardPaymentPeriods.takeIf{it.isNotBlank()}?.toIntOrNull(),d.activityId,budgetExcluded=d.kind==EntryKind.EXPENSE&&d.budgetExcluded,merchantBaseline=d.merchantBaseline)
 }
 internal fun List<EntryTemplateEntity>.remapTemplateCategories(sourceIds:Set<String>,targetId:String)=map{if(it.categoryId in sourceIds)it.copy(categoryId=targetId)else it}

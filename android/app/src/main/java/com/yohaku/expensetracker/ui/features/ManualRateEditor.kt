@@ -16,7 +16,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val target=Currency.valueOf(account?.currency?:s.book.currency)
     val original=d.originalCurrency?:target
     var rate by rememberSaveable(s.book.id,d.id){mutableStateOf(d.manualRate.ifBlank{
-        if(original==target)"1" else runCatching{exchangeRate(Money.parse(d.amount,original),Money.parse(d.accountAmount,target)).toPlainString()}.getOrDefault("")
+        if(original==target)"1" else runCatching{exchangeRate(AmountExpression.money(d.amount,original),AmountExpression.money(d.accountAmount,target)).toPlainString()}.getOrDefault("")
     })}
     var base by rememberSaveable(s.book.id,d.id){mutableStateOf(d.baseAmount)}
     var estimate by rememberSaveable(s.book.id,d.id){mutableStateOf(false)}
@@ -41,7 +41,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     java.time.LocalDate.parse(date)
                     changed=d.copy(manualRate=rate,baseAmount=base,rateDate=date,rateSource="manual",referenceAccountLinked=false,referenceBaseLinked=false,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList())
                     if(estimate){
-                        val amount=Money.parse(d.amount,original).convert(target,parsed).decimal.toPlainString()
+                        val amount=AmountExpression.money(d.amount,original).convert(target,parsed).decimal.toPlainString()
                         changed=if(original==target)changed.copy(amount=amount,settlementConfirmed=false)else changed.copy(accountAmount=amount,settlementConfirmed=false)
                     }
                     if(target.name!=s.book.currency)Money.parse(base,Currency.valueOf(s.book.currency))

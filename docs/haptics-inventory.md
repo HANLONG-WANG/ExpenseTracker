@@ -451,9 +451,9 @@
 | ANALYSIS-004 | `ui/features/AnalysisScreen.kt:75` | 选择分析模块 | `{initialModule=null;editor=true}` | none | — | 导航/打开/关闭 |
 | ANALYSIS-005 | `ui/features/AnalysisScreen.kt:77` | 自定义分析 | `{initialModule=null;editor=true}` | none | — | 导航/打开/关闭 |
 | ANALYSIS-006 | `ui/features/AnalysisScreen.kt:84` | AnalysisCategoryList | `{detail=if(it=="FEES")"fees"else"category:$it"}` | none | — | 下钻 |
-| ANALYSIS-007 | `ui/features/AnalysisScreen.kt:85` | 管理分类 | `onCategories` | none | — | 导航/打开/关闭 |
+| ANALYSIS-007 | `ui/features/AnalysisScreen.kt:85` | 管理分类（分类模块标题右侧） | `onCategories` | none | — | 导航/打开/关闭 |
 | ANALYSIS-008 | `ui/features/AnalysisScreen.kt:90` | AnalysisMerchantList | `{detail="merchant:$it"}` | none | — | 下钻 |
-| ANALYSIS-009 | `ui/features/AnalysisScreen.kt:91` | 商户与保存地点 | `{vm.navigate("merchants")}` | none | — | 导航/打开/关闭 |
+| ANALYSIS-009 | `ui/features/AnalysisScreen.kt:86` | 商户与地点（商户模块标题右侧） | `{vm.navigate("merchants")}` | none | — | 导航/打开/关闭 |
 | ANALYSIS-010 | `ui/features/AnalysisScreen.kt:104` | 商户资料与保存地点 | `{vm.navigate("merchants")}` | none | — | 导航/打开/关闭 |
 | ANALYSIS-011 | `ui/features/AnalysisScreen.kt:105` | 朋友名册 | `{vm.navigate("friends")}` | none | — | 导航/打开/关闭 |
 | ANALYSIS-012 | `ui/features/AnalysisScreen.kt:106` | 小票图片工作台 | `{vm.navigate("receipts")}` | none | — | 导航/打开/关闭 |

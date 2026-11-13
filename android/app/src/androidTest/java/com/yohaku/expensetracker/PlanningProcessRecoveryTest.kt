@@ -88,12 +88,15 @@ class PlanningProcessRecoveryTest {
             val s=runBlocking{snapshot(c.getString("book"))};verifyFacts(c,s,0)
             assertEquals("CANCELLED",s.occurrences.single{it.id==c.getString("cancelled")}.status)
             assertEquals("WITHDRAWN",s.occurrences.single{it.id==c.getString("future")}.status)
-            ui.onNodeWithTag("occurrence-status-${c.getString("future")}").assertTextEquals(text("规则已撤下","ルール対象外"))
+            ui.showProcessedOccurrence("${c.getString("future")}")
+            ui.onNodeWithTag("occurrence-status-${c.getString("future")}",useUnmergedTree=true).assertTextEquals(text("规则已撤下","ルール対象外"))
+            ui.occurrenceMenu("${c.getString("future")}")
             ui.onNodeWithTag("edit-occurrence-${c.getString("future")}").performScrollTo().performClick()
             ui.onNodeWithTag("toggle-"+text("启用此周期规则","この定期ルールを有効にする")).performScrollTo().performClick()
             ui.onNodeWithTag("recurrence-save").performScrollTo().performClick()
             ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.recurrences?.single()?.active==true}
             assertEquals("CANCELLED",runBlocking{snapshot(c.getString("book"))}.occurrences.single{it.id==c.getString("cancelled")}.status)
+            ui.occurrenceDetails("${c.getString("cancelled")}")
             ui.onNodeWithTag("restore-occurrence-${c.getString("cancelled")}").performScrollTo().performClick()
             ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.occurrences?.single{it.id==c.getString("cancelled")}?.status=="PENDING"}
             verifyFacts(c,runBlocking{snapshot(c.getString("book"))},8000)

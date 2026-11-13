@@ -89,11 +89,7 @@ import java.time.YearMonth
     val roots=s.categories.filter{s.categoryEnabled(it.id)&&it.kind==EntryKind.EXPENSE.name&&it.parentId==null}
     if(roots.isEmpty())YEmpty(word("先创建自己的支出分类。","自分の支出カテゴリから。"),onCategories,word("创建分类","カテゴリを作成"))
     val ordered=roots.flatMap{root->listOf(root)+s.categories.filter{it.active&&it.parentId==root.id}}
-    val projections=ordered.associate{it.id to s.budgetProjection(month,it.id)}
-    BudgetLimitList(ordered,ordered.map{projections.getValue(it.id).let{p->if(p.limitMinor==null)Money(p.currency,p.spentMinor).display()else p.remainingMinor?.let{n->Money(p.currency,n).display()}?:word("待补齐","未補足")}}) {category,modifier->
-        val p=projections.getValue(category.id)
-        BudgetLimitRow(category.id,category.name,resolveCategoryIcon(category.id,s.categories),category.parentId!=null,p.spentMinor,p.limitMinor,Money(p.currency,p.spentMinor).display(),p.limitMinor?.let{Money(p.currency,it).display()}?:word("未设置","未設定"),p.remainingMinor?.let{Money(p.currency,it).display()}?:word("待补齐","未補足"),{openEditor(category.id)},modifier)
-    }
+    BudgetLimitList(ordered.map{c->val p=s.budgetProjection(month,c.id);MonthlyBudgetItem(c.id,c.parentId,c.name,resolveCategoryIcon(c.id,s.categories),p.spentMinor,p.limitMinor)},Currency.valueOf(s.book.currency)){openEditor(it)}
     roots.forEach{root->
         val parentLimit=s.budgetLimit(month,root.id)
         val childLimits=s.categories.filter{it.active&&it.parentId==root.id}.mapNotNull{s.budgetLimit(month,it.id)}.sum()

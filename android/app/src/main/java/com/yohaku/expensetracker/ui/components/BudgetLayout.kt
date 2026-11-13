@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.features.ThemeSection
 
 @Composable internal fun BudgetEquation(modifier:Modifier=Modifier,content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current
@@ -106,6 +107,107 @@ import com.yohaku.expensetracker.ui.theme.*
             Column(Modifier.fillMaxWidth().padding(start=28.dp+(if(narrow)6.dp else 8.dp)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 YText(caption,if(t.id=="journal")11 else 9,color=t.muted)
                 limit?.let{BudgetTrack(spent,it)}
+            }
+        }
+    }
+}
+
+internal data class MonthlyBudgetItem(val id:String,val parentId:String?,val name:String,val icon:String,val spent:Long,val limit:Long?)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun BudgetLimitList(items:List<MonthlyBudgetItem>,currency:com.yohaku.expensetracker.domain.model.Currency,onClick:(String)->Unit) {
+    val t=LocalYohaku.current
+    val narrow=LocalConfiguration.current.screenWidthDp<=360||LocalDensity.current.fontScale>1.2f
+    val roots=items.filter{it.parentId==null}
+    fun children(root:MonthlyBudgetItem)=items.filter{it.parentId==root.id}
+    fun money(value:Long)=com.yohaku.expensetracker.domain.model.Money(currency,value).display()
+    val (budgeted,unbudgeted)=roots.partition{it.limit!=null||children(it).any{c->c.limit!=null}}
+    val measurer=rememberTextMeasurer()
+    val density=LocalDensity.current
+    @Composable fun amount(item:MonthlyBudgetItem,size:Int=14) {
+        YText(if(item.limit==null)word("已花 ","支出 ")+money(item.spent)else (if(item.spent>item.limit)word("超出 ","超過 ")else word("还剩 ","残り "))+money(kotlin.math.abs(item.limit-item.spent)),size,number=true,color=if(item.limit!=null&&item.spent>item.limit)t.warm else t.ink)
+    }
+    @Composable fun group(root:MonthlyBudgetItem,modifier:Modifier=Modifier,compact:Boolean=false) {
+        val children=children(root)
+        val frame=when(t.id) {
+            "objects"->Modifier.shadow(2.dp,RoundedCornerShape(20.dp)).background(t.surface,RoundedCornerShape(20.dp)).padding(14.dp)
+            "journal"->Modifier.background(t.surface).padding(12.dp)
+            else->Modifier.drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx())}.padding(top=16.dp,bottom=8.dp)
+        }
+        Column(modifier.testTag("budget-group-${root.id}").then(frame),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().testTag("budget-category-${root.id}").clickable{onClick(root.id)},verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    CategoryIconBadge(root.icon,CategoryBadge.SMALL)
+                    YText(root.name,if(t.id=="journal")18 else 14,Modifier.weight(1f))
+                    if(!narrow&&!compact)amount(root,16)
+                }
+                if(narrow||compact)amount(root,16)
+                YText(word("已花 ","支出 ")+money(root.spent)+" / "+word("预算 ","予算 ")+(root.limit?.let{money(it)}?:word("未设置","未設定")),if(t.id=="journal")11 else 10,color=t.muted)
+                root.limit?.let{BudgetTrack(root.spent,it)}
+            }
+            if(children.isNotEmpty()) {
+                val allUnset=children.all{it.limit==null}
+                val inset=when(t.id) {
+                    "objects"->Modifier.background(t.soft,RoundedCornerShape(15.dp)).padding(7.dp)
+                    "journal"->Modifier.padding(start=12.dp).drawBehind{val path=Path();path.moveTo(0f,0f);path.lineTo(1.dp.toPx(),size.height-5.dp.toPx());path.quadraticBezierTo(0f,size.height,6.dp.toPx(),size.height);path.lineTo(size.width,size.height);drawPath(path,t.accent,style=androidx.compose.ui.graphics.drawscope.Stroke(1.3.dp.toPx()))}.padding(start=12.dp,bottom=10.dp)
+                    else->Modifier.padding(start=18.dp).drawBehind{drawLine(t.ink,Offset.Zero,Offset(0f,size.height),1.dp.toPx())}.padding(start=14.dp)
+                }
+                Column(Modifier.fillMaxWidth().testTag("budget-children-${root.id}").then(inset),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                    if(allUnset)YText(word("子分类未单独设预算","子カテゴリの個別予算なし"),10,color=t.muted)
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val cellWidth=with(density){((maxWidth-10.dp)/2-if(t.id=="objects")18.dp else 0.dp).toPx()}
+                        val longName=children.any{measurer.measure(it.name,TextStyle(fontFamily=t.body,fontSize=(if(t.id=="journal")15 else 12).sp),softWrap=false).size.width>cellWidth}
+                        Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            children.chunked(if(narrow||longName)1 else 2).forEach{pair->
+                                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                                    pair.forEach{child->
+                                        val dashed=child.limit==null&&!allUnset
+                                        val cell=if(t.id=="objects")Modifier.background(if(dashed)Color.Transparent else t.surface,RoundedCornerShape(11.dp)).then(if(dashed)Modifier.drawBehind{drawRoundRect(t.line,cornerRadius=androidx.compose.ui.geometry.CornerRadius(11.dp.toPx()),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))))}else Modifier).padding(9.dp)
+                                            else Modifier.drawBehind{if(dashed||t.id=="journal")drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx())))}.padding(bottom=6.dp)
+                                        Column(Modifier.weight(1f).fillMaxHeight().testTag("budget-category-${child.id}").clickable{onClick(child.id)}.then(cell),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                            YText(child.name,if(t.id=="journal")15 else 12)
+                                            amount(child,if(t.id=="journal")14 else 12)
+                                            if(child.limit!=null) {
+                                                BudgetTrack(child.spent,child.limit,height=3)
+                                                YText(word("已花 ","支出 ")+money(child.spent)+" / "+word("预算 ","予算 ")+money(child.limit),9,color=t.muted)
+                                            }else if(allUnset)YText((if(root.spent==0L)0 else child.spent*100/root.spent).toString()+"%",10,color=t.muted)
+                                            else YText(word("未设预算","予算なし"),10,color=t.muted)
+                                        }
+                                    }
+                                    if(pair.size==1&&!narrow&&!longName)Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    val direct=root.spent-children.sumOf{it.spent}
+                    if(direct>0)YText(word("未细分 ","内訳未分類 ")+money(direct),11,Modifier.testTag("budget-unspecified-${root.id}"),color=t.muted)
+                }
+            }
+        }
+    }
+    Column(Modifier.fillMaxWidth().testTag("budget-category-list"),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+        var index=0
+        while(index<budgeted.size) {
+            val first=budgeted[index]
+            val second=budgeted.getOrNull(index+1)
+            if(t.id=="objects"&&!narrow&&children(first).isEmpty()&&second!=null&&children(second).isEmpty()) {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(12.dp)){group(first,Modifier.weight(1f).fillMaxHeight(),true);group(second,Modifier.weight(1f).fillMaxHeight(),true)}
+                index+=2
+            }else {group(first,Modifier.fillMaxWidth());index++}
+        }
+        if(unbudgeted.isNotEmpty()) {
+            ThemeSection(word("未设预算","予算なし"),"")
+            unbudgeted.forEach{root->
+                val children=children(root)
+                Column(Modifier.fillMaxWidth().testTag("budget-group-${root.id}").then(if(t.id=="objects")Modifier.background(t.soft,RoundedCornerShape(14.dp)).padding(12.dp)else Modifier.padding(vertical=8.dp)),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth().testTag("budget-category-${root.id}").clickable{onClick(root.id)},verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        CategoryIconBadge(root.icon,CategoryBadge.SMALL)
+                        YText(root.name,13,Modifier.weight(1f));YText(word("已花 ","支出 ")+money(root.spent),12,number=true,color=t.muted)
+                    }
+                    FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                        children.forEachIndexed{i,c->YText(c.name+" "+money(c.spent)+if(i<children.lastIndex)" ·"else"",11,Modifier.testTag("budget-category-${c.id}").clickable{onClick(c.id)},color=t.muted)}
+                    }
+                }
             }
         }
     }

@@ -84,3 +84,7 @@ command-plan schema 由注册表完整生成，含全部90条命令的 inputSche
 `entry.create`、`entry.update`（及共用字段的 `entry.confirmActual` / `entry.prepareDraft`）支持 `budgetExcluded` 布尔值：新记录默认 false，部分更新省略保留、显式 false 取消，不能为 null；仅 EXPENSE 可设 true，其他类型设 true 校验失败。仓库没有 `entry.save` 别名。排除月/分类预算及其待确认笔数、预算节奏与提醒，退款和手续费随原支出；分析、账户余额、日历实际金额与活动自身预算仍计入。`template.save` 是完整替换，budgetExcluded 默认 false，仅支出模板可为 true；`template.createEntry` 带入模板值并允许 set 覆盖。周期规则、实例和固定预留不新增字段。
 
 `yohaku.records` 每条记录导出 `budgetExcluded`；账本结构的 template.values 同样包含该字段。月评的 budgets 与 provisionalExpenseCount 使用排除后的口径，expenseMinor/categories 仍为实际净消费；确认页字段显示「不计入预算 / 予算に含めない」，撤销按原字段恢复。
+
+### 手机主金额算式与云端草稿（2026-11-13）
+
+手机支出/收入主金额可暂存尚未结算的算式；跨币种时该文本在`EntryDraft.accountAmount`，同币时在`amount`。这只是本地输入格式，不改变转换文件的十进制字符串规则，也不改变办理命令的最小单位`Money`对象。`ledger-context`/records不导出普通草稿。命令内部差异事实和撤销日志保留原始草稿JSON，未完成算式不是已记账金额；`entryDraft.reclassify`只迁移分类，不计算或提交金额。恢复本地周期付款草稿的`occurrence.pay`经共用适配器按账户币种HALF_UP结算主金额，无效算式使办理失败；正式金额、余额和预算继续只读已存记录。周期/分类预算改版仅改变本地展示分组，不新增云端接口或schema。

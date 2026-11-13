@@ -77,7 +77,7 @@ class BudgetRecurrenceFlowTest {
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("recurring")}
-            ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            ui.confirmOccurrence(occurrence.id)
             ui.waitUntil(10000){vm.occurrenceConfirmation.value?.review!=null}
             assertNull(vm.entry.value)
             assertEquals("2026-10-01",vm.occurrenceConfirmation.value!!.draft.date)
@@ -225,13 +225,13 @@ class BudgetRecurrenceFlowTest {
             ui.onNodeWithTag("budget-category-$child").assertTextContains("¥57,000",substring=true)
             if(theme=="objects"&&InstrumentationRegistry.getArguments().getString("largeLayout")!="true") {
                 val a=parentNode.getUnclippedBoundsInRoot();val b=ui.onNodeWithTag("budget-category-$child").getUnclippedBoundsInRoot()
-                assertEquals(a.top.value,b.top.value,1f);assertTrue(b.left>a.left);assertEquals((a.bottom-a.top).value,(b.bottom-b.top).value,1f)
+                assertTrue(b.top>=a.bottom);ui.onNodeWithTag("budget-category-$child").assert(hasAnyAncestor(hasTestTag("budget-group-$parent")))
             }
             shot("$theme-$language-budget-category-layout",false,false)
             tap(text("管理分类","カテゴリ管理"))
             ui.waitUntil(10000){vm.route.value=="categories"}
             ui.runOnIdle{vm.navigate("budget")}
-            ui.onNodeWithTag("budget-category-${ids[3]}").performScrollTo().assertTextContains(text("未设分类预算","カテゴリ予算なし"),substring=true)
+            ui.onNodeWithTag("budget-category-${ids[3]}").performScrollTo().assertTextContains(text("已花","支出"),substring=true)
             shot("$theme-$language-budget-category-layout-tail",false,false)
             ui.onNodeWithText(text("收入到账不会自动增加预算。未单独设置的后续月份沿用最近一次设置。","入金しても予算は自動で増えません。未設定の後続月は直近の設定を引き継ぎます。")).performScrollTo()
             shot("$theme-$language-budget-category-layout-reserves",false,false)
@@ -278,7 +278,7 @@ class BudgetRecurrenceFlowTest {
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("recurring")}
-            ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            ui.confirmOccurrence(occurrence.id)
             sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             val original=text("消费 / 收付原币","取引の原通貨")
             sheetTarget(ui.onNodeWithTag("select-trigger-$original")).performClick()
@@ -297,6 +297,7 @@ class BudgetRecurrenceFlowTest {
             assertEquals(97700L,pending.budgetProjection("2026-10").availableMinor);assertTrue(pending.pendingOccurrences().isEmpty())
             assertFalse(pending.settlements.single().confirmed);assertEquals(occurrence.id,pending.occurrences.single().id)
             ui.runOnIdle{vm.navigate("recurring")}
+            ui.occurrenceDetails(occurrence.id)
             ui.onNodeWithTag("occurrence-settlement-pending-${occurrence.id}").performScrollTo().assertExists()
             shot("$theme-$language-recurring-estimated-recorded",false,false)
             ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").assertDoesNotExist()
@@ -330,7 +331,7 @@ class BudgetRecurrenceFlowTest {
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("recurring")}
-            ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            ui.confirmOccurrence(occurrence.id)
             sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceId==occurrence.id}
             val amount=ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")
@@ -376,7 +377,7 @@ class BudgetRecurrenceFlowTest {
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("recurring")}
-            ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            ui.confirmOccurrence(occurrence.id)
             sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceId==occurrence.id}
             ui.onNodeWithTag("occurrence-payment-context").assert(hasAnyDescendant(hasText("2026-10-01")))
@@ -460,7 +461,7 @@ class BudgetRecurrenceFlowTest {
             shot("$theme-$language-recurring",false)
             ui.onNodeWithTag("occurrence-${occurrence.id}").performScrollTo()
             shot("$theme-$language-recurring-card",false,false)
-            ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            ui.confirmOccurrence(occurrence.id)
             sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceId==occurrence.id}
             ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY").performScrollTo().performTextReplacement("21000")
@@ -478,6 +479,8 @@ class BudgetRecurrenceFlowTest {
             ui.runOnIdle{vm.navigate("recurring")}
             ui.onNodeWithTag("month-next").performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.occurrences?.any{it.scheduledDate.startsWith("2026-11")}==true&&!vm.busy.value}
+            val nextOccurrence=(vm.state.value as AppState.Ready).snapshot!!.occurrences.single{it.scheduledDate=="2026-11-14"}
+            ui.occurrenceMenu(nextOccurrence.id)
             tap(text("关联已有支出","既存の支出に関連付け"))
             ui.onNodeWithTag("occurrence-link-context").assertExists()
             ui.onNodeWithTag("occurrence-link-context").assert(hasAnyDescendant(hasText("2026-11-14")))
@@ -509,7 +512,7 @@ class BudgetRecurrenceFlowTest {
             }
             ui.runOnIdle{vm.navigate("budget")}
             ui.waitUntil(10000){ui.onAllNodesWithTag("budget-category-$child").fetchSemanticsNodes().isNotEmpty()&&!vm.busy.value}
-            ui.onNodeWithTag("budget-category-$child").assertTextContains(text("未设分类预算","カテゴリ予算なし"),substring=true)
+            ui.onNodeWithTag("budget-category-$child").assertTextContains(text("已花","支出"),substring=true)
             ui.onNodeWithTag("budget-category-$child").performScrollTo().performClick()
             sheetTarget(ui.onNodeWithTag("field-"+text("预算金额 / 留空取消设置","予算額・空欄で未設定")+" · JPY")).performClick().performTextReplacement("60000")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
@@ -568,14 +571,19 @@ class BudgetRecurrenceFlowTest {
             val book=ids[0];val known=ids[1];val unknown=ids[2];val paid=ids[3];val rule=ids[4]
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("recurring")}
-            ui.onNodeWithTag("occurrence-status-$known").assertTextEquals(text("金额已确认 · 待付款","金額確定・未払い"))
-            ui.onNodeWithTag("occurrence-status-$unknown").assertTextEquals(text("金额未定","金額未定"))
-            ui.onNodeWithTag("occurrence-status-$paid").assertTextEquals(text("已记账","記録済み"))
+            ui.onNodeWithTag("occurrence-status-$known",useUnmergedTree=true).assertTextEquals(text("金额已确认","金額確定"))
+            ui.showProcessedOccurrence("$unknown")
+            ui.onNodeWithTag("occurrence-status-$unknown",useUnmergedTree=true).assertTextEquals(text("金额未定","金額未定"))
+            ui.showProcessedOccurrence("$paid")
+            ui.onNodeWithTag("occurrence-status-$paid",useUnmergedTree=true).assertTextEquals(text("已记账","記録済み"))
             ui.onNodeWithTag("confirm-occurrence-$paid").assertDoesNotExist()
+            ui.occurrenceMenu("$unknown")
             ui.onNodeWithTag("cancel-occurrence-$unknown").performScrollTo().performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.occurrences?.single{it.id==unknown}?.status=="CANCELLED"&&!vm.busy.value}
-            ui.onNodeWithTag("occurrence-status-$unknown").assertTextEquals(text("已取消","取消済み"))
+            ui.showProcessedOccurrence("$unknown")
+            ui.onNodeWithTag("occurrence-status-$unknown",useUnmergedTree=true).assertTextEquals(text("已取消","取消済み"))
             ui.onNodeWithTag("confirm-occurrence-$unknown").assertDoesNotExist()
+            ui.occurrenceMenu("$paid")
             ui.onNodeWithTag("edit-occurrence-$paid").performScrollTo().performClick()
             val amount=sheetTarget(ui.onNodeWithTag("field-"+text("金额 / 未定可留空","金額・未定なら空欄")+" · JPY"))
             amount.performClick();amount.performTextReplacement("4000")
@@ -592,7 +600,8 @@ class BudgetRecurrenceFlowTest {
             assertEquals(2000L,after.budgetProjection("2026-10").reserveMinor)
             assertEquals(95000L,after.budgetProjection("2026-10").availableMinor)
             ui.runOnIdle{vm.navigate("home");vm.navigate("recurring")}
-            ui.onNodeWithTag("occurrence-status-$paid").assertTextEquals(text("已记账","記録済み"))
+            ui.showProcessedOccurrence("$paid")
+            ui.onNodeWithTag("occurrence-status-$paid",useUnmergedTree=true).assertTextEquals(text("已记账","記録済み"))
             if (visualEnabled()) ui.waitUntil(10000){vm.notice.value==null}
             ui.onNodeWithTag("occurrence-$paid").performScrollTo();shot("$theme-$language-recurring-paid",false,false)
         }
@@ -624,6 +633,7 @@ class BudgetRecurrenceFlowTest {
             val rule=before.recurrences.single();assertEquals("WEEKLY",rule.frequency);assertNull(rule.amountMinor);assertTrue(rule.estimated)
             assertEquals(3,before.pendingOccurrences().size);assertNull(before.budgetProjection("2026-10").reserveMinor);assertTrue(before.events.isEmpty())
             val occurrence=before.occurrences.first()
+            ui.occurrenceMenu("${occurrence.id}")
             ui.onNodeWithTag("edit-occurrence-${occurrence.id}").performScrollTo().performClick()
             val amount=sheetTarget(ui.onNodeWithTag("field-"+text("金额 / 未定可留空","金額・未定なら空欄")+" · JPY"));amount.performClick();amount.performTextReplacement("2000")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
@@ -667,17 +677,24 @@ class BudgetRecurrenceFlowTest {
             ui.onNodeWithText(text("预留不是已花；确认后才成为记账。","予定は支出済みではありません。確認して記録。")).assertExists()
             ui.onNodeWithTag("recurring-reserve-summary").assert(hasAnyDescendant(hasText("¥4,000")))
             shot("$theme-$language-recurring-main",false)
+            ui.occurrenceMenu("$cancelled")
             ui.onNodeWithTag("cancel-occurrence-$cancelled").performScrollTo().performClick()
             ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.occurrences?.single{it.id==cancelled}?.status=="CANCELLED"}
+            ui.occurrenceMenu("$future")
             ui.onNodeWithTag("edit-occurrence-$future").performScrollTo().performClick()
             val amount=sheetTarget(ui.onNodeWithTag("field-"+text("金额 / 未定可留空","金額・未定なら空欄")+" · JPY"));amount.performClick();amount.performTextReplacement("4000")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
             sheetTarget(ui.onNodeWithTag("toggle-"+text("启用此周期规则","この定期ルールを有効にする"))).performClick()
             sheetTarget(ui.onNodeWithTag("recurrence-save")).performClick()
             ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.recurrences?.single{it.id==rule}?.active==false}
-            ui.onNodeWithTag("occurrence-status-$future").assertTextEquals(text("规则已撤下","ルール対象外"));ui.onNodeWithTag("confirm-occurrence-$future").assertDoesNotExist()
+            ui.showProcessedOccurrence("$future")
+            ui.onNodeWithTag("occurrence-status-$future",useUnmergedTree=true).assertTextEquals(text("规则已撤下","ルール対象外"));ui.onNodeWithTag("confirm-occurrence-$future").assertDoesNotExist()
+            ui.occurrenceDetails(cancelled)
             ui.onNodeWithTag("restore-occurrence-$cancelled").assertDoesNotExist()
+            ui.onNodeWithText(text("先启用规则，并确认这次日期仍在安排范围内。","ルールを有効にし、予定日が範囲内か確認してください。")).assertExists()
+            ui.onNodeWithTag("occurrence-details-$cancelled").performClick()
             ui.onNodeWithTag("occurrence-$future").performScrollTo();shot("$theme-$language-recurring-reactivation-stopped",false,false)
+            ui.occurrenceMenu("$future")
             ui.onNodeWithTag("edit-occurrence-$future").performScrollTo().performClick()
             sheetTarget(ui.onNodeWithTag("toggle-"+text("启用此周期规则","この定期ルールを有効にする"))).performClick()
             sheetTarget(ui.onNodeWithTag("recurrence-save")).performClick()
@@ -686,7 +703,9 @@ class BudgetRecurrenceFlowTest {
             assertEquals(4000L,resumed.budgetProjection("2026-10").reserveMinor);assertEquals(16000L,resumed.budgetProjection("2026-11").reserveMinor)
             assertEquals("CANCELLED",resumed.occurrences.single{it.id==cancelled}.status);assertEquals("COMPLETED",resumed.occurrences.single{it.id==paid}.status);assertEquals(2000L,resumed.occurrences.single{it.id==paid}.amountMinor)
             assertEquals(47000L,resumed.balance(resumed.accounts.single{it.id==account}));assertEquals(1,resumed.events.size)
-            ui.onNodeWithTag("occurrence-status-$future").assertTextEquals(text("金额已确认 · 待付款","金額確定・未払い"))
+            ui.showProcessedOccurrence("$future")
+            ui.onNodeWithTag("occurrence-status-$future",useUnmergedTree=true).assertTextEquals(text("金额已确认","金額確定"))
+            ui.occurrenceDetails(cancelled)
             ui.onNodeWithTag("restore-occurrence-$cancelled").performScrollTo();shot("$theme-$language-recurring-reactivation-manual",false,false)
             ui.onNodeWithTag("restore-occurrence-$cancelled").performClick()
             ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.occurrences?.single{it.id==cancelled}?.status=="PENDING"}

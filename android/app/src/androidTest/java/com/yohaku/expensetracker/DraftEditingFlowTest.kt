@@ -144,7 +144,7 @@ class DraftEditingFlowTest {
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.accounts?.any{it.id==foreign}==true}
         ui.runOnIdle{vm.startEntry(snapshot(a));vm.changeEntry(a,vm.entry.value!!.copy(accountId=foreign,categoryId=category,amount="100"));vm.navigate("entry")}
         ui.onNodeWithTag("entry-base-caption").assertTextEquals("本位币参考 —")
-        ui.onNodeWithTag("entry-quick-amount").assertDoesNotExist()
+        ui.onNodeWithTag("entry-operators").assertExists()
         ui.onNodeWithTag("field-本位币统计金额 · JPY").performScrollTo().performTextReplacement("2100")
         ui.onNodeWithTag("entry-base-caption").assertTextEquals("本位币参考 ¥2,100")
         assertEquals(1,snapshot(a).events.size)
@@ -159,17 +159,21 @@ class DraftEditingFlowTest {
         }
     }
 
-    @Test fun yenQuickEntrySavesSameRecordAndIsAbsentForIncome(){
+    @Test fun amountExpressionSavesSameRecordAndWorksForIncome(){
         for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             val before=snapshot(a);ui.runOnIdle{vm.editEntry(before,before.events.single())}
             val tag=if(language=="zh")"field-金额 · JPY" else "field-金額 · JPY"
             ui.waitUntil(10000){ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()}
-            ui.onNodeWithTag(tag).performTextReplacement("")
-            for(n in listOf(100,500,1000))ui.onNodeWithTag("entry-quick-$n").performScrollTo().performClick()
-            ui.onNodeWithTag(tag).assertTextEquals("1600")
-            captureScreen("entry-quick","$theme-$language")
+            ui.onNodeWithTag(tag).performTextReplacement("1/0")
+            ui.entryAction("entry-save-button").performClick()
+            ui.waitUntil(10000){!vm.busy.value}
+            assertNotNull(vm.entry.value);assertNull(vm.error.value)
+            assertEquals(before.events.single().amountMinor,snapshot(a).events.single().amountMinor)
+            ui.onNodeWithTag(tag).performTextReplacement("100+500+1000")
+            ui.onNodeWithTag("entry-expression-result").assertTextEquals("= ¥1,600")
+            captureScreen("entry-expression","$theme-$language")
             ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null}
             val saved=snapshot(a);assertEquals(1,saved.events.size);assertEquals(event,saved.events.single().id)
@@ -179,7 +183,7 @@ class DraftEditingFlowTest {
             ui.onNodeWithTag("category-kind-INCOME").performScrollTo().performClick()
             ui.runOnIdle{vm.navigate("entry")}
             ui.waitUntil(10000){ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()}
-            ui.onNodeWithTag("entry-quick-amount").assertDoesNotExist()
+            ui.onNodeWithTag("entry-operators").assertExists()
             ui.runOnIdle{vm.leaveEntry(a,false)}
             ui.waitUntil(10000){vm.entry.value==null}
         }

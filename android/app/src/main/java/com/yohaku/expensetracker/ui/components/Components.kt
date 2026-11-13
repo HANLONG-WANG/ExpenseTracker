@@ -130,7 +130,16 @@ import java.time.YearMonth
     }
 }
 
-@Composable fun YField(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,numeric:Boolean=false,multiline:Boolean=false,emphasizeAmount:Boolean=false,amountSymbol:String="¥",displayLabel:String=label,compactNumber:Boolean=false,readOnly:Boolean=false) {
+@Composable fun YField(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,numeric:Boolean=false,multiline:Boolean=false,emphasizeAmount:Boolean=false,amountSymbol:String="¥",displayLabel:String=label,compactNumber:Boolean=false,readOnly:Boolean=false,expressionCurrency:com.yohaku.expensetracker.domain.model.Currency?=null) {
+    var editing by androidx.compose.runtime.saveable.rememberSaveable(stateSaver=androidx.compose.ui.text.input.TextFieldValue.Saver) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value)) }
+    val fieldValue=if(editing.text==value)editing else androidx.compose.ui.text.input.TextFieldValue(value,androidx.compose.ui.text.TextRange(value.length))
+    val expression=expressionCurrency!=null&&com.yohaku.expensetracker.domain.model.AmountExpression.isExpression(value)
+    val calculation=if(expression)runCatching{com.yohaku.expensetracker.domain.model.AmountExpression.evaluate(value,expressionCurrency!!)}else null
+    val keyboard=LocalSoftwareKeyboardController.current
+    val haptics=LocalHaptics.current
+    val calculateLabel=word("计算金额","金額を計算")
+    fun change(next:androidx.compose.ui.text.input.TextFieldValue){editing=next;onChange(next.text)}
+    fun resolve(){calculation?.onSuccess{val text=it.decimal.toPlainString();change(androidx.compose.ui.text.input.TextFieldValue(text,androidx.compose.ui.text.TextRange(text.length)))}?.onFailure{haptics.perform(Haptic.Error)};keyboard?.show()}
     val t=LocalYohaku.current
     val objects=t.id=="objects";val journal=t.id=="journal"
     val size=if(compactNumber)if(journal)30 else if(objects)25 else 23 else if(emphasizeAmount)if(objects)43 else if(journal)46 else 49 else if(journal)15 else 13
@@ -141,17 +150,40 @@ import java.time.YearMonth
         val stroke=if(journal&&emphasizeAmount)2.dp.toPx() else 1.dp.toPx()
         drawLine(if(journal)t.accent else t.ink,Offset(0f,this.size.height-stroke/2),Offset(this.size.width,this.size.height-stroke/2),stroke)
     }
-    val inset=if(emphasizeAmount)Modifier.padding(start=if(objects)14.dp else 13.dp,end=if(objects)56.dp else 13.dp,top=if(objects)14.dp else 13.dp,bottom=if(journal)15.dp else 14.dp) else if(objects)Modifier.padding(start=12.dp,end=if(multiline)12.dp else 31.dp,top=14.dp,bottom=14.dp) else if(journal)Modifier.padding(start=2.dp,end=2.dp,top=12.dp,bottom=9.dp) else Modifier.padding(top=13.dp,bottom=14.dp)
+    val inset=if(emphasizeAmount)Modifier.padding(start=if(objects)14.dp else 13.dp,end=if(objects||expression)56.dp else 13.dp,top=if(objects)14.dp else 13.dp,bottom=if(journal)15.dp else 14.dp) else if(objects)Modifier.padding(start=12.dp,end=if(multiline)12.dp else 31.dp,top=14.dp,bottom=14.dp) else if(journal)Modifier.padding(start=2.dp,end=2.dp,top=12.dp,bottom=9.dp) else Modifier.padding(top=13.dp,bottom=14.dp)
     Column(modifier.fillMaxWidth().testTag("field-group-"+label),verticalArrangement=Arrangement.spacedBy(if(journal)6.dp else if(objects)9.dp else 10.dp)) {
         FieldLabel(displayLabel,inkMark=true,compactNumber=compactNumber)
         Box(Modifier.fillMaxWidth()){
-            BasicTextField(value,onValueChange=onChange,Modifier.testTag("field-"+label).semantics{contentDescription=displayLabel}.fillMaxWidth().then(frame).then(inset).height(textHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),
+            BasicTextField(fieldValue,onValueChange={change(it)},Modifier.testTag("field-"+label).semantics{contentDescription=displayLabel}.fillMaxWidth().then(frame).then(inset).height(textHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),
                 textStyle=TextStyle(color=if(journal&&emphasizeAmount)t.accent else t.ink,fontFamily=if(emphasizeAmount||compactNumber)t.number else t.body,fontSize=size.sp,lineHeight=textLine.sp,fontWeight=if(objects&&emphasizeAmount)FontWeight.Medium else FontWeight.Normal,letterSpacing=(if(compactNumber)-.6f else if(emphasizeAmount)if(objects||journal)-2f else -1.7f else 0f).sp),cursorBrush=SolidColor(t.accent),singleLine=!multiline,readOnly=readOnly,onTextLayout={lines=it.lineCount},
                 keyboardOptions=KeyboardOptions(keyboardType=if(numeric)KeyboardType.Decimal else KeyboardType.Text))
             if(objects&&!emphasizeAmount)Box(Modifier.align(Alignment.BottomEnd).offset(x=(-13).dp,y=(-6).dp).size(13.dp,3.dp).background(Color(0xffe5d4ba),RoundedCornerShape(5.dp)))
-            if(objects&&emphasizeAmount)Box(Modifier.align(Alignment.CenterEnd).padding(end=14.dp).size(29.dp).background(Color(0xffe3c38d),RoundedCornerShape(50)).border(1.dp,Color(0xffcfa969),RoundedCornerShape(50)).drawBehind{drawCircle(Color(0xfff4dcaf),radius=this.size.minDimension/2-2.5.dp.toPx(),style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))},contentAlignment=Alignment.Center){
-                YText(amountSymbol,17,number=true,color=Color(0xffb48746),lineHeightMultiplier=1f,cssLineBox=true)
+            if((objects||expression)&&emphasizeAmount) {
+                val badge=when(t.id) {
+                    "objects"->Modifier.background(Color(0xffe3c38d),RoundedCornerShape(50)).border(1.dp,Color(0xffcfa969),RoundedCornerShape(50)).drawBehind{drawCircle(Color(0xfff4dcaf),radius=this.size.minDimension/2-2.5.dp.toPx(),style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))}
+                    "journal"->Modifier.rotate(-3f).drawBehind{drawRect(t.warm,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),2.dp.toPx()))))}
+                    else->Modifier.border(1.dp,t.line)
+                }
+                Box(Modifier.align(Alignment.CenterEnd).padding(end=14.dp).size(if(expression)36.dp else 29.dp).then(badge).then(if(expression)Modifier.testTag("entry-expression-equals").semantics{contentDescription=calculateLabel}.clickable{resolve()}else Modifier),contentAlignment=Alignment.Center){
+                    YText(if(expression)"="else amountSymbol,17,number=true,color=if(objects)Color(0xffb48746)else t.accent,lineHeightMultiplier=1f,cssLineBox=true)
+                }
             }
+        }
+        if(expressionCurrency!=null) {
+            Row(Modifier.fillMaxWidth().testTag("entry-operators"),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                // Operators read by meaning, not glyph: "×" must never be mistaken for a close button.
+                listOf("＋" to word("加","足す"),"−" to word("减","引く"),"×" to word("乘","掛ける"),"÷" to word("除","割る"),"(" to word("左括号","左括弧"),")" to word("右括号","右括弧")).forEach{(symbol,spoken)->
+                    val shape=RoundedCornerShape(if(objects)10.dp else if(journal)3.dp else 0.dp)
+                    val mark=if(journal)Modifier.drawBehind{val path=Path();path.moveTo(1.dp.toPx(),2.dp.toPx());path.lineTo(this.size.width-1.dp.toPx(),0f);path.lineTo(this.size.width,this.size.height-2.dp.toPx());path.lineTo(0f,this.size.height);path.close();drawPath(path,t.line,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))}else Modifier.border(1.dp,t.line,shape)
+                    Box(Modifier.weight(1f).heightIn(min=36.dp).background(if(objects)t.soft else Color.Transparent,shape).then(mark).testTag("entry-operator-$symbol").semantics{contentDescription=spoken}.clickable(role=Role.Button){
+                        val range=fieldValue.selection
+                        val text=fieldValue.text.replaceRange(range.min,range.max,symbol)
+                        change(androidx.compose.ui.text.input.TextFieldValue(text,androidx.compose.ui.text.TextRange(range.min+symbol.length)))
+                        haptics.perform(Haptic.Select);keyboard?.show()
+                    },contentAlignment=Alignment.Center){YText(symbol,18,Modifier.clearAndSetSemantics{},number=true)}
+                }
+            }
+            if(calculation!=null)YText(calculation.fold({"= "+it.display()},{it.message?.let{message->val parts=message.split(" / ");if(parts.size==2)word(parts[0],parts[1])else word("算式有误或金额过大","式または金額の範囲を確認してください")}?:word("算式有误","式を確認してください")}),12,Modifier.testTag("entry-expression-result"),color=if(calculation.isSuccess)t.muted else t.warm)
         }
     }
 }

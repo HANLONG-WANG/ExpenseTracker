@@ -386,6 +386,7 @@ class FinancialProductionOverviewTest {
                 ui.onNodeWithTag("statement-bill-$bill").assertExists();ui.onNodeWithTag("finance-tab-statement").assertIsSelected();ui.onNodeWithTag("lead-title").assertDoesNotExist();backToImportant()
                 tap("important-payment-bill:$card:2026-10-25:$bank:JPY");ui.onNodeWithTag("statement-bill-$bill").assertExists();ui.onNodeWithTag("finance-tab-statement").assertIsSelected();ui.onNodeWithTag("lead-title").assertDoesNotExist();backToImportant()
                 tap("important-payment-occurrence:$occurrence")
+                ui.occurrenceMenu(occurrence)
                 tap("cancel-occurrence-$occurrence")
                 ui.waitUntil(10000){runBlocking{repo.dao.occurrence(b,occurrence)?.status=="CANCELLED"}}
                 backToImportant()

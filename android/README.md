@@ -143,6 +143,15 @@ adb shell am instrument -w -e class 'com.yohaku.expensetracker.ActivityFlowTest#
 
 云端办理检查：`activity.save` 的 `categoryBudgets` 仍是完整替换，继续使用 `ActivityInput`→`previewActivity`→`commitActivity`；`activity.end` 保留原分类额度，命令效果视图继续显示 `activityBudget` 金额变化。未修改数据库、仓库层、命令协议或月预算页。
 
+## 周期列表、分类预算与金额算式（2026-11-13）
+
+- 周期当前月显示今天/预留合并卡及“先处理、7天内、本月稍后”；已处理默认折叠，再点行展开详情。非当前月按日期展示待确认。更多菜单包含关联、取消、编辑规则及必要时的确认付款。规则区仍在末尾。
+- 月分类预算按父子成组，子分类标准两列、窄屏/大字/长名一列；无预算整组在底部，小物无子分类预算盒子可并排。分析页下钻与管理页编辑共用结构。
+- 支出/收入主金额支持四则算式和光标插入，`=`或保存时结算。跨币种时主框是账户金额。完全同币时隐藏手动换算入口，固定增量按钮移除；其他金额输入不变。
+- 本轮新增`AmountExpressionTest`；`ThemeControlsTest`检查插入位置、焦点、结果和错误；`DraftEditingFlowTest`检查无效算式不保存及算式编辑原记录；周期流程测试使用`RecurringTestActions`打开菜单/已处理/详情。`SetupPresentationTest`停止比较已被改版替换的金额区域及后续旧top基准，保留适用摘要/备注断言。
+- 验证按顺序串行运行`./gradlew --max-workers=2 :app:testDebugUnitTest`和`./gradlew --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest`，最后`./gradlew --stop`。只读用户缓存环境按本文现有`.gradle-home`/`GRADLE_RO_DEP_CACHE`方式运行；本轮不启动模拟器或执行仪器测试。
+- 待用户验证：三主题中日文、S24布局和320dp/fontScale1.3，父子预算/无预算混排与长名称，过期/今天/7天边界及处理后折叠，金额键盘保持、光标/选区、跨币种算式、进程恢复。视觉验收尚未执行，不沿用旧截图作新版通过证据。
+
 ## 周期账单一键确认与记账模板（2026-11-01 源码更新）
 
 - 周期规则可固定商户、备注和信用卡付款方式（一次付/ボーナス/分期+期数/リボ/按卡规则；「指定月一次付」需逐笔填付款月与费用，不能放进规则或模板）。不设付款方式时沿用该卡最近一次的选择。换账户会清掉不适用的付款方式。

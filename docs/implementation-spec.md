@@ -461,3 +461,12 @@ Room v38保留command_plans/command_effects/cloud_tasks.purpose，37→38增加m
 额度关系中的各项上限只显示一次；预览中变化的上限只在差异区展示，未变化的上限仍在关系区显示，关系说明保留一句。不适用的额度字段不显示；关系切换导致旧上限被删除时，差异明确列出旧金额与“已移除”。
 
 云端确认事实会规范化带 ID 的数组；批次摘要在最终展示边界应用同一业务排序，不能依赖序列化顺序。额度追加版本的差异基线取本步骤捕获的 `creditLimit.before.config`（或同一步的旧配置快照），不能把新增存储行的空 before 当成首次配置，也不能查询当前数据库补基线。
+
+## 周期列表、月分类分组与主金额算式（2026-11-13）
+
+- `RecurringScreen`以现有`pendingOccurrences()`为待办事实来源，当前月带入往月待办，按≤today、(today,today+7]、更晚分组；非当前月不分紧急级别。已处理开关和单行详情以账本+月份`rememberSaveable`保存。预留仍使用`budgetProjection(month).fixedReserveMinor`，不把未知额当0。已记账合计去重关联记录并加总`baseMinor`，不跨币种直接相加。
+- 月分类调用`BudgetLimitList(List<MonthlyBudgetItem>, Currency, onClick)`，父分类投影包含子分类，直接消费=父合计−子合计。未设预算分类不改变投影，只在展示时移到底部；活动预算保留原有组件契约。
+- `AmountExpression`只用于主记账金额及其派生读取，通用`Money.parse`保持严格金额语义。支持`+ − × ÷ ()`与全角/`* / x`别名；中间除法用DECIMAL128，结果按币种HALF_UP，只接受正数。普通数字仍按`Money.parse`原精度校验。
+- `YField.expressionCurrency`仅由`EntryForm`主金额框启用；TextFieldValue保留选区，符号替换当前选区，结果按钮写回十进制文本。`AppViewModel.saveEntry`统一解析当前主字段，先写回草稿再预览/保存；非法算式保留并触发Error，框下显示问题，不弹错误窗口。
+- 本位币参考、保存金额标题、模板含金额保存、汇率派生和仓库记账准备支持算式求值；未完成算式在只读预览中为“—”或不显示金额，不能造成渲染异常。转账、退款及其他金额输入框不启用计算器。
+- 云端结构/记录导出仍不包含普通草稿。命令内部草稿事实/撤销按原始JSON文本保留算式，分类迁移不结算。`occurrence.pay`恢复本地付款草稿时，经共用命令适配器先结算主金额再填充同币金额；无效算式拒绝办理。外部金额协议仍为最小单位Money对象，文件转换仍为固定精度字符串，不接受算式，不增加schema字段。

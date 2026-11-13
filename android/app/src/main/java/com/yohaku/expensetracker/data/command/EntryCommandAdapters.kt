@@ -124,13 +124,14 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
     if(!allowIncomplete&&"merchantId" in input&&v.merchantId!=null)
         resolveMerchant(s.book.id,kind,d.merchantId,v.merchant.takeIf{"merchant" in input},s.merchants).merchantOrThrow()
     if(allowIncomplete)return d
+    if(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))d=d.resolveAmountExpression(accountCurrency)
     // Same-currency amounts are exact. Foreign amounts require explicit settlement/base or an
     // explicit manual conversion; no assumed public rate and no inferred actual confirmation.
     val originalCurrency=d.originalCurrency?:accountCurrency
     if(d.id==null&&"settlementConfirmed" !in input&&originalCurrency!=accountCurrency)d=d.copy(settlementConfirmed=false)
     if(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME,EntryKind.REFUND)) {
         if(originalCurrency==accountCurrency)d=d.copy(accountAmount=d.amount)
-        else if(d.accountAmount.isBlank()&&d.manualRate.isNotBlank())d=d.copy(accountAmount=Money.parse(d.amount,originalCurrency).decimal.multiply(d.manualRate.toBigDecimal()).setScale(accountCurrency.scale,java.math.RoundingMode.HALF_UP).toPlainString())
+        else if(d.accountAmount.isBlank()&&d.manualRate.isNotBlank())d=d.copy(accountAmount=AmountExpression.money(d.amount,originalCurrency).decimal.multiply(d.manualRate.toBigDecimal()).setScale(accountCurrency.scale,java.math.RoundingMode.HALF_UP).toPlainString())
         if(accountCurrency==bookCurrency)d=d.copy(baseAmount=d.accountAmount)
     }else if(!v.useReferenceRates&&kind==EntryKind.TRANSFER&&((d.estimateDirection=="TO"&&d.toAmount.isBlank())||(d.estimateDirection=="FROM"&&d.amount.isBlank())))d=estimateTransfer(d,accountCurrency,requireNotNull(targetCurrency),d.estimateDirection)
     if(v.useReferenceRates) {

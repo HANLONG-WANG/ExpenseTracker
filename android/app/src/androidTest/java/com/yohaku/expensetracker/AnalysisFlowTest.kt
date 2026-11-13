@@ -355,7 +355,7 @@ class AnalysisFlowTest {
             shot("$theme-$language-analysis-actions",false)
             ui.onNodeWithTag("comparison-current-period").assertTextEquals("2026-10-01 — 2026-10-14")
             ui.onNodeWithTag("comparison-previous-period").assertTextContains("2026-09-01 — 2026-09-14",substring=true)
-            ui.onNodeWithTag("comparison-change-category:$parent").assertTextEquals("¥1,000")
+            ui.onNodeWithTag("comparison-change-category:$parent").assertTextEquals("+¥1,000")
             ui.onNodeWithTag("comparison-cause-category:$parent").performScrollTo()
             shot("$theme-$language-comparison",false,false)
             ui.onNodeWithTag("comparison-previous-category:$parent").performScrollTo().performClick()
