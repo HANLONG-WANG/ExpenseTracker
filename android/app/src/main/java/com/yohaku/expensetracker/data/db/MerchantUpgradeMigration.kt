@@ -142,7 +142,10 @@ private fun backfillCsvSourcesV40(db:SupportSQLiteDatabase) {
     db.query("""SELECT c.bookId,c.eventId,r.afterJson FROM csv_batch_events c
         JOIN revisions r ON r.bookId=c.bookId AND r.eventId=c.eventId AND r.version=1
         WHERE c.sourceMatchKey IS NULL""").use{c->
-        while(c.moveToNext())db.execSQL("UPDATE csv_batch_events SET sourceMatchKey=? WHERE bookId=? AND eventId=?",
-            arrayOf(csvSourceKeyFromRevisionV40(c.getString(2)),c.getString(0),c.getString(1)))
+        // Read every row before updating: each update drops a row from this query, and a cursor refilling its
+        // window past the first ~2MB would re-run it against the shrunk result and fail.
+        buildList{while(c.moveToNext())add(Triple(c.getString(0),c.getString(1),c.getString(2)))}
+    }.forEach{(book,event,json)->
+        db.execSQL("UPDATE csv_batch_events SET sourceMatchKey=? WHERE bookId=? AND eventId=?",arrayOf(csvSourceKeyFromRevisionV40(json),book,event))
     }
 }

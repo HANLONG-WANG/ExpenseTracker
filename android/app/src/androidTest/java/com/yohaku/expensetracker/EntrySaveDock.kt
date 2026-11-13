@@ -5,7 +5,7 @@ import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
-private fun imeVisible()=android.view.inspector.WindowInspector.getGlobalWindowViews().any{ViewCompat.getRootWindowInsets(it)?.isVisible(WindowInsetsCompat.Type.ime())==true}
+internal fun imeVisible()=android.view.inspector.WindowInspector.getGlobalWindowViews().any{ViewCompat.getRootWindowInsets(it)?.isVisible(WindowInsetsCompat.Type.ime())==true}
 
 /**
  * Text input raises the keyboard asynchronously, and the entry save line moves between the sheet footer and the

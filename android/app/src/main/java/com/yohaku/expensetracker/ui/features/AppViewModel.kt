@@ -237,6 +237,11 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         if(current.merchantLocations.none{it==candidate.location})return
         changeEntry(bookId,d.copy(merchantId=merchant.id,merchant=merchant.name,merchantLocated=true))
     }
+    /** Leaves the category step for the form; an amount still unwritten takes focus so the keyboard opens there. */
+    fun finishCategoryPick() {
+        entry.value?.takeIf{it.amount.isBlank()&&it.accountAmount.isBlank()}?.let{amountFocusSession.value=it.mediaSession}
+        navigate("entry")
+    }
     fun changeEntry(bookId:String,draft:EntryDraft) {
         if(savingEntry)return
         val snapshot=(state.value as? AppState.Ready)?.snapshot?.takeIf{it.book.id==bookId}

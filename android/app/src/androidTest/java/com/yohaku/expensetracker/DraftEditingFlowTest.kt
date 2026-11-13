@@ -525,6 +525,9 @@ class DraftEditingFlowTest {
             tap("餐饮 / 未细分")
             ui.waitUntil(10000){vm.route.value=="entry"}
             assertEquals(root,vm.entry.value!!.categoryId)
+            // A fresh draft goes straight to the amount with the keyboard up.
+            ui.waitUntil(10000){ui.onAllNodes(hasTestTag("field-金额 · JPY") and isFocused()).fetchSemanticsNodes().isNotEmpty()&&imeVisible()}
+            ui.settleKeyboard();captureScreen("category-picked",theme)
             ui.runOnIdle{vm.leaveEntry(a,false)}
             ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="home"}
             ui.runOnIdle{vm.startEntry(snapshot(a))}
@@ -551,7 +554,7 @@ class DraftEditingFlowTest {
             waitFor("餐饮 / 未细分")
             tap("餐饮 / 未细分")
             ui.waitUntil(10000){vm.route.value=="entry"}
-            ui.onNodeWithTag("field-金额 · JPY").assertTextEquals("680")
+            ui.onNodeWithTag("field-金额 · JPY").assertTextEquals("680").assertIsNotFocused()
             assertEquals(root,vm.entry.value!!.categoryId)
             assertEquals(account,vm.entry.value!!.accountId)
             assertEquals(event,vm.entry.value!!.id)
