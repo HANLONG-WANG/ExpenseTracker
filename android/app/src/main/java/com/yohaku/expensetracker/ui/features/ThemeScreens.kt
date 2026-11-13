@@ -69,7 +69,7 @@ import java.time.YearMonth
         }
     }
 }
-@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={},onTemplate:(EntryTemplateEntity)->Unit={},financialContent:@Composable ()->Unit={}) {
+@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={},onTemplate:(EntryTemplateEntity)->Unit={},statementDue:@Composable ()->Unit={},financialContent:@Composable ()->Unit={}) {
     val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val month=YearMonth.from(today)
@@ -91,6 +91,7 @@ import java.time.YearMonth
             HomeDailyStats(days,projection.availableMinor?.let{Money(currency,it.coerceAtLeast(0)/days).display()} ?: "—",Money(currency,(entries.filter{it.date==today.toString()&&it.kind=="EXPENSE"}.sumOf{s.netExpense(it)}+s.visibleComponents().filter{it.date==today.toString()}.sumOf{it.baseMinor})).display())
             if(s.draft!=null)HomeResumeDraft(onResume)
         }
+        statementDue()
         HomeTemplates(s,onTemplate,{navigate("templates")})
         FlowRow(Modifier.fillMaxWidth().testTag("home-shortcuts"),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
             YLink(word("预算与分类限额","予算とカテゴリの上限"),onBudget,arrow=true)

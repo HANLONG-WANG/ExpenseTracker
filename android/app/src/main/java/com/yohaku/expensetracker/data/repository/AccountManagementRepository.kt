@@ -76,6 +76,7 @@ suspend fun LedgerRepository.commitAccountOperation(review:AccountOperationRevie
         AccountOperation.ACTIVATE->dao.putAccount(account.copy(active=true))
         AccountOperation.DELETE->{
             require(!review.usage.inUse){"账户仍有历史、计划、核对、预留或草稿引用，请优先停用 / 履歴・予定・照合・確保・下書きの参照がある口座は停止してください"}
+            db.fileWorkflowDao().clearReviewSkips(account.bookId,account.id)
             dao.deleteAccount(account.bookId,account.id)
         }
     }

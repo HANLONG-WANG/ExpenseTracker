@@ -611,3 +611,5 @@ CommandAssistantRoundTripTest使用磁盘测试库、真实任务准备/advance�
 - 杂志历史采用 INDEX 编号、上下细线和侧线撤销标记；手账采用手写栏、虚线和印章；小物采用圆角小票、阴影与标签。空状态不填编号，重名和合并选择用明确标题。创建／原名创建／删除摘要分别说明操作，空资料区分尚未创建／已删除。确认、地点整理和提示保持主题内一致与中日文。
 - UI30：云端确认及明细显示来源→目标、操作、非零分类与位置待整理说明，常规双列、窄屏大字单列，完整 effect 字段保留。测试 `CommandFlowTest#merchantOriginalNamePreviewAcrossLooks`、`#ledgerCombinationPreviewAcrossLooks`。
 - 端到端入口 `MerchantFlowTest#merchantUpgradeEndToEndAcrossLooks`；历史／来源链／分页／记录入口由 `#historyPagesProfilesMergeSourcesAndRecordEntrancesAcrossLooks` 覆盖，空状态与重名由 `#emptyMerchantHistoryAcrossLooks`、`#ambiguousOriginalNamesRemainVisibleWithoutInferredOwnership` 覆盖。S24 Ultra 与 320dp/fontScale 1.3 三主题×中日文截图、实际回归结果和行为表覆盖统一见 [Android 商户最终验收](../android/README.md#商户改造最终验收2026-11-10)。
+
+UI01／UI21首页核对提示（2026-11-13）：`HomeStatementDue.kt` 在日均面板下方按 `statementDuePeriods` 显示一行合并提示，无到期期间时不占位；点开为期间弹层（`ThemeAuditPanel`+`RecordFacts`），「去核对」带账户与期间进入导入页并直接打开云端流水转换弹层，「本期不核对」写入跳过记录。杂志为上下发丝线与 RECONCILE 刊头小字，手账为红笔「核对」斜章与虚线，小物为浅底圆角收纳条与彩色圆点。测试 `StatementDueTest`（期间切分、半期、多期、拼接覆盖、跳过）与 `StatementDueFlowTest#closedUncoveredPeriodsShowOnHomeUntilImportedOrSkipped`（三主题中日文，含截图）。

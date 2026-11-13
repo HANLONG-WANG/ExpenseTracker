@@ -10,6 +10,15 @@ import kotlinx.coroutines.flow.Flow
 data class StatementBatchEntity(val bookId: String, val id: String, val accountId: String,
     val fingerprint: String, val originalJson: String, val createdAt: Long)
 
+/**
+ * The user chose not to reconcile this closed period; the home reminder stops asking for it. Keyed to the book only:
+ * a skip is not account usage and must never block deleting an unused account, which removes its skips itself.
+ */
+@Entity(tableName = "statement_review_skips", primaryKeys = ["bookId", "accountId", "periodEnd"], foreignKeys = [
+    ForeignKey(entity = BookEntity::class, parentColumns = ["id"], childColumns = ["bookId"])
+])
+data class StatementReviewSkipEntity(val bookId: String, val accountId: String, val periodEnd: String, val skippedAt: Long)
+
 @Entity(tableName = "receipt_exports", primaryKeys = ["bookId", "bundleId", "part"], foreignKeys = [
     ForeignKey(entity = BookEntity::class, parentColumns = ["id"], childColumns = ["bookId"])
 ], indices = [Index("bookId")])
@@ -36,6 +45,11 @@ interface FileWorkflowDao {
     suspend fun statement(bookId: String, id: String): StatementBatchEntity?
     @Query("DELETE FROM statement_batches WHERE bookId=:bookId AND id=:id")
     suspend fun deleteStatement(bookId: String, id: String)
+    @Query("SELECT * FROM statement_review_skips WHERE bookId=:bookId")
+    fun reviewSkips(bookId: String): Flow<List<StatementReviewSkipEntity>>
+    @Upsert suspend fun putReviewSkips(skips: List<StatementReviewSkipEntity>)
+    @Query("DELETE FROM statement_review_skips WHERE bookId=:bookId AND accountId=:accountId")
+    suspend fun clearReviewSkips(bookId: String, accountId: String)
     @Insert suspend fun insertExport(export: ReceiptExportEntity)
     @Query("SELECT * FROM receipt_exports WHERE bookId=:bookId AND bundleId=:bundleId AND part=:part")
     suspend fun exportPart(bookId:String,bundleId:String,part:Int):ReceiptExportEntity?
@@ -81,5 +95,12 @@ val MIGRATION_30_31 = object : androidx.room.migration.Migration(30, 31) {
         db.execSQL("""UPDATE receipts SET status='SORTED' WHERE status!='SORTED' AND EXISTS (SELECT 1 FROM receipt_item_documents d
             WHERE d.bookId=receipts.bookId AND d.receiptId=receipts.id AND NOT EXISTS (SELECT 1 FROM receipt_images i
             WHERE i.bookId=receipts.bookId AND i.receiptId=receipts.id AND i.revision=receipts.revision AND instr(d.recordJson,'"'||i.fileId||'"')=0))""")
+    }
+}
+
+val MIGRATION_40_41 = object : androidx.room.migration.Migration(40, 41) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS statement_review_skips (bookId TEXT NOT NULL, accountId TEXT NOT NULL, periodEnd TEXT NOT NULL, skippedAt INTEGER NOT NULL,
+            PRIMARY KEY(bookId,accountId,periodEnd), FOREIGN KEY(bookId) REFERENCES books(id) ON UPDATE NO ACTION ON DELETE NO ACTION)""")
     }
 }

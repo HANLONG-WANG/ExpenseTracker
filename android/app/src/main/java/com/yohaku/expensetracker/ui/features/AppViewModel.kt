@@ -23,6 +23,7 @@ sealed interface AppState {
 data class OccurrenceConfirmation(val bookId:String,val occurrenceId:String,val draft:EntryDraft,val foreignCurrency:Boolean,val review:LedgerChangeReview?=null,val issue:String?=null,val refreshed:Boolean=false,val confirmingNegative:Boolean=false)
 data class PendingEntrySave(val review:LedgerChangeReview,val needsReview:Boolean)
 data class MediaImportProgress(val session:String,val current:Int,val total:Int)
+data class StatementImportSeed(val bookId:String,val accountId:String,val note:String)
 data class MediaImportOption(val session:String,val preserveOriginal:Boolean)
 data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -39,6 +40,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     val selectedBookMetadata=MutableStateFlow<BookEntity?>(null)
     val route=MutableStateFlow("home")
     val selectedStatementBatch=MutableStateFlow<String?>(null)
+    /** Account and period handed from the home reconciliation reminder to the statement handoff sheet, consumed once. */
+    val statementImportSeed=MutableStateFlow<StatementImportSeed?>(null)
     internal val activeFinancialDraft=MutableStateFlow<FinancialDraftSession?>(null)
     internal val financialDraftSessions=java.util.concurrent.ConcurrentHashMap<String,FinancialDraftSession>()
     val entry=MutableStateFlow<EntryDraft?>(null)

@@ -77,7 +77,7 @@ internal fun merchantV39Fixture(db:SQLiteDatabase) {
 
 internal suspend fun assertMerchantV40Fixture(db:com.yohaku.expensetracker.data.db.YohakuDatabase) {
     val dao=db.dao();val history=db.merchantHistoryDao()
-    org.junit.Assert.assertEquals(40,db.openHelper.readableDatabase.version)
+    org.junit.Assert.assertEquals(com.yohaku.expensetracker.data.db.DATABASE_VERSION,db.openHelper.readableDatabase.version)
     for(book in listOf("b","archived","trashed")) {
         org.junit.Assert.assertEquals("m",dao.eventMerchant(book,"e")!!.merchantId)
         org.junit.Assert.assertEquals("Ｃａｆｅ",dao.event(book,"e")!!.merchant)

@@ -446,6 +446,11 @@ private fun CloudPhase.step()=when(this) {
     var files by remember(s.book.id){mutableStateOf(listOf<Uri>())}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->files=(files+uris).distinct()}
     val defaultTitle=word("${java.time.LocalDate.now()} 流水转换","${java.time.LocalDate.now()} 明細の変換")
+    val seed by vm.statementImportSeed.collectAsStateWithLifecycle()
+    LaunchedEffect(seed){seed?.takeIf{it.bookId==s.book.id}?.let{
+        account=it.accountId;note=it.note;if(title.isBlank())title=defaultTitle
+        open=ready;vm.statementImportSeed.value=null
+    }}
     YText(if(ready)word("上传银行截图、PDF 或导出文件，并附上本账本的账户标识。返回的核对文件仍在这里预览确认。","銀行の画像・PDF・書出しファイルに口座IDを添えて送信します。戻った照合ファイルはここで確認します。")else word("原始流水由云端分析台转换。先连接分析台，再选择账户与资料。","元明細はクラウド分析デスクで変換します。先に接続してから、口座と資料を選びます。"),12,color=LocalYohaku.current.muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
     if(ready)YButton(word("选择账户与资料 ↗","口座と資料を選ぶ ↗"),{if(title.isBlank())title=defaultTitle;open=true},Modifier.fillMaxWidth().testTag("statement-cloud-start"),primary=true,enabled=!busy&&s.accounts.isNotEmpty())
     else YButton(word("连接云端分析台","クラウド分析デスクに接続"),{vm.navigate("cloud")},Modifier.fillMaxWidth().testTag("statement-cloud-connect"),primary=true)
