@@ -26,6 +26,38 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class ThemeControlsTest {
     @get:Rule val ui=createComposeRule()
+    @Test fun calendarsFollowStableFieldsAndCloseWhenFieldsOrGroupsDisappear() {
+        val owner=mutableStateOf<YDateSelection?>(null)
+        val fields=mutableStateOf(listOf(YDateField("from","From","2026-10-12"),YDateField("rate","Rate","2026-10-15")))
+        val form=mutableStateOf(true)
+        var changed:String?=null
+        ui.setContent{YohakuTheme("magazine","zh"){
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+                if(form.value) {
+                    YDateFields(listOf(YDateField("effective","Effective","2026-10-01")),owner.value,{owner.value=it},{_,_->},group="header")
+                    YDateFields(fields.value,owner.value,{owner.value=it},{id,_->changed=id},group="period-one")
+                }else YDateFields(listOf(YDateField("appliedAt","Applied","2026-10-25T09:00")),owner.value,{owner.value=it},{_,_->},group="application-time")
+            }
+        }}
+        ui.onNodeWithTag("date-field-1").performScrollTo().performClick()
+        ui.runOnIdle{fields.value=fields.value.reversed()}
+        ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
+        assertEquals(YDateSelection("period-one","rate"),owner.value)
+        ui.onNodeWithContentDescription("2026-10-16").performScrollTo().performClick()
+        assertEquals("rate",changed)
+        ui.runOnIdle{owner.value=YDateSelection("period-one","rate");fields.value=fields.value.filterNot{it.id=="rate"}}
+        ui.waitForIdle();assertNull(owner.value)
+        ui.onAllNodesWithTag("shared-calendar").assertCountEquals(0)
+        ui.runOnIdle{owner.value=YDateSelection("period-one","from")}
+        ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
+        ui.runOnIdle{form.value=false}
+        ui.waitForIdle();assertNull(owner.value)
+        ui.onAllNodesWithTag("shared-calendar").assertCountEquals(0)
+        ui.onNodeWithTag("date-field-0").performScrollTo().performClick()
+        assertEquals(YDateSelection("application-time","appliedAt"),owner.value)
+        ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
+    }
+
     @Test fun amountOperatorsInsertAtCursorAndResolve(){
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val amount=mutableStateOf("12")
         ui.setContent{YohakuTheme(theme.value,language.value){Column(Modifier.fillMaxSize().safeDrawingPadding().padding(25.dp)){
@@ -150,7 +182,7 @@ class ThemeControlsTest {
 
     @Test fun dateAndSelectClosedFramesMatchSourceAcrossThemesAndLanguages(){
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
-        val owner=mutableStateOf<Int?>(null);val date=mutableStateOf("2026-10-14")
+        val owner=mutableStateOf<YDateSelection?>(null);val date=mutableStateOf("2026-10-14")
         val selected=mutableStateOf("cash")
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -158,7 +190,7 @@ class ThemeControlsTest {
         val dimensions=File(folder,"dimensions.csv").also{if (visualEnabled()) it.writeText("theme,language,component,width,height\n")}
         ui.setContent{YohakuTheme(theme.value,language.value){Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal=25.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)){
             YSelect(word("付款账户","支払口座"),selected.value,listOf("cash" to word("现金","現金"),"bank" to word("银行账户","銀行口座")),{selected.value=it})
-            YDateFields(listOf(word("日期","日付") to date.value),owner.value,{owner.value=it},{_,v->date.value=v})
+            YDateFields(listOf(YDateField("date",word("日期","日付"),date.value)),owner.value,{owner.value=it},{_,v->date.value=v})
         }}}
         for((t,l) in testLooks(this@ThemeControlsTest)){
             ui.runOnIdle{theme.value=t;language.value=l;owner.value=null;date.value="2026-10-14";selected.value="cash"}
@@ -204,14 +236,14 @@ class ThemeControlsTest {
         val theme=mutableStateOf("magazine")
         val brand=mutableStateOf(false)
         val header=mutableStateOf(false)
-        val owner=mutableStateOf<Int?>(null)
+        val owner=mutableStateOf<YDateSelection?>(null)
         val dates=mutableStateOf(listOf("2026-10-12","2026-10-15T09:00:42.123456789"))
         val selected=mutableStateOf("cash")
         ui.setContent{YohakuTheme(theme.value,"zh"){
             if(brand.value)YStartup() else if(header.value)Column(Modifier.fillMaxSize().safeDrawingPadding()){YAppHeader("日常生活",{},{})} else Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){
                 YTitle("日期与账户","THE EVERYDAY CONTROLS")
                 YSelect("付款账户",selected.value,listOf("cash" to "现金","bank" to "银行账户","card" to "信用卡 · 日常消费主卡（尾号 4821）","wechat" to "微信零钱","alipay" to "支付宝"),{selected.value=it},columns=2)
-                YDateFields(listOf("转出日期" to dates.value[0],"实际到账日期" to dates.value[1]),owner.value,{owner.value=it},{i,v->dates.value=dates.value.toMutableList().also{it[i]=v}})
+                YDateFields(listOf(YDateField("from","转出日期",dates.value[0]),YDateField("to","实际到账日期",dates.value[1])),owner.value,{owner.value=it},{i,v->dates.value=dates.value.toMutableList().also{it[if(i=="from")0 else 1]=v}})
                 YToggle("历史补录",false,{})
             }
         }}

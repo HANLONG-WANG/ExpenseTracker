@@ -2,6 +2,16 @@
 
 原生 Kotlin / Compose 本地记账应用。阶段E P21–P25的实现与本轮可执行验收完成，交付0.5.0/code5。用户明确选择本轮交付APK，用户实机检查保持未验。准确状态见[阶段E记录](verification/phase-e-status.md)与[UI01–UI27验收](../docs/phase-e-acceptance.md)。历史范围见[开发计划](../docs/plans/development-plan.md)、[阶段A](verification/phase-a-status.md)、[阶段B](verification/phase-b-status.md)、[阶段C](verification/phase-c-status.md)、[阶段D](verification/phase-d-status.md)。
 
+## UI 外壳账户身份与补记收入修复（2026-11-15）
+
+账户编辑（含首次设置）在界面重建后保留编辑 ID 和表单字段，继续修改原账户；目标缺失显示提示且不能保存为新账户。资金风险页与金融总览的“补记已实际到账收入”使用入口指定的资金账户，已有草稿确认及其重建不丢失目标。指定账户失效、停用或为负债账户时提示错误，不回退到最近收入账户；无指定账户的普通记账仍使用原有默认值。无数据库或云端协议变更。
+
+待用户执行（本轮未编译、未跑测试；Gradle 串行）：
+
+- 单元测试：`RequestedEntryAccountTest`（指定优先/资格拒绝）和 `EntryDefaultsTest`（原默认行为回归）。
+- 仪器测试：`UiShellFlowTest` 全类，`DraftEditingFlowTest#accountOpeningEditPreviewCancelAndSaveKeepLedgerIntact`（原预览/取消/保存流程）；共享草稿默认值的云端回归可跑 `CommandLedgerExecutionTest#accountsCategoriesAndThreeEntries`。
+- 视觉：`UiShellFlowTest` 使用 `looks=all visual=true`，以 S24 Ultra 的 1080×2340、density 450、fontScale 1.0 查看恢复后的账户编辑、目标缺失提示、资金风险弹层、已有草稿确认、指定账户收入表单。截图位于应用外部文件目录 `ui-shell{captureSuffix}/`。完成后恢复原 1170×2532、density 480、fontScale 1.0。恢复测试使用 `StateRestorationTester`；真机旋转编辑账户可作为额外人工确认。
+
 ## 安装包
 
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
@@ -22,7 +32,10 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 设置页依次为「外观、语言与触感」「账本与分类」「提醒与汇率」「小票、流水与云端」「数据」「其他」。外观主题行显示当前主题名，进入 `appearance` 二级页选择主题（缩略预览与选中标记保留）；语言切换与“触感反馈”开关位于同组。触感默认开启、所有账本共用并跟随系统触摸振动设置；三主题具有独立波形，详见[触感设计](../docs/haptics.md)。「小票、流水与云端」依次进入 `receipts`、`statements`、`cloud`；「数据」含「照片保存方式」、「备份与恢复」（`backup`）与「从 CSV 导入」（`csv-import`）；「其他」只含回收站。「账本与分类」还提供「商户与地点」（`merchants`）入口，分析页原入口保留。
 
-账本切换只保留顶部当前账本按钮、设置→独立账本管理及其下级管理页。收支、转账、退款表单不再显示账本/主题工具行；顶部账本按钮在记账中打开切换弹层，其余正常页面进入账本页，金融草稿保护继续沿用。主题只在设置→外观主题切换；离开有手动输入的记账时可保留或放弃草稿；未选分类的非转账草稿，或相对打开基线仅改分类/自动定位商户的草稿，直接放弃并离开。恢复的草稿没有基线，已选分类或转账时仍提示。顶部不再提供语言按钮。首次设置的顶部设置按钮打开同时含主题和语言的设置弹层，切换保留未保存设置输入。
+账本切换只保留顶部当前账本按钮、设置→独立账本管理及其下级管理页。收支、转账、退款表单不再显示账本/主题工具行；顶部账本按钮在记账中打开切换弹层，其余正常页面进入账本页，金融草稿保护继续沿用。主题只在设置→外观主题切换；离开有手动输入的记账时可保留或放弃草稿；相对打开基线仅改分类/自动定位商户且没有其他输入的草稿，直接放弃并离开；未选分类不再忽略备注、附件或小票等输入。切换记账类型以新类型默认值建立基线，保留的备注/媒体及手动日期仍需保留/放弃确认。恢复的草稿没有基线，已选分类、转账或含手动内容时仍提示。顶部不再提供语言按钮。首次设置的顶部设置按钮打开同时含主题和语言的设置弹层，切换保留未保存设置输入。
+
+还款完整性：待确认保存也校验全部分配的已知组成、实收及同币实扣上限；付款依据不足时，现金预测与账单汇总显示待核对。恢复还款复用账单、合同和循环池剩余本金校验，超额须先调整关联。`financialRepayment.save`、`entry.lifecycle` 通过共享仓储执行同一规则。
+
 
 并列短操作使用 `YActionRow` 自适应排布：杂志/手账/小物分别沿用 8/10/12dp 间距，按钮保持各主题原有字形、边框和阴影；按自然宽度排列，空间不足时整项换行，主按钮占满所在行剩余宽度；确认弹层中并列的二选一（放弃 / 继续编辑等）都用本主题的次要按钮，不与无框链接混排。长文案或不同层级操作仍纵排。需要与次要按钮同行同高时，主按钮用 `compact=true`：保留主按钮配色，字号与内边距取次要按钮尺寸。记录详情的「编辑记录」（`record-edit-button`）即以此与「记录退款」同行，位于退款历史之后；无可退金额或非支出记录时该行只有编辑按钮。
 
@@ -105,11 +118,11 @@ adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisua
 
 ## 照片与附件导入（2026-10-31 源码更新）
 
-表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`LocalReceiptCamera` 在 `MainActivity` 级打开 `ScanFlow` 应用内扫描相机，权限申请、拒绝与无相机状态由相机页处理，一次一张。默认拍照后进入确认/调整页，输出交给现有小票导入再清理扫描临时目录。待处理账本、草稿媒体会话或记录 ID、已有图片路径及表单保存选项存于 saved state；拍照/确认期间进程被回收，恢复后仍入库原目标。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），记账弹层与滚动位置保持不变。云端分析台选择器不变。
+表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`LocalReceiptCamera` 在 `MainActivity` 级打开 `ScanFlow` 应用内扫描相机，权限申请、拒绝与无相机状态由相机页处理，一次一张。默认拍照后进入确认/调整页，输出交给现有小票导入，成功后才清理扫描临时目录，失败保留照片并可重试。待处理账本、草稿媒体会话或记录 ID、已有图片路径、待入库输出路径及表单保存选项存于 saved state；拍照/确认/入库失败后进程被回收，恢复后仍入库原目标。Activity 重建期间复用 ViewModel 中的入库任务，不重复导入。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），记账弹层与滚动位置保持不变。云端分析台选择器不变。
 
 相机页“自动拍摄”默认关，“自动处理”默认开，偏好跨账本共享并进入完整备份。关闭自动处理后原图直出、跳过确认页，仍按“原样保存（不压缩）”开关优化或保留字节；处理后的图片也按同一开关作为新照片入库。表单小票缩略图下的“处理这张”与排序按钮分行，始终打开已有图片确认/调整（即使自动处理关闭），确认后在同一媒体会话的原位置替换为新文件。已保存图片字节不改写，编辑保存按既有规则产生新小票修订；取消或入库失败保留旧图，旧文件沿用暂存/引用清理。扫描/处理与导入期间禁用其他媒体变更。云端 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 使用必填 `enabled`，支持原值比较、原子效果凭据、撤销及恢复；`entry.prepareDraft(media=RECEIPT_CAMERA)` 续办仍在表单点“拍照”打开此流程。扫描相关测试与截图命令见下方 [小票扫描验证](#小票扫描验证)。
 
-应用内扫描已完成阶段 1–6，待阶段 7 用户真机验收。CameraX 提供实时轮廓、补光和快门；自动拍摄要求轮廓可靠、画面及手机稳定约 0.8 秒，进度沿取景框边缘显示。确认页可使用、重拍、调整轮廓（左右各五点、上下端线、拖动放大镜）、重新处理与恢复自动结果；未检测到时直接进入手动调整，真实错误可重试。仅做几何处理，不做 OCR/图像增强；相册导入不自动扫描。原图和结果暂存于 `cache/receipt-capture/<uuid>/`，确认移交输出后清理原会话，取消/重拍清理会话，导入结束清理输出；启动清理超过 24 小时的残留，近期确认/调整状态可恢复。
+应用内扫描已完成阶段 1–6，待阶段 7 用户真机验收。CameraX 提供实时轮廓、补光和快门；自动拍摄要求轮廓可靠、画面及手机稳定约 0.8 秒，进度沿取景框边缘显示。确认页可使用、重拍、调整轮廓（左右各五点、上下端线、拖动放大镜）、重新处理与恢复自动结果；未检测到时直接进入手动调整，真实错误可重试。仅做几何处理，不做 OCR/图像增强；相册导入不自动扫描。原图和结果暂存于 `cache/receipt-capture/<uuid>/`，确认同步交接选中路径及整个会话的所有权，不搬移文件；入库成功才清理会话，失败保留原图和结果供重试，用户取消/重拍时清理会话；启动清理超过 24 小时的残留，近期确认/调整状态可恢复。
 
 三主题采用用户选定的设计 A：杂志编辑校样框、手账胶带照片与朱红笔迹、小物圆角相机窗口，确认/调整、权限与错误状态均保持本主题设计。定稿后自动拍摄进度线加粗，快门旁状态为「拍后自动裁剪展平 / 拍后原图直出」（日文「撮影後に自動補正 / 撮影後そのまま」）；开关及云端命令仍称自动拍摄、自动处理。接口、缓存与坐标细节见 [扫描模块说明](tools/receipt-scanner/README.md)。
 
@@ -196,7 +209,7 @@ Room 33→34：`recurrences` 增加 `merchant`/`note`（NOT NULL DEFAULT ''）�
 | JVM `receipt.scan.ScannerNumericsTest`、`receipt.scan.ScanContourEditorTest`、`receipt.scan.ScanOrientationTest`、`ui.features.scan.ScanCapturePolicyTest`、`ui.features.scan.ScanFrameFailuresTest` | 数值金标准、±45° 纠斜、轮廓/坐标/文件交接、平滑/提示/自动拍摄、异常帧恢复与日志节流 |
 | JVM `PhotoStorageTest`、`data.repository.CommandScanPreferencesTest`、`data.command.CommandCapabilitiesTest` | 旧备份默认、偏好原子应用/撤销、能力/schema 一致性 |
 | 仪器 `receipt.scan.ReceiptScannerTest` | 合成图完整引擎、宽短裁图方向与上下标记、几何不足、CPU 回退、EXIF、Python 金标准 |
-| 仪器 `ScanCameraFlowTest`、`ScanReviewFlowTest`、`MediaFlowTest` | 静态相机连续异常帧恢复、几何不足进入/保留调整、解码错误、确认/恢复、原目标入库及原位置替换；也包含视觉方法 |
+| 仪器 `ScanCameraFlowTest`、`ScanReviewFlowTest`、`MediaFlowTest` | 静态相机连续异常帧恢复、几何不足进入/保留调整、解码错误、确认/恢复、原目标入库及原位置替换、写入失败保留照片、重试成功清理、入库期间重建不重复导入、云端续办失败重试；也包含视觉方法 |
 | 仪器 `BackupRoundTripTest`、`CommandWorkflowExecutionTest` 指定方法 | 扫描偏好备份、命令执行/撤销/冲突/中断恢复 |
 
 ```sh
@@ -372,6 +385,10 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 预测计划、手填已知计划、余额池创建/编辑、额度配置及共享额度配置使用“填写 → 预览”，确认保存位于固定操作区。重核已办理安排是核对现存义务的两步流程，预览保留事实勾选；不会再要求记录一次新的办理时间。返回预览上一步保留输入；补齐原账单、上一层重核后返回保留其他输入，更新已变化账单的金额和拆分。旧预览与事实勾选不持久恢复，提交遇到事实变化返回填写并要求重新审阅、重新勾选。
 
 预测和手填计划先显示首个已列账期、来源本金、已列账期/金额与费用，再显示完整性和保留/退出范围；“已列”不等于全部债务或实际待付。未知费用及追加费用待补保持未知。计划影响另列实际分配后的待付变化；逐期原/新值和计算依据从“查看完整依据 / すべての根拠を見る”展开。核对的阻断问题、下一步、未知拆分及未排期本金始终可见，预览使用行内分区，不重复任务标题或嵌套大型审查面板。
+
+保留账单的本金拆分未知时，预测/重算返回缺项并阻止保存，末期及已经到期的末期也不例外；不能拿规则预测本金替代实际未知本金或据此标为已完整排期。手填账单仍允许只录总额；补齐本金拆分后可重算，已有全额确认清偿的实际拆分也可供计算使用，原账单的未知字段不因此改写。云端 `financialPrediction.save` 复用同一校验并阻止整批执行。回归覆盖：JVM `ReconciledScheduleTest`、`PredictedScheduleTest`；仪器 `FinancialPredictionTest`、`CommandFinanceExecutionTest`（含原始事实保留及整批阻断）。
+
+已办理计划重算以已保存条款为基础：办理手续费及所属期号不能借重算删改，费用变更须明确记录已办理调整；手机直接预览与重新生成日期、云端 `financialPrediction.save` 的 `candidates` 都沿用原办理费。候选生成与提交共用当前办理生效日，循环信用卡和循环贷款的计息区间不得早于该日；共用预测/重算计算层返回 `plan.accrualBeforeAgreement`，不静默裁剪日期。云端直接给 `terms` 同样受数据层费用约束。回归：JVM `ReconciledScheduleTest.revolvingInterestCannotStartBeforeTheCurrentAgreement`；仪器 `FinancialArrangementTest.retainedOverduePrincipalAndOriginalFeesStayOwedAndDeadlineExceptionsAreExplicit`、`CommandFinanceExecutionTest.arrangedPredictionRecalculationKeepsFeesAndRejectsPreAgreementInterest`、`FinancialPlanPagesTest.arrangedPredictionKeepsItsFeeAndRegeneratesFromTheEffectiveDate`。UI 用 `looks=all` + `visual=true` 检查日期与预览页面（截图 `phase-c-plans/*-arranged-prediction-*`）。
 
 预测/手填/余额池计划范围、核对字段与额度配置差异共用 `FinancialDisplayFacts`，每一步仅使用该步 `objects.before/after`（含未变化的相关账单），不使用最终净影响或当前数据库替换中间基线。名称也取该步快照。云端顺序为变化摘要 → 风险/缺项/未知 → 比较及逐项完整前后值入口 → 整批事实确认；原计算和归档继续是保存依据，投影不回传业务输入。整批原子性、事实要求、冲突检测、撤销协议和不新增金融对象跳转的决定保持不变。
 
@@ -559,6 +576,22 @@ adb shell am instrument -w -r \
 
 截图仍在各测试约定的 `files/verification/...` 或 external-files `phase-...` 目录；`RegressionFailureArtifacts` 的失败截图与语义树不受 `visual` 控制。`ThemeControlsTest` 默认保留点击、输入、禁用和选择状态断言，精确尺寸及截图只在视觉模式验证。`SetupFlowTest` 保留四步完成、导航和不生成记录的行为，已移除 HTML 坐标锚点比对；`SetupPresentationTest` 的视觉基线断言保留。
 
+### 仪器测试偏好隔离
+
+临时/内存 Room 的测试必须同时隔离偏好，不能使用默认的 `AppPreferences(context)`。共用 `TestAppPreferencesRule`（`@get:Rule(order=-2)`，包在 Compose 和失败取证规则外层）为每个测试创建 `cache/test-preferences/<UUID>/test.preferences_pb`；ViewModel、离线汇率服务和 CloudRepository 的 `commandPreferences` 均注入规则的同一个 `preferences`，仓库或 ViewModel 重建也复用它。规则在测试及其 `@After`、Compose 清理完成后取消并等待 DataStore 作用域结束，再删除目录；断言失败同样清理。首次设置草稿、选中账本、提醒/定位、触感/照片设置与假汇率缓存因此不接触真实 `app.preferences_pb`。
+
+`ProcessRecoveryTest`、`PhaseBProcessRecoveryTest`、`PlanningProcessRecoveryTest`、`ManagementProcessRecoveryTest` 分别使用 `files/verification/test-preferences/{phase-a-process,phase-b-process,phase-b-planning-process,phase-e-management-recovery}/test.preferences_pb`。中间阶段仅关闭存储，最后成功阶段设 `deleteAfterTest=true` 删除；不再保存或恢复真实应用的选中账本。`FinancialDraftFlowTest` 默认使用临时偏好，只有 `processPhase=write/read` 使用同目录下的 `financial-draft-process` 持久夹具，write 清空该测试偏好，read 后随测试库清理。跨进程验证要从 seed/write 重新开始，不能接续旧版本夹具；已有系统门控及各阶段运行顺序不变。
+
+隔离回归入口：`TestAppPreferencesRuleTest` 验证 ViewModel 清理/假汇率/设置写入不改变另一份存储、失败后的删除与下一次空白状态、持久文件关闭重开及最终删除；`CommandFlowTest` 额外断言命令仓库和汇率服务与 ViewModel 共享偏好。此次仅修改测试夹具，无生产/UI/命令协议改动。
+
+建议先跑 `TestAppPreferencesRuleTest`，再用默认参数跑 `CommandFlowTest`、`EntryFlowTest`、`SetupFlowTest`、`ReferenceRateFlowTest`、`TransferFlowTest`、`HapticsFlowTest`、`FinancialDraftFlowTest`，覆盖云端共享、首次设置、汇率开关、触感及 ViewModel 重建。其余机械迁移类随相关模块回归即可，无须为夹具替换全跑外观矩阵。
+
+迁移类文件清单（均为 `app/src/androidTest/java/com/yohaku/expensetracker/<类名>.kt`）：
+
+- 基础、设置和云端：`ActivityFlowTest`、`AnalysisFlowTest`、`BudgetRecurrenceFlowTest`、`CardPaymentFlowTest`、`CommandFlowTest`、`DraftEditingFlowTest`、`EntryFlowTest`、`EntryExperienceFlowTest`、`ExpectedIncomeFlowTest`、`HapticsFlowTest`、`HomePlanningFlowTest`、`LedgerCalendarTest`、`MerchantFlowTest`、`ReadFailureUiTest`、`ReceiptWorkbenchFlowTest`、`ReferenceRateFlowTest`、`SetupFlowTest`、`StatementDueFlowTest`、`StatementFileWorkflowTest`、`TransferFlowTest`、`UiShellFlowTest`。
+- 金融：`CreditLimitFlowTest`、`FinancialBatchRevolvingFlowTest`、`FinancialDraftEditorsTest`、`FinancialDraftFlowTest`、`FinancialFlowTest`、`FinancialManualArrangementFlowTest`、`FinancialOutlookFlowTest`、`FinancialPlanPagesTest`、`FinancialPoolArrangementFlowTest`、`FinancialPoolFlowTest`、`FinancialPoolMergeFlowTest`、`FinancialPoolPaymentFlowTest`、`FinancialProgressFlowTest`、`FinancialReconciliationChainFlowTest`、`FinancialReconciliationFlowTest`、`FinancialRepaymentFlowTest`、`FinancialRetroactiveFlowTest`、`FinancialRuleModesFlowTest`、`FinancialScaleFlowTest`。
+- 专项另行编排：上述四个 `*ProcessRecoveryTest` 及 `FinancialDraftFlowTest#processBoundaryPreservesOnlyDraftFields` 按各自参数分进程运行，验证真实进程间偏好保留；`LargeLedgerTest` 的注入也已迁移，仍只在既有 `perf=true` 专项时跑，不因夹具修改扩大日常性能测试。
+
 ### 自定义仪器参数
 
 布尔参数只接受字符串 `true` 为开启；未给参数保持原默认。`class` 是 Runner 自带的类/方法白名单，可用逗号组合，不是项目自定义参数。
@@ -571,7 +604,7 @@ adb shell am instrument -w -r \
 | `system=true` | `ForegroundLocationSystemTest`、`ReminderSystemTest`、`MediaFlowTest` 的真实 SAF/跨 UID 方法、`LocationEntryFlowTest` 的真实权限/GPS 方法。必须按各方法准备外部状态。 |
 | `perf=true` | `LargeLedgerTest` 和 `MediaStorageTest#strictPerFileLimitStreamsAndLeavesNoPartialBlobOrDraftReference`（100MB）。 |
 | `captureSuffix` | `verification` 截图/尺寸目录的后缀，用于区分屏宽、字体等配置。 |
-| `networkSmoke=true` | `ReferenceRateStorageTest` 的真实汇率服务冒烟；普通 VM 测试注入离线 transport（固定测试汇率 1），保留原偏好存储和时钟。 |
+| `networkSmoke=true` | `ReferenceRateStorageTest` 的真实汇率服务冒烟；普通 VM 测试注入离线 transport（固定测试汇率 1），与 VM 共享独立测试偏好并沿用仓库时钟。 |
 | `processRecovery=true`、`phaseBRecovery=true`、`planningRecovery=true`、`managementRecovery=true` | 各同名进程恢复类；仍需按源码分次运行 prepare / verify，保留原门控，不由 `system` 代替。 |
 | `processPhase=write/read` | `FinancialDraftFlowTest` 真实进程草稿恢复的写入/重启后读取阶段。 |
 | `systemHandoff=true` | `SystemHandoffTest` 外部编排的闹钟、Worker、通知点击、重启/时区专项，门控保持原样。 |
@@ -814,3 +847,44 @@ adb shell settings put system font_scale 1.0
 - **144 张原图已查看**（每种尺寸 72 张；另有 24 张按场景排列的六外观对照图）。原名来源、影响数量、地点保留、合并目标停用、来源历史链、记录历史、云端撤销标记与两类草稿冲突均可读；窄屏长内容纵向滚动，未发现本轮新增的横向溢出或不可达操作。三主题保留各自细线目录、手账纸页、小物小票风格。
 - 目录 `/tmp/yohaku-merchant-h2-review/{s24,narrow}/{merchants,cloud,conflict,overview}/`。商户关键文件 `{theme}-{language}-h2-original-editor.png`、`-h2-original-places.png`、`-h2-merge-confirm.png`、`-h2-source-chain.png`、`-h2-record-history.png`、`-h2-cloud-undone.png`；云端 `*-merchant-original-{create,assign}-h2-{s24,narrow}.png`；冲突 `*-{concurrent,legacy}.png`。日志 `logs/visual-{s24,narrow}.log`。
 - 查看后已恢复 **1170×2532 / density 480 / fontScale 1.0**。本批无剩余商户验收项；本次验证为本机真实命令执行链，未重做远端网站上传／领取、发版性能矩阵或用户实机专项。
+
+### 记账输入与日历状态修复（2026-11-15）
+
+重选原币不更改草稿；真正变更币种仅调整换算输入，不确认或撤销实际入账。待确认记录切回账户币种后仍可通过「入账金额状态」显式确认。转账的自动参考估算、主动采用参考值和手动估算共用 `TransferEstimateResult`；费用未补全或费用后金额非正时保留输入并展示原因，费用资料改变会重试尚空的预计端。
+
+`YDateFields` 接收 `YDateField(id,label,value)`，展开项为 `YDateSelection(group,field)`。共享 owner 的多个字段组须指定不同 group；字段移除或组离开组合时自动关闭所属日历，字段重排不改变归属。逐期草稿保存独立 `calendarId` 并用作 Compose key；旧草稿缺省生成，按 encoded 缓存解码，日期/金额编辑沿用 ID。所有调用方（含付款方案、预测、循环计划、还款及云端提交日期范围）已迁移，三主题外观结构保持原控件。
+
+回归入口：JVM `EntryCurrencyTest`、`TransferEstimateTest`；仪器 `ThemeControlsTest`、`ReferenceRateFlowTest`、`FinancialManualArrangementFlowTest`（`looks=all visual=true`），检查现有控件截图及 `phase-c-rates/*-{same-currency-pending,transfer-incomplete-fee}.png`、`phase-c-manual-arrangement/*-application-calendar.png`。页面布局以 S24 Ultra 基准核对。迁移连带回归用默认参数的 `TransferFlowTest`、`FinancialDraftEditorsTest`、`FinancialRuleModesFlowTest`、`FinancialPoolFlowTest`、`FinancialRepaymentFlowTest`；无需性能/系统专项。云端命令语义和能力目录未变。
+
+### 2026-11-15 债务来源与流水确认修正
+
+手填和预测计划共用期初本金占用、消费来源归属检查：余额池占用和已办理转换后的原期初本金不会被再次分配，已并池消费也不会因编辑记录重新生成独立计划。流水实际确认按具体 posting 定位转出、转入和独立手续费；云端补录校验适配后的来源金额、币种、日期和方向，并保留流水与预计收入到账草稿的确认状态。
+
+回归范围：JVM `FinancialSourceOwnershipTest`、`StatementEntryDraftsTest`、`data.command.CommandCapabilitiesTest`；Android 数据流程 `FinancialPoolMergeTest`、`CommandWorkflowExecutionTest`、`CommandPlanningExecutionTest`；UI `StatementFileWorkflowTest#separateTransferFeeKeepsPostingIdentityAcrossThemes`（`looks=all`、`visual=true`），检查流水差异候选和转账手续费表单，以 S24 Ultra 布局基准验证并恢复设备配置。
+
+能力/schema 两处文件已按适配器字段同步，由 JVM `CommandCapabilitiesTest` 对照真实注册表校验。
+
+## 云端逐项核对币种修正（2026-11-15，分区 06）
+
+逐项核对为每个金额绑定币种：`baseMinor` 及所有 `*BaseMinor` 使用账本本位币；还款实收／本金／利息／平台费用和分配金额使用债务币种，`sourceFeeMinor` 使用该侧还款记录的付款币种；借款实际到账使用到账账户币种，另付费用使用费用付款账户币种。结算与转账的预计金额优先使用保存的 `expectedAccountCurrency`／`expectedToCurrency`，手续费原币及资金预测的原币／账户币种分别处理。前后事实独立解析，嵌套明细与 JSON 使用相同映射；确认事实保存 `sourceCurrency`、`fundingCurrency`、`separateFeeCurrency` 及嵌套还款币种，历史展示不依赖这些账户或记录仍存在。它们仅为本机核对事实，不改变命令输入、数据库结构或云端接口。旧版历史若没有保存付款币种且来源记录已删除，会明确显示“币种缺失”及原始最小单位值，不再猜作债务币种。
+
+回归入口：JVM `ui.features.command.CommandMoneyFactsTest`、`data.command.CommandConfirmationTest`；Android 数据流程 `CommandFinanceExecutionTest#manualBorrowingContractAllocationAndRepayment`（确认币种事实、重跑一致性及整批撤销）；UI `CommandMoneyFactsUiTest#mixedCurrencyReviewAcrossLooks` 使用 `looks=all visual=true`，以 S24 Ultra 基准查看 `command-money-facts/` 中借款、还款及嵌套还款逐项核对截图，结束后恢复设备配置。
+
+
+### S24 大标题与还款卡片（2026-11-15，待设备验收）
+
+`YText` 默认对非数字、20sp 及以上文字使用 `LineBreak.Heading`，按账本中日文语言进行平衡/短语断行；较小标题仍可显式开启 `balanced`。金额排版、字号、原有手工设计段落和三主题装饰保持原设计。`YLead` 区分金额/展示文字与状态文字：信用卡没有已知付款日或待核对时使用杂志/物件 16sp、手帐 18sp 的状态层级，不沿用金额大字。已知账单付款完成但清偿待确认时显示对应状态。
+
+账户列表（双列与单列）、账户详情和金融总览封面补充“已付待确认”，取截至今日未删除且尚未确认清偿的实际付款，包含未分配到账单的付款。按实付原币分别显示（含实扣内费用），不将其当作已清偿本金，也不跨币种相加。欠款仍到清偿确认才减少。信用卡封面金额改用 `financialAccountSummary.next.statementTotals().cashRequiredMinor`，明确标为“仍需备款”；账单待清偿总额与已付待确认分配仍在账单明细中分别列出。首页已从现金时间线取剩余付款，并有待清偿确认事项，无需另改计算。云端保存/确认仍复用相同仓储，命令与协议字段未变。
+
+回归入口：
+- JVM：新增 `PendingRepaymentPaymentsTest`，验证付款/清偿分离、账单备款、未分配及跨币种付款、删除和日期范围；回归 `ExpectedIncomeProjectionTest`、`FinancialOutlookTest`。
+- `RepaymentCardPresentationTest`：信用卡空状态、账户双列/单列卡片、账户详情、信用卡与借款总览、部分付款、全额付款待确认及确认后状态；截图 `repayment-cards{captureSuffix}/`。
+- `LeadCoverTest`：封面标题、欢迎展示文字、独立页标题、信用卡空状态，检查实际行尾与状态字号；截图 `verification/lead-{captureSuffix}/`（无后缀时为 `verification/lead/`）。
+- `SetupPresentationTest#categoryCoversMatchOriginalCompositionsAndCaptions`：分类封面增加实际断行/孤字断言；原 390dp 高度与相邻元素几何断言未放宽或删除。公共标题回归运行 `SetupPresentationTest`、`ThemeControlsTest`，金融流程回归 `FinancialRepaymentFlowTest`、`FinancialProductionOverviewTest`。
+
+视觉使用 `looks=all visual=true`，在 S24 Ultra 1080×2340 / density 450 下逐张检查三主题×中日文。另在原 390dp 标准配置复核原稿几何；若语言断句实际改变行数，先核实截图再调整相应基准，不以关闭断言代替验证。
+
+### 2026-11-15 高严重度问题修复验收
+
+范围为 `docs/bug-reports-high.md` 全部代码问题与视觉高严重度三项。JVM 全量单元测试通过；交接包 `node contract-test.mjs` 17 项通过。仪器测试在默认参数、390dp 标准配置下运行上述各节列出的 35 个相关类，共 219 项通过（假设跳过的真实键盘/系统专项除外）；`CommandLedgerExecutionTest#batchFiveHundredNotesOnLargeLedgerLogsPerformance` 在大批量单进程中仍会出现既有 OOM，单独运行通过。UI 相关 12 个类/方法以 S24 Ultra（1080×2340/density 450）`looks=all visual=true` 运行 35 项通过并已查看截图。`SetupPresentationTest#ledgerPageMatchesSourceThroughFilteredList` 为原稿几何对照，只在 390dp 标准配置有效，在该配置通过。`CommandWorkflowExecutionTest#allPreferencesSwitchAfterCommitAndRestoreWithConflict` 与 `CommandPlanningExecutionTest#recurrencePaymentCancellationAndBatchLinkConsumeOnlyMatchingDraft` 的旧断言未跟进 2026-11-10 撤销时草稿同步代次加一的设计，已改为由 `assertCommandRowsRestored` 精确验证该递增。

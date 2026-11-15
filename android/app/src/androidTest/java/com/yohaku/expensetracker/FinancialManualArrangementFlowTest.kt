@@ -25,6 +25,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class FinancialManualArrangementFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
@@ -33,7 +34,7 @@ class FinancialManualArrangementFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-25T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
+        vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -99,8 +100,11 @@ class FinancialManualArrangementFlowTest {
             textField(fee).performScrollTo().performTextReplacement("100")
             tapTag("arrangement-generate")
             for(i in 0..1)ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("arrangement-manual-total-$i"))).performScrollTo().performTextReplacement("520")
+            tapTag("date-field-0","arrangement-period-0")
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
             tapTag("arrangement-preview")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialArrangementReview.value?.calculation is Calculation.Ready}
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(0)
             val partial=vm.financialArrangementReview.value!!
             assertFalse(partial.target!!.complete);assertTrue(partial.bills.all{it.principalMinor==null&&it.feeMinor==null})
             ui.onNodeWithTag("finance-comparison-incomplete").performScrollTo().assertIsDisplayed()
@@ -125,12 +129,20 @@ class FinancialManualArrangementFlowTest {
                 ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
                 shot("$theme-$language-manual-ime")
             }
+            tapTag("date-field-0","arrangement-period-0")
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
             tapTag("arrangement-preview")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialArrangementReview.value?.calculation is Calculation.Ready}
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(0)
             val review=vm.financialArrangementReview.value!!
             assertEquals(listOf(620L,520L),review.bills.map{it.totalMinor});assertEquals(140L,review.comparison!!.totalExtraFeeMinor)
             ui.onNodeWithTag("arrangement-manual-review").performScrollTo();shot("$theme-$language-manual-review")
-            tapTag("arrangement-record-applied");tapTag("arrangement-platform-confirmed");tapTag("arrangement-confirm")
+            tapTag("arrangement-record-applied")
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(0)
+            tapTag("date-field-0","finance-time-applied")
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
+            shot("$theme-$language-application-calendar")
+            tapTag("calendar-done");tapTag("arrangement-platform-confirmed");tapTag("arrangement-confirm")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialState.value?.arrangements?.any{it.originalPlanId==old}==true}
             val f=runBlocking{db.financialDao().graph(book).first()!!};val s=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             val change=f.arrangements.single();val target=f.plans.first{it.id==change.targetPlanId}

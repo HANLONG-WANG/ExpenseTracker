@@ -26,6 +26,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class BudgetRecurrenceFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule(order=0) val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
@@ -37,7 +38,7 @@ class BudgetRecurrenceFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));restoration=StateRestorationTester(ui);runBlocking{vm.preferences.setHapticsEnabled(true)};restoration.setContent{NativeApp(vm,haptics=haptics)}
+        vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock));restoration=StateRestorationTester(ui);runBlocking{vm.preferences.setHapticsEnabled(true)};restoration.setContent{NativeApp(vm,haptics=haptics)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(text:String) {

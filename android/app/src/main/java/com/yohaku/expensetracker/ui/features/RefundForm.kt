@@ -27,8 +27,8 @@ import com.yohaku.expensetracker.ui.theme.*
             if(account?.currency==s.book.currency)d.accountAmount else d.baseAmount,
             {onChange(d.copy(baseAmount=it))},numeric=true,readOnly=account?.currency==s.book.currency)
         if(account?.currency==s.book.currency)YText(word("与到账金额相同，无需折算。","入金額と同額で、換算は不要です。"),11,color=LocalYohaku.current.muted)
-        var owner by remember{mutableStateOf<Int?>(null)}
-        YDateFields(listOf(word("实际 / 预计到账日期","実際・予定入金日") to d.date),owner,{owner=it},{_,date->onChange(d.copy(date=date,settlementDate=date,rateDate=date))})
+        var owner by remember{mutableStateOf<YDateSelection?>(null)}
+        YDateFields(listOf(YDateField("date",word("实际 / 预计到账日期","実際・予定入金日"),d.date)),owner,{owner=it},{_,date->onChange(d.copy(date=date,settlementDate=date,rateDate=date))})
         YSelect(word("退款状态","返金の状態"),if(d.settlementConfirmed)"confirmed" else "pending",listOf(
             "confirmed" as String? to word("已实际到账","実際に入金済"),"pending" as String? to word("待到账，不提前冲减消费","未入金・支出をまだ控除しない")
         ),{onChange(d.copy(settlementConfirmed=it=="confirmed"))})

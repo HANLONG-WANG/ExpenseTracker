@@ -33,7 +33,7 @@ class CommandPlanningExecutionTest {
         val p=CommandPlan("yohaku.command-plan",1,UUID.randomUUID().toString(),book,commands.registry.catalogDigest,r.commandExports(book,RecordScope()).context.contextDigest,message="预算与活动安排",steps=steps)
         return commands.receive(commandClaim(p),"https://example.test",p.context_digest)
     }
-    private suspend fun cycle(book:String,steps:List<CommandStep>,verify:suspend (ConfirmationModel,BookSnapshot)->Unit) {
+    private suspend fun cycle(book:String,steps:List<CommandStep>,restoredDraft:Boolean=false,verify:suspend (ConfirmationModel,BookSnapshot)->Unit) {
         val original=CommandUndoJournal(r,book).snapshot();val row=receive(book,steps)
         val preview=commands.preview(row.planId);assertTrue(preview.executable);assertTrue(preview.steps.all{it.undo.available})
         assertEquals(original,CommandUndoJournal(r,book).snapshot())
@@ -43,9 +43,19 @@ class CommandPlanningExecutionTest {
         val executed=CommandUndoJournal(r,book).snapshot();val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
         assertTrue(undo.executable);assertEquals(executed,CommandUndoJournal(r,book).snapshot())
         commands.confirm(inverse.planId,commandChecks(undo))
-        assertEquals(original,CommandUndoJournal(r,book).snapshot());assertEquals("UNDONE",commands.plan(row.planId).status)
+        assertCommandRowsRestored(original,CommandUndoJournal(r,book).snapshot(),restoredDraft);assertEquals("UNDONE",commands.plan(row.planId).status)
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
     }
+    @Test fun foreignExpectedIncomeArrivalPreservesConfirmedActualAmount()=runBlocking<Unit> {
+        val (book,bank,_)=setup();val category=r.saveCategory(book,"收入",EntryKind.INCOME,null)
+        cycle(book,listOf(
+            step("expected","expectedIncome.save","""{"name":"外币工资","account":"$bank","date":"2026-11-02","amount":{"currency":"CNY","minor":10000}}"""),
+            step("arrived","expectedIncome.arrive","""{"income":${ref("expected","expectedIncome")},"set":{"category":"$category","amount":{"currency":"CNY","minor":10000},"accountAmount":{"currency":"JPY","minor":2000}}}"""))) {_,s->
+            assertTrue(s.settlements.single().confirmed);assertEquals(2000L,s.settlements.single().accountMinor)
+            assertEquals(302000L,s.balance(s.accounts.single{it.id==bank}))
+        }
+    }
+
     @Test fun monthlyCategoryAndBookBudgets()=runBlocking<Unit> {
         val (b,_,c)=setup();check(r.commitBudget(r.previewBudget(b,"2026-11",null,Money(Currency.JPY,90000))))
         cycle(b,listOf(
@@ -110,7 +120,7 @@ class CommandPlanningExecutionTest {
             step("payExisting","occurrence.pay","""{"occurrence":"${pending[2].id}"}"""),
             step("unlink","occurrence.unlink","""{"occurrence":"${pending[1].id}"}"""),
             step("stop","recurrence.setActive","""{"recurrence":"$old","active":false}"""),
-            step("start","recurrence.setActive","""{"recurrence":"$old","active":true}"""))) {m,s->
+            step("start","recurrence.setActive","""{"recurrence":"$old","active":true}""")),restoredDraft=true) {m,s->
             assertEquals(4,s.visibleEvents.size);assertEquals(217000L,s.balance(s.accounts.single()))
             val rule=s.recurrences.single{it.name=="房租"};assertEquals("COMPLETED",s.occurrences.single{it.recurrenceId==rule.id&&it.scheduledDate=="2026-11-02"}.status)
             assertEquals("CANCELLED",s.occurrences.single{it.recurrenceId==rule.id&&it.scheduledDate=="2026-11-09"}.status)

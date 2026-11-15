@@ -47,6 +47,51 @@ class CommandFinanceExecutionTest {
         commands.confirm(inverse.planId,commandChecks(model));assertEquals(original,CommandUndoJournal(r,b).snapshot());assertEquals("UNDONE",commands.plan(id).status)
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
     }
+    @Test fun pendingRepaymentRejectsOverAllocationLocallyAndThroughCloudCommand()=runBlocking<Unit> {
+        val (b,bank)=setup();val debt=card(b,"待确认",2000)
+        val plan=checkNotNull(r.commitManualFinancialPlan(r.previewManualFinancialPlan(b,ManualFinancialPlanInput(debt,"两期",FinanceMode.SINGLE,
+            listOf(KnownBillInput("2026-12-10",1000,1000,0,bank),KnownBillInput("2027-01-10",1000,1000,0,bank)),2000,true))))
+        val bills=db.financialDao().bills(b,plan)
+        val input=FinancialRepaymentInput(bank,debt,Money(Currency.JPY,1000),"2026-11-02",principal=Money(Currency.JPY,1000),
+            allocations=bills.map{RepaymentAllocationInput(billId=it.id,principalMinor=1000,interestMinor=0,feeMinor=0)})
+        val before=CommandUndoJournal(r,b).snapshot()
+        assertThrows(IllegalArgumentException::class.java){runBlocking{r.previewRepayment(b,input)}}
+        val payload=commandJson.encodeToJsonElement(FinancialRepaymentInput.serializer(),input).jsonObject.filterKeys{it!="platformConfirmed"}
+        val row=receive(b,listOf(CommandStep("pending","financialRepayment.save",1,JsonObject(payload))))
+        assertThrows(IllegalArgumentException::class.java){runBlocking{commands.preview(row.planId)}}
+        assertEquals(before,CommandUndoJournal(r,b).snapshot())
+        val valid=input.copy(received=Money(Currency.JPY,1000),interest=Money(Currency.JPY,0),fee=Money(Currency.JPY,0),
+            allocations=input.allocations.map{it.copy(principalMinor=500)})
+        val validPayload=commandJson.encodeToJsonElement(FinancialRepaymentInput.serializer(),valid).jsonObject.filterKeys{it!="platformConfirmed"}
+        val accepted=receive(b,listOf(CommandStep("pending","financialRepayment.save",1,JsonObject(validPayload))))
+        val preview=commands.preview(accepted.planId);assertTrue(preview.executable)
+        commands.confirm(accepted.planId,commandChecks(preview))
+        val state=r.financialReviewState(b);assertFalse(state.ledger.repayments.single().platformConfirmed)
+        assertEquals(299000L,state.ledger.balance(state.ledger.accounts.first{it.id==bank}))
+        assertEquals(1000L,state.ledger.cashTimeline(state.finance,LocalDate.parse("2026-11-02"),LocalDate.parse("2027-01-31")).steps.filter{it.item.kind=="BILL"}.sumOf{it.item.amountMinor!!})
+    }
+    @Test fun repaymentRestoreCannotReuseBillCapacityLocallyOrThroughCloudCommand()=runBlocking<Unit> {
+        val (b,bank)=setup();val debt=card(b,"还款恢复",1000)
+        val plan=checkNotNull(r.commitManualFinancialPlan(r.previewManualFinancialPlan(b,ManualFinancialPlanInput(debt,"账单",FinanceMode.SINGLE,
+            listOf(KnownBillInput("2026-12-10",1000,1000,0,bank)),1000,true))))
+        val bill=db.financialDao().bills(b,plan).single()
+        val input=FinancialRepaymentInput(bank,debt,Money(Currency.JPY,1000),"2026-11-02",Money(Currency.JPY,1000),Money(Currency.JPY,1000),Money(Currency.JPY,0),Money(Currency.JPY,0),
+            platformConfirmed=true,clearingDate="2026-11-02",allocations=listOf(RepaymentAllocationInput(billId=bill.id,principalMinor=1000,interestMinor=0,feeMinor=0)))
+        val first=checkNotNull(r.commitFinancialLedger(r.previewRepayment(b,input)));r.deleteEntry(b,first)
+        val stale=r.previewEntryLifecycle(b,first,EntryLifecycleOperation.RESTORE)
+        val second=checkNotNull(r.commitFinancialLedger(r.previewRepayment(b,input)))
+        assertFalse(r.commitEntryLifecycle(stale))
+        val before=CommandUndoJournal(r,b).snapshot()
+        assertThrows(IllegalArgumentException::class.java){runBlocking{r.restoreEntry(b,first)}}
+        val row=receive(b,listOf(step("restore","entry.lifecycle","""{"entry":"$first","operation":"RESTORE"}""")))
+        assertThrows(IllegalArgumentException::class.java){runBlocking{commands.preview(row.planId)}}
+        assertEquals(before,CommandUndoJournal(r,b).snapshot())
+        r.deleteEntry(b,second)
+        val preview=commands.preview(row.planId);assertTrue(preview.executable)
+        commands.confirm(row.planId,commandChecks(preview))
+        val state=r.financialReviewState(b);assertEquals(first,state.ledger.visibleEvents.single().id)
+        assertEquals(0L,state.ledger.billOutstanding(bill).totalMinor)
+    }
     @Test fun multipleCardsInstallmentsPoolFactsBindToChangedObjectsAndWholeUndo()=runBlocking<Unit> {
         val (b,bank)=setup();val a=card(b,"分期卡",12000);val c=card(b,"循环卡",10000)
         val steps=commandFinanceSteps(bank,a,c);val row=receive(b,steps);val before=CommandUndoJournal(r,b).snapshot()
@@ -68,6 +113,63 @@ class CommandFinanceExecutionTest {
         assertTrue(fresh.requirements.any{it.zh.contains(Money(Currency.JPY,12000).display())})
         undo(b,row.planId,changed)
     }
+    @Test fun unknownLastBillPrincipalBlocksTheWholePredictionBatch()=runBlocking<Unit> {
+        val (b,bank)=setup();val a=card(b,"未知拆分",10000)
+        val rule=FinancialRuleVersion("",b,a,FinanceMode.SINGLE,"2026-11-01","Asia/Tokyo",billing=BillingRule(31,true,1,27,bank))
+        r.commitFinancialRule(r.previewFinancialRule(b,a,rule))!!
+        val plan=r.commitManualFinancialPlan(r.previewManualFinancialPlan(b,ManualFinancialPlanInput(a,"已知总额",FinanceMode.SINGLE,
+            listOf(KnownBillInput("2026-12-27",5000,paymentAccountId=bank)),principalMinor=10000,opening=true)))!!
+        val before=CommandUndoJournal(r,b).snapshot()
+        val row=receive(b,listOf(
+            step("budget","budget.save","""{"month":"2026-11","amount":{"currency":"JPY","minor":12345}}"""),
+            step("forecast","financialPrediction.save","""{"account":"$a","name":"已知总额","mode":"SINGLE","plan":"$plan","openingPrincipalMinor":10000,"terms":{"agreementDate":"2026-11-01","paymentDates":["2026-12-27"]}}""")))
+        val preview=commands.preview(row.planId)
+        assertFalse(preview.executable)
+        assertEquals(listOf("plan.confirmedPrincipal"),preview.steps.single{it.stepId=="forecast"}.missing)
+        assertEquals(before,CommandUndoJournal(r,b).snapshot())
+        try{commands.confirm(row.planId,commandChecks(preview));fail("incomplete prediction must block the batch")}catch(_:IllegalStateException){}
+        assertEquals(before,CommandUndoJournal(r,b).snapshot())
+        val bill=db.financialDao().bills(b,plan).single()
+        assertEquals(5000L,bill.totalMinor);assertNull(bill.principalMinor);assertNull(bill.feeMinor)
+        assertFalse(db.financialDao().plan(b,plan)!!.complete)
+    }
+
+    @Test fun arrangedPredictionRecalculationKeepsFeesAndRejectsPreAgreementInterest()=runBlocking<Unit> {
+        val (b,bank)=setup();val a=card(b,"办理后重算",0);val category=r.saveCategory(b,"购物",EntryKind.EXPENSE,null)
+        val event=r.saveEntry(b,EntryDraft(accountId=a,categoryId=category,amount="10000",date="2026-11-01"))
+        val original=r.commitManualFinancialPlan(r.previewManualFinancialPlan(b,ManualFinancialPlanInput(a,"原一次付",FinanceMode.SINGLE,
+            listOf(KnownBillInput("2026-12-10",10000,10000,0,bank)),10000,true,sourceEventId=event)))!!
+        val rule=FinancialRuleVersion("",b,a,FinanceMode.REVOLVING,"2026-11-01","Asia/Tokyo",billing=BillingRule(30,true,1,10,bank),
+            revolving=RevolvingRule(InterestRule("0.12",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL),PaymentMethod.FIXED_PRINCIPAL,5000,allocation=AllocationOrder.FEES_FIRST,automatic=false))
+        r.commitFinancialRule(r.previewFinancialRule(b,a,rule))!!
+        val terms=FinancialScheduleTerms("2026-11-02",listOf("2026-12-10","2027-01-10"),listOf(AccrualWindow("2026-11-02","2026-11-30"),AccrualWindow("2026-12-01","2026-12-30")))
+        val plan=r.commitFinancialArrangement(r.previewFinancialArrangement(b,FinancialArrangementInput(original,"已办理循环",FinanceMode.REVOLVING,terms,bank,OriginalFeeTreatment.RETAIN,300)),"2026-11-02T00:00:00Z",true)!!
+        val saved=r.json.decodeFromString<FinancialPredictionInput>(db.financialDao().plan(b,plan)!!.termsJson!!)
+        val before=CommandUndoJournal(r,b).snapshot()
+        fun forecast(t:FinancialScheduleTerms)=step("forecast","financialPrediction.save","""{"account":"$a","name":"已办理循环","mode":"REVOLVING","plan":"$plan","sourceEvent":"$event","paymentAccount":"$bank","terms":${encoded(t)}}""")
+        val budget=step("budget","budget.save","""{"month":"2026-11","amount":{"currency":"JPY","minor":12345}}""")
+        for(fees in listOf(emptyList(),listOf(AdditionalPeriodFee(1,100)))) {
+            val row=receive(b,listOf(budget,forecast(saved.terms.copy(additionalFees=fees))))
+            assertThrows(IllegalArgumentException::class.java){runBlocking{commands.preview(row.planId)}}
+            assertEquals(before,CommandUndoJournal(r,b).snapshot())
+        }
+        val invalid=receive(b,listOf(budget,forecast(saved.terms.copy(accrualWindows=listOf(AccrualWindow("2026-11-01","2026-11-30"))+terms.accrualWindows.drop(1)))))
+        val preview=commands.preview(invalid.planId)
+        assertFalse(preview.executable)
+        assertEquals(listOf("plan.accrualBeforeAgreement"),preview.steps.single{it.stepId=="forecast"}.missing)
+        assertEquals(before,CommandUndoJournal(r,b).snapshot())
+        assertThrows(IllegalStateException::class.java){runBlocking{commands.confirm(invalid.planId,commandChecks(preview))}}
+        assertEquals(before,CommandUndoJournal(r,b).snapshot())
+        val originalBills=db.financialDao().bills(b,plan).sortedBy{it.number}
+        val candidates=step("forecast","financialPrediction.save","""{"account":"$a","name":"已办理循环","mode":"REVOLVING","plan":"$plan","sourceEvent":"$event","paymentAccount":"$bank","candidates":{"agreementDate":"2026-11-02","count":2,"firstDate":"2026-12-10","firstEnd":"2026-11-30","firstPeriodNumber":1}}""")
+        cycle(b,listOf(candidates)) {_,state->
+            val definition=r.json.decodeFromString<FinancialPredictionInput>(state.finance.plans.first{it.id==plan}.termsJson!!)
+            assertEquals(saved.terms.additionalFees,definition.terms.additionalFees)
+            assertEquals("2026-11-02",definition.terms.accrualWindows.first().start)
+            assertEquals(originalBills.map{it.totalMinor},state.finance.bills.filter{it.planId==plan}.sortedBy{it.number}.map{it.totalMinor})
+        }
+    }
+
     @Test fun manualBorrowingContractAllocationAndRepayment()=runBlocking<Unit> {
         val (b,bank)=setup();val loan=r.saveAccount(b,"贷款",AccountType.LOAN,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")
         cycle(b,listOf(
@@ -82,6 +184,10 @@ class CommandFinanceExecutionTest {
             val pendingDebt=model.steps.single{it.stepId=="pending"}.objects.single{it.type=="balance"&&it.key==loan}
             assertEquals(pendingDebt.before,pendingDebt.after)
             assertEquals(1,state.finance.contractPlans.size);assertEquals(1,state.finance.repaymentAllocations.size)
+            val repaymentFacts=model.steps.single{it.stepId=="paid"}.objects.single{it.type=="repayment"}.after.jsonObject
+            assertEquals(JsonPrimitive("JPY"),repaymentFacts["sourceCurrency"])
+            val contractFacts=model.steps.single{it.stepId=="borrow"}.objects.single{it.type=="contract"}.after.jsonObject
+            assertEquals(JsonPrimitive("JPY"),contractFacts["fundingCurrency"])
             assertTrue(model.net.any{it.type=="contractBalance"&&it.after.jsonObject["remainingMinor"]==JsonPrimitive(20000)})
         }
     }

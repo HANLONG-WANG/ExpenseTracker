@@ -3,8 +3,8 @@ package com.yohaku.expensetracker.receipt.scan
 import java.io.File
 import java.util.UUID
 
-/** One owner for camera, review and exported scan files. Call I/O methods on a worker.
- * Successful output ownership passes to the caller, which deletes it after import.
+/** One owner for camera and review files. Call I/O methods on a worker.
+ * Session ownership passes to the caller, which deletes it only after successful import or explicit cancellation.
  * A cancelled worker cannot recreate a removed session: writes require its directory to exist.
  */
 object ScanTemporaryFiles {
@@ -21,16 +21,6 @@ object ScanTemporaryFiles {
         return file
     }
     @Synchronized fun discard(directory: File) { directory.deleteRecursively() }
-    @Synchronized fun export(cacheDir: File, directory: File, selected: File): File {
-        val destination = newDirectory(cacheDir)
-        create(destination)
-        val output = File(destination, "output.jpg")
-        try {
-            check(selected.renameTo(output)) { "Cannot transfer scan result" }
-            discard(directory)
-            return output
-        } catch (e: Exception) { discard(destination); throw e }
-    }
     @Synchronized fun cleanExpired(cacheDir: File, now: Long = System.currentTimeMillis()) {
         File(cacheDir, "receipt-capture").listFiles()?.filter { now - it.lastModified() > MAX_AGE_MS }?.forEach(::discard)
     }

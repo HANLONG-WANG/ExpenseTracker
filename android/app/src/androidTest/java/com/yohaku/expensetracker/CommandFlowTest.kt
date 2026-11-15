@@ -30,6 +30,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class CommandFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private val context=InstrumentationRegistry.getInstrumentation().targetContext
     private lateinit var db:YohakuDatabase
@@ -37,7 +38,6 @@ class CommandFlowTest {
     private lateinit var cloud:CloudRepository
     private lateinit var vm:AppViewModel
     private val haptics=RecordingHapticOutput()
-    private var hapticsPreviouslyEnabled=true
     private val sentAcks=java.util.concurrent.CopyOnWriteArrayList<String>()
     private val ackSchedules=java.util.concurrent.atomic.AtomicInteger(0)
     private val taskDirectories=mutableListOf<File>()
@@ -69,13 +69,14 @@ class CommandFlowTest {
     @Before fun open() {
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         r=LedgerRepository(db,Clock.fixed(Instant.parse("2026-11-02T03:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        cloud=CloudRepository(context,r,Credentials(),apiFactory=::api,scheduleTransfer={},scheduleAcknowledgements={ackSchedules.incrementAndGet();Unit},commandReferenceSnapshot={emptyList()})
-        vm=AppViewModel(r,AppPreferences(context),testReferenceRates(AppPreferences(context),r.clock),cloud=cloud)
-        hapticsPreviouslyEnabled=runBlocking{vm.preferences.hapticsEnabled.first()}
+        cloud=CloudRepository(context,r,Credentials(),apiFactory=::api,scheduleTransfer={},scheduleAcknowledgements={ackSchedules.incrementAndGet();Unit},commandReferenceSnapshot={emptyList()},commandPreferences=testPreferences.preferences)
+        vm=AppViewModel(r,testPreferences.preferences,testReferenceRates(testPreferences.preferences,r.clock),cloud=cloud)
+        assertSame(vm.preferences,cloud.commands.preferences)
+        assertSame(vm.preferences,vm.referenceRates.store)
         runBlocking{vm.preferences.setHapticsEnabled(true)}
         ui.setContent{NativeApp(vm,haptics=haptics)}
     }
-    @After fun close(){runBlocking{vm.preferences.setHapticsEnabled(hapticsPreviouslyEnabled)};vm.viewModelScope.cancel();db.close();taskDirectories.forEach{it.deleteRecursively()}}
+    @After fun close(){vm.viewModelScope.cancel();db.close();taskDirectories.forEach{it.deleteRecursively()}}
     private fun tap(tag:String){ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()};ui.onNodeWithTag(tag).performScrollTo().performClick();ui.waitForIdle()}
     private fun shot(name:String) {
         if(!visualEnabled())return
@@ -230,7 +231,7 @@ class CommandFlowTest {
                 assertEquals(30000L,db.financialDao().graph(book).first()!!.bills.single().totalMinor)
                 assertEquals(1,db.cloudDao().pendingAcks().count{it.localId==row.localId&&it.status=="imported"})
                 ackSchedules.set(0)
-                val restarted=CloudRepository(context,r,Credentials(),apiFactory=::api,scheduleTransfer={},scheduleAcknowledgements={ackSchedules.incrementAndGet();Unit},commandReferenceSnapshot={emptyList()})
+                val restarted=CloudRepository(context,r,Credentials(),apiFactory=::api,scheduleTransfer={},scheduleAcknowledgements={ackSchedules.incrementAndGet();Unit},commandReferenceSnapshot={emptyList()},commandPreferences=testPreferences.preferences)
                 restarted.resumePending()
                 assertTrue(ackSchedules.get()>0)
                 assertFalse(restarted.sendPendingAcks())

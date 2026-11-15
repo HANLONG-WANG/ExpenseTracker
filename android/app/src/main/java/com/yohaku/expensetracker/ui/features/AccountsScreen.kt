@@ -91,7 +91,8 @@ import com.yohaku.expensetracker.ui.theme.*
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val debt=AccountType.valueOf(a.type).debt
     val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
-    val note=if(!a.active)word("已停用 · 请核对资金安排","停止中・資金予定を確認")else if(debt)accountTypeName(AccountType.valueOf(a.type))+" · "+word("当前欠款","現在の借入残高") else accountTypeName(AccountType.valueOf(a.type))
+    val baseNote=if(!a.active)word("已停用 · 请核对资金安排","停止中・資金予定を確認")else if(debt)accountTypeName(AccountType.valueOf(a.type))+" · "+word("当前欠款","現在の借入残高") else accountTypeName(AccountType.valueOf(a.type))
+    val note=listOfNotNull(baseNote,if(debt)pendingRepaymentLabel(s,a.id,today.toString())else null).joinToString("\n")
     val click=Modifier.testTag("account-"+a.id).fillMaxWidth().clickable(role=Role.Button,onClick=onClick)
     when(t.id){
         "magazine"->Column(click){
@@ -133,7 +134,8 @@ import com.yohaku.expensetracker.ui.theme.*
     val t=LocalYohaku.current
     val debt=AccountType.valueOf(a.type).debt
     val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
-    val note=if(!a.active)word("已停用 · 请核对资金安排","停止中・資金予定を確認")else if(debt)accountTypeName(AccountType.valueOf(a.type))+" · "+word("当前欠款","現在の借入残高") else accountTypeName(AccountType.valueOf(a.type))
+    val baseNote=if(!a.active)word("已停用 · 请核对资金安排","停止中・資金予定を確認")else if(debt)accountTypeName(AccountType.valueOf(a.type))+" · "+word("当前欠款","現在の借入残高") else accountTypeName(AccountType.valueOf(a.type))
+    val note=listOfNotNull(baseNote,if(debt)pendingRepaymentLabel(s,a.id,today.toString())else null).joinToString("\n")
     val click=modifier.testTag("account-"+a.id).clickable(role=Role.Button,onClick=onClick)
     @Composable fun Name(size:Int,lineHeight:Float,bold:Boolean)=Text(a.name,maxLines=2,overflow=TextOverflow.Ellipsis,color=t.ink,fontSize=size.sp,lineHeight=(size*lineHeight).sp,fontFamily=t.body,fontWeight=if(bold)FontWeight.SemiBold else FontWeight.Normal)
     @Composable fun Amount(size:Int,color:Color)=BasicText(amount,Modifier.fillMaxWidth().testTag("account-amount-"+a.id),style=TextStyle(color=color,fontFamily=t.number),maxLines=1,

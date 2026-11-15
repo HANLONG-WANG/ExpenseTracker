@@ -29,6 +29,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class StatementFileWorkflowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private lateinit var db:YohakuDatabase
@@ -41,7 +42,7 @@ class StatementFileWorkflowTest {
         val context=instrumentation.targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-16T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=recorder)}
+        vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=recorder)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();folders.forEach{shell("rm -r /sdcard/Download/$it")}}
     private fun shell(command:String):ByteArray=ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
@@ -183,6 +184,45 @@ class StatementFileWorkflowTest {
         ui.onNode(hasText("確認して保存")and hasClickAction()).performScrollTo().performClick()
         ui.waitUntil(10000){!vm.busy.value&&vm.entry.value==null&&vm.entryReview.value==null}
     }
+    @Test fun separateTransferFeeKeepsPostingIdentityAcrossThemes() {
+        for((theme,language) in testLooks(this@StatementFileWorkflowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val ids=runBlocking {
+                val book=repo.createBook("手续费",Currency.JPY,theme=theme,language=language)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val bank=repo.saveAccount(book,"银行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+                val target=repo.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val transfer=repo.previewEntry(book,EntryDraft(kind=EntryKind.TRANSFER,accountId=bank,toAccountId=target,amount="1000",toAmount="1000",
+                    date="2026-10-15",toDate="2026-10-15",fromConfirmed=false,toConfirmed=false,feePosition=TransferFeePosition.SEPARATE,
+                    feeAccountId=bank,feeAmount="10",feeCurrency=Currency.JPY,feeDate="2026-10-15",feeConfirmed=false))
+                val event=requireNotNull(repo.commitEntryReview(book,transfer))
+                vm.preferences.select(book);listOf(book,bank,event)
+            }
+            val (book,bank,event)=ids
+            val row=StatementRow(repo.id(),"2026-10-15","out",FileMoney("JPY","15"),"手续费",posted_date="2026-10-15")
+            val file=StatementFile("yohaku.statement",1,repo.id(),book,bank,"JPY","2026-10-01","2026-10-31","posted_date",false,"银行",emptyList(),listOf(row))
+            runBlocking{repo.saveStatement(book,repo.previewStatement(book,FileProtocols.json.encodeToString(file)))}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
+            ui.runOnIdle{vm.selectedStatementBatch.value=file.file_id;vm.navigate("statements")}
+            click("statement-candidates-${row.row_id}")
+            ui.onNodeWithTag("statement-confirm-actual-$event").assertExists()
+            shot("$theme-$language-separate-fee-candidates")
+            click("statement-confirm-actual-$event-fee")
+            ui.waitUntil(10000){vm.entry.value?.id==event}
+            assertEquals("1000",vm.entry.value!!.amount);assertEquals("15",vm.entry.value!!.feeAmount)
+            assertFalse(vm.entry.value!!.fromConfirmed);assertTrue(vm.entry.value!!.feeConfirmed)
+            shot("$theme-$language-separate-fee-editor")
+            ui.onNode(hasText(text("保存转账修改","振替の変更を保存"))and hasClickAction()).performScrollTo().performClick()
+            ui.waitUntil(10000){!vm.busy.value&&vm.entryReview.value!=null}
+            ui.onNode(hasText(text("确认并保存","確認して保存"))and hasClickAction()).performScrollTo().performClick()
+            ui.waitUntil(10000){!vm.busy.value&&vm.entry.value==null&&vm.entryReview.value==null}
+            val snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            assertEquals(1000L,snapshot.events.single().amountMinor)
+            assertEquals(15L,snapshot.expenseComponents.single().amountMinor)
+            assertEquals(9985L,snapshot.balance(snapshot.accounts.first{it.id==bank}))
+        }
+    }
+
     @Test fun actualSettlementTransferAndBillInfoUseNormalExplicitReviews() {
         val ids=runBlocking {
             val b=repo.createBook("実計上と請求",Currency.JPY,theme="objects",language="ja")

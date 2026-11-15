@@ -22,6 +22,7 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class SetupFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
@@ -31,7 +32,7 @@ class SetupFlowTest {
     @Before fun setup(){
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        repo=LedgerRepository(db);prefs=AppPreferences(context)
+        repo=LedgerRepository(db);prefs=testPreferences.preferences
         runBlocking{prefs.clearSetup()};vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}

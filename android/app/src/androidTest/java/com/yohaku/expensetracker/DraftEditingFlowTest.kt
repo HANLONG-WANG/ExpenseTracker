@@ -20,6 +20,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DraftEditingFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
@@ -34,7 +35,7 @@ class DraftEditingFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db)
-        val prefs=AppPreferences(context)
+        val prefs=testPreferences.preferences
         runBlocking {
             prefs.clearSetup()
             a=repo.createBook("生活",Currency.JPY)
@@ -197,10 +198,21 @@ class DraftEditingFlowTest {
         ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="detail"&&!vm.busy.value}
         assertEquals(1,snapshot(a).events.single().revision)
         ui.onNodeWithText("×").performClick()
-        ui.runOnIdle{vm.startEntry(snapshot(a));vm.changeEntry(a,vm.entry.value!!.copy(amount="100"))}
+        ui.runOnIdle{vm.startEntry(snapshot(a))}
         ui.onNodeWithTag("header-settings").performScrollTo().performClick();ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="settings"&&!vm.busy.value}
         ui.runOnIdle{vm.startTransfer(snapshot(a))}
         ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="settings"&&!vm.busy.value}
+    }
+    @Test fun amountWithoutCategoryStillRequiresLeavingConfirmation() {
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==a}
+        ui.runOnIdle{vm.startEntry(snapshot(a));vm.changeEntry(a,vm.entry.value!!.copy(amount="100"))}
+        assertNull(vm.entry.value!!.categoryId)
+        ui.onNodeWithTag("header-settings").performScrollTo().performClick()
+        ui.onNodeWithText("这笔还未保存").assertIsDisplayed()
+        tap("保留草稿并返回")
+        ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="settings"&&!vm.busy.value}
+        val kept=requireNotNull(snapshot(a).draft)
+        assertNull(kept.categoryId);assertEquals("100",kept.amount)
     }
     @Test fun editSurvivesThemeAndLanguageSwitchAndCancelKeepsOriginal() {
         tap("喫茶と余白")

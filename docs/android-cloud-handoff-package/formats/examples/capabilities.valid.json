@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "cc2474c0eaab24474d01b0fabf10ea6cada6f59cb28d93cb6c5d8490e62371e4",
+    "catalogDigest": "4a21f1a62a1326de0e09bdee60812803261c84ed7f057d54f08cc4ae49944469",
     "commands": [
         {
             "comparisonFields": [
@@ -17237,7 +17237,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "batch/row/entry required; note defaults empty.",
+            "defaults": "batch/row/entry required; postingId selects the exact posting when ambiguous; note defaults empty.",
             "description": "Accept a reviewed difference linking this statement row to the specified existing entry; does not change ledger amounts.",
             "example": {
                 "batch": "batch-id",
@@ -17265,6 +17265,16 @@
                     },
                     "note": {
                         "type": "string"
+                    },
+                    "postingId": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     },
                     "row": {
                         "type": "string"
@@ -17341,7 +17351,7 @@
                 "USER_FACT"
             ],
             "defaults": "batch/row/occurredDate/postedDate required; kind=EXPENSE, set={}; originalEvent required for REFUND. Supply missing category/foreign amounts; source-side amount/direction cannot be overridden.",
-            "description": "Create the missing entry from this statement row, preserving its source amount/direction; phone USER_FACT covers the posted date and amount.",
+            "description": "Create the missing entry from this statement row, preserving its known source amount/currency/dates/direction and confirmed settlement; phone USER_FACT covers the posted date and amount.",
             "example": {
                 "batch": "batch-id",
                 "occurredDate": "2026-11-01",
@@ -18501,8 +18511,8 @@
                 "RISK",
                 "USER_FACT"
             ],
-            "defaults": "batch/row/entry/postedDate required; set={} may only supply baseAmount. Actual account amount comes from the statement row.",
-            "description": "Confirm the specified entry's actual account amount from this statement row, with explicit postedDate; only missing baseAmount may be supplied in set. Phone USER_FACT is required.",
+            "defaults": "batch/row/entry/postedDate required; postingId identifies the exact posting (required if account/direction are ambiguous); set={} may supply baseAmount or, for a separate transfer fee, feeBaseAmount. Actual account amount comes from the statement row.",
+            "description": "Confirm the specified entry's actual account amount from this statement row, with explicit postedDate; only missing baseAmount (or feeBaseAmount for a separate transfer fee) may be supplied in set. Phone USER_FACT is required.",
             "example": {
                 "batch": "batch-id",
                 "entry": "entry-id",
@@ -18532,6 +18542,16 @@
                         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
                         "type": "string"
                     },
+                    "postingId": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
                     "row": {
                         "type": "string"
                     },
@@ -18539,6 +18559,66 @@
                         "additionalProperties": false,
                         "properties": {
                             "baseAmount": {
+                                "anyOf": [
+                                    {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                            "currency": {
+                                                "enum": [
+                                                    "JPY",
+                                                    "CNY",
+                                                    "USD"
+                                                ],
+                                                "type": "string"
+                                            },
+                                            "minor": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": [
+                                            "currency",
+                                            "minor"
+                                        ],
+                                        "type": "object"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ],
+                                "x-local-constraint": {
+                                    "schema": {
+                                        "anyOf": [
+                                            {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                    "currency": {
+                                                        "enum": [
+                                                            "JPY",
+                                                            "CNY",
+                                                            "USD"
+                                                        ],
+                                                        "type": "string"
+                                                    },
+                                                    "minor": {
+                                                        "minimum": 1,
+                                                        "type": "integer"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "currency",
+                                                    "minor"
+                                                ],
+                                                "type": "object"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
+                                }
+                            },
+                            "feeBaseAmount": {
                                 "anyOf": [
                                     {
                                         "additionalProperties": false,

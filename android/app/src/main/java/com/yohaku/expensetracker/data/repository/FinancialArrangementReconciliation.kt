@@ -139,7 +139,7 @@ private fun LedgerRepository.prepareArrangementReconciliation(state:FinancialRev
     }else if(input.openingSourceMinor!=null) {
         require(old.sourceEventId==null&&parent==null&&input.openingSourceMinor>=0)
         val account=s.accounts.first{it.id==old.accountId}
-        val used=f.plans.filter{it.accountId==old.accountId&&it.origin=="OPENING"&&it.id!=old.id}.map{it.principalMinor}.knownTotal()?:return failed("plan.noPrincipal")
+        val used=f.allocatedOpeningPrincipal(old.accountId,old.id)?:return failed("plan.noPrincipal")
         if(input.openingSourceMinor>subtractExact(account.openingMinor,used))return failed("arrangement.sourcePrincipal")
         sourcePlan=old.copy(principalMinor=input.openingSourceMinor)
         next=next.copy(plans=next.plans.map{if(it.id==old.id)sourcePlan else it})

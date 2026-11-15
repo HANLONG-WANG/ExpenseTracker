@@ -15,7 +15,8 @@ CREATE TABLE mcp_subscriptions(id TEXT PRIMARY KEY,owner TEXT,url TEXT,taskType 
 CREATE TABLE mcp_deliveries(id TEXT PRIMARY KEY,subscriptionId TEXT,taskId TEXT,owner TEXT,inputRevision INTEGER,eventId TEXT,payload TEXT,state TEXT,attempts INTEGER,nextAttempt INTEGER,lastError TEXT);
 CREATE TABLE devices(id TEXT PRIMARY KEY,owner TEXT,name TEXT,tokenHash TEXT,active INTEGER,createdAt TEXT,lastUsed TEXT);
 `);
-function statement(query,args=[]){return {bind(...args){return statement(query,args);},async all(){return {results:database.prepare(query).all(...args)};},async first(){return database.prepare(query).get(...args)||null;},async run(){const r=database.prepare(query).run(...args);return {meta:{changes:Number(r.changes)}};}};}
+let failReads=false;
+function statement(query,args=[]){return {bind(...args){return statement(query,args);},async all(){return {results:database.prepare(query).all(...args)};},async first(){if(failReads)throw Error('injected post-commit read failure');return database.prepare(query).get(...args)||null;},async run(){const r=database.prepare(query).run(...args);return {meta:{changes:Number(r.changes)}};}};}
 const objects=new Map();
 const sha=async bytes=>Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex');
 const BUCKET={async put(key,body,options={}){const bytes=new Uint8Array(await new Response(body).arrayBuffer());if(options.sha256&&await sha(bytes)!==options.sha256)throw Error('checksum mismatch');objects.set(key,bytes);},async delete(key){objects.delete(key);},async get(key,opts={}){const bytes=objects.get(key);if(!bytes)return null;const part=opts.range?bytes.slice(opts.range.offset,opts.range.offset+opts.range.length):bytes;return {arrayBuffer:async()=>part.slice().buffer,text:async()=>new TextDecoder().decode(part),body:new Response(part).body};}};
@@ -158,5 +159,45 @@ await test('webhook retries preserve event ID; permanent failure is recorded',as
  assert.equal(database.prepare("SELECT state FROM mcp_deliveries WHERE id='delivery_retry'").get().state,'failed');
  assert.equal(database.prepare('SELECT active FROM mcp_subscriptions WHERE id=?').get(id).active,0);
  assert(database.prepare("SELECT message FROM events WHERE taskId=? AND message LIKE '自动通知%' ").get(pending.id));
+});
+const uploadRequest=()=>new Request('https://desk.example/files?name=source.txt',{method:'POST',body:bytes,headers:{'content-length':String(bytes.length),'x-content-sha256':checksum,'content-type':'text/plain'}});
+const uploadFiles=id=>database.prepare("SELECT * FROM files WHERE taskId=? AND role='input'").all(id);
+const uploadEvents=id=>database.prepare("SELECT * FROM events WHERE taskId=? AND message LIKE '已上传原始资料：%'").all(id);
+await test('upload log failure rolls back metadata and revision; retry saves readable bytes once',async()=>{
+ const pending=await svc.createTask('upload-tests',{type:'general',title:'Upload log failure'},'upload-log-failure');
+ const before=new Set(objects.keys());
+ database.exec("CREATE TEMP TRIGGER fail_upload_log BEFORE INSERT ON events WHEN NEW.message LIKE '已上传原始资料：%' BEGIN SELECT RAISE(ABORT, 'injected upload log failure'); END;");
+ try{await assert.rejects(svc.upload('upload-tests',pending,uploadRequest()),/injected upload log failure/);}
+ finally{database.exec('DROP TRIGGER fail_upload_log');}
+ assert.equal(uploadFiles(pending.id).length,0);assert.equal(uploadEvents(pending.id).length,0);
+ assert.equal((await svc.task('upload-tests',pending.id)).inputRevision,0);assert.deepEqual(new Set(objects.keys()),before);
+ const saved=await svc.upload('upload-tests',pending,uploadRequest());
+ const retry=await svc.upload('upload-tests',await svc.task('upload-tests',pending.id),uploadRequest());
+ assert.deepEqual(retry,{fileId:saved.fileId,duplicate:true});
+ assert.equal(uploadFiles(pending.id).length,1);assert.equal(uploadEvents(pending.id).length,1);
+ assert.equal((await svc.task('upload-tests',pending.id)).inputRevision,1);assert.equal(objects.size,before.size+1);
+ assert.deepEqual(new Uint8Array(await (await svc.download('upload-tests',saved.fileId)).arrayBuffer()),bytes);
+});
+await test('committed upload needs no follow-up read and duplicate retains readable bytes',async()=>{
+ const pending=await svc.createTask('upload-tests',{type:'general',title:'Upload commit boundary'},'upload-commit-boundary');
+ const db=globalThis.__env.DB,originalBatch=db.batch;
+ db.batch=async ops=>{const result=await originalBatch(ops);failReads=true;return result;};
+ let saved;
+ try{saved=await svc.upload('upload-tests',pending,uploadRequest());}
+ finally{failReads=false;db.batch=originalBatch;}
+ assert.equal(saved.size,bytes.length);assert.equal(saved.sha256,checksum);
+ assert.equal(uploadFiles(pending.id).length,1);assert.equal(uploadEvents(pending.id).length,1);
+ assert.equal((await svc.task('upload-tests',pending.id)).inputRevision,1);
+ assert.deepEqual(await svc.upload('upload-tests',pending,uploadRequest()),{fileId:saved.fileId,duplicate:true});
+ assert.deepEqual(new Uint8Array(await (await svc.download('upload-tests',saved.fileId)).arrayBuffer()),bytes);
+ assert.equal(uploadEvents(pending.id).length,1);assert.equal((await svc.task('upload-tests',pending.id)).inputRevision,1);
+});
+await test('task status conflict removes unregistered object without revision or upload history',async()=>{
+ const pending=await svc.createTask('upload-tests',{type:'general',title:'Upload status conflict'},'upload-status-conflict');
+ database.prepare("UPDATE tasks SET status='archived' WHERE id=?").run(pending.id);
+ const before=new Set(objects.keys());
+ await assert.rejects(svc.upload('upload-tests',pending,uploadRequest()),e=>e instanceof svc.HttpError&&e.status===409);
+ assert.equal(uploadFiles(pending.id).length,0);assert.equal(uploadEvents(pending.id).length,0);
+ assert.equal((await svc.task('upload-tests',pending.id)).inputRevision,0);assert.deepEqual(new Set(objects.keys()),before);
 });
 console.log(`${count} contract checks passed; isolated SQLite/R2 only. Hosted gateway/OAuth not simulated.`);

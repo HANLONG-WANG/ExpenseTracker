@@ -35,7 +35,7 @@ import java.time.*
     var amount by financialField("amount"){Money(c,total).decimal.toPlainString()}
     var fee by financialField("fee"){""};var feeDate by financialField<String?>("feeDate"){null}
     var included by financialField("included"){false}
-    var owner by remember{mutableStateOf<Int?>(null)};var review by remember{mutableStateOf<BatchRevolvingReview?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)};var review by remember{mutableStateOf<BatchRevolvingReview?>(null)}
     var applying by remember{mutableStateOf(false)};var platform by remember{mutableStateOf(false)};var exception by remember{mutableStateOf(false)}
     var appliedAt by financialField("appliedAt"){vm.repository.clock.instant().toString()}
     var stale by remember{mutableStateOf(false)}
@@ -71,7 +71,7 @@ import java.time.*
             }
             YField(word("转换金额","変更額"),amount,{amount=it},Modifier.testTag("batch-revolving-amount"),numeric=true)
             YSelect(word("目标循环还款计划","変更先のリボ・循環返済プラン"),pool.id,listOf(pool.id to pool.name),{})
-            YDateFields(listOf(word("变更生效日","変更適用日") to effective),owner,{owner=it},{_,v->effective=v})
+            YDateFields(listOf(YDateField("effective",word("变更生效日","変更適用日"),effective)),owner,{owner=it},{_,v->effective=v})
             YField(word("办理费 / 未知留空，无费用填 0","変更手数料・不明は空欄、無料は0"),fee,{fee=it},Modifier.testTag("batch-revolving-fee"),numeric=true)
             val dates=vm.repository.json.decodeFromString<FinancialPredictionInput>(pool.termsJson!!).terms.paymentDates.filter{it>=effective}
             YSelect(word("办理费计入的付款日 / 费用0时可不选","変更手数料を含む支払日・無料は未選択可"),feeDate,listOf(null to word("请选择","選択してください"))+dates.map{it as String? to it},{feeDate=it;included=false})

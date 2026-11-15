@@ -15313,6 +15313,16 @@
                 "note": {
                     "type": "string"
                 },
+                "postingId": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
                 "row": {
                     "type": "string"
                 }
@@ -15347,6 +15357,16 @@
                     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
                     "type": "string"
                 },
+                "postingId": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
                 "row": {
                     "type": "string"
                 },
@@ -15354,6 +15374,66 @@
                     "additionalProperties": false,
                     "properties": {
                         "baseAmount": {
+                            "anyOf": [
+                                {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "currency": {
+                                            "enum": [
+                                                "JPY",
+                                                "CNY",
+                                                "USD"
+                                            ],
+                                            "type": "string"
+                                        },
+                                        "minor": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": [
+                                        "currency",
+                                        "minor"
+                                    ],
+                                    "type": "object"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "x-local-constraint": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "currency": {
+                                                    "enum": [
+                                                        "JPY",
+                                                        "CNY",
+                                                        "USD"
+                                                    ],
+                                                    "type": "string"
+                                                },
+                                                "minor": {
+                                                    "minimum": 1,
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "currency",
+                                                "minor"
+                                            ],
+                                            "type": "object"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ]
+                                },
+                                "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
+                            }
+                        },
+                        "feeBaseAmount": {
                             "anyOf": [
                                 {
                                     "additionalProperties": false,

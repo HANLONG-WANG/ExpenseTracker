@@ -218,11 +218,14 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             } else repository.clearDraft(bookId)
         }
     }
-    fun startEntry(snapshot:BookSnapshot,kind:EntryKind=EntryKind.EXPENSE,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null) {
-        if(kind==EntryKind.TRANSFER){startTransfer(snapshot);return}
+    fun startEntry(snapshot:BookSnapshot,kind:EntryKind=EntryKind.EXPENSE,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,accountId:String?=null):Boolean {
+        if(kind==EntryKind.TRANSFER){startTransfer(snapshot,accountId);return true}
+        val next=try { snapshot.newEntryDraft(kind,LocalDate.now(repository.clock).toString(),activityId,treatFriendId,merchantId,accountId) }
+        catch(e:IllegalArgumentException){error.value=e.message;haptic(Haptic.Error);return false}
         entryReturnRoute.value=route.value
-        entry.value=snapshot.newEntryDraft(kind,LocalDate.now(repository.clock).toString(),activityId,treatFriendId,merchantId)
+        entry.value=next
         navigate("category-picker");openDraft(snapshot.book.id)
+        return true
     }
     fun resumeEntry(snapshot:BookSnapshot) { entryBaseline=null;entryReturnRoute.value=route.value;entry.value=snapshot.draft?.let{snapshot.syncEditingMerchant(it)};route.value=if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry";persistDraft(snapshot.book.id) }
     fun editEntry(snapshot:BookSnapshot,event:EventEntity) {
@@ -258,8 +261,10 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val current=entry.value?:return
         if(current.id!=null||current.occurrenceId!=null||current.kind==EntryKind.REFUND||current.kind==kind)return
         val next=if(kind==EntryKind.TRANSFER)snapshot.newTransferDraft(current.date)else snapshot.withRememberedCardPayment(EntryDraft(kind=kind,date=current.date,accountId=snapshot.defaultEntryAccount(kind),activityId=if(kind==EntryKind.EXPENSE)snapshot.features?.takeIf{it.activityMode}?.activeActivityId else null))
+        // Defaults of the new kind are clean; retained user content must stay outside that baseline.
+        entryBaseline=next.copy(date=entryBaseline?.date?:current.date,mediaSession=current.mediaSession,mediaInitialized=current.mediaInitialized)
         entry.value=next.copy(note=current.note,mediaSession=current.mediaSession,mediaInitialized=current.mediaInitialized,attachmentIds=current.attachmentIds,receiptFileIds=current.receiptFileIds)
-        route.value=if(kind==EntryKind.TRANSFER)"entry"else"category-picker";openDraft(snapshot.book.id)
+        route.value=if(kind==EntryKind.TRANSFER)"entry"else"category-picker";persistDraft(snapshot.book.id)
     }
     fun persistDraft(bookId:String) {
         val original=entry.value?:return
@@ -393,11 +398,13 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         entry.value=entry.value!!.copy(settlementConfirmed=true)
         persistDraft(snapshot.book.id)
     }
-    /** [session] is passed explicitly when a camera result arrives after process recreation; the stored draft keeps the same session. */
-    fun importFiles(context:android.content.Context,bookId:String,uris:List<android.net.Uri>,receipt:Boolean,session:String?=entry.value?.mediaSession,replaceReceiptId:String?=null,preserveOriginalOverride:Boolean?=null,onFinish:()->Unit={}) {
-        if(uris.isEmpty()||session==null){onFinish();return}
+    /** [session] pins a restored scan to its original draft. [onFinish] runs on Main and reports
+     * whether every URI was committed; only a true result permits deleting scan recovery files. */
+    fun importFiles(context:android.content.Context,bookId:String,uris:List<android.net.Uri>,receipt:Boolean,session:String?=entry.value?.mediaSession,replaceReceiptId:String?=null,preserveOriginalOverride:Boolean?=null,onFinish:(Boolean)->Unit={}) {
+        if(uris.isEmpty()||session==null){onFinish(false);return}
         val selected=preserveOriginalOverride?:mediaImportOption.value?.takeIf{it.session==session}?.preserveOriginal?:photoSaveOriginal.value
-        execute {
+        var allImported=false
+        execute(onComplete={onFinish(allImported)}) {
             var success=0;var fallback=0;var failed=0;var firstFailure:String?=null
             try {
                 val preserveOriginal=selected?:preferences.photoSaveOriginal.first()
@@ -411,18 +418,43 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
                         }}
                     }catch(e:CancellationException){throw e}catch(e:Exception){failed++;if(firstFailure==null)firstFailure=e.message?:"无法导入文件 / ファイルを取り込めません"}
                 }
+                allImported=success==uris.size
                 importNotice(bookId,MediaBatchResult(success,fallback,failed,firstFailure))
-            }finally{mediaImportProgress.value=null;onFinish()}
+            }finally{mediaImportProgress.value=null}
         }
     }
-    /** Adds the first receipt images to a saved record from its detail page, using the global photo storage setting. */
-    fun importRecordReceipts(context:android.content.Context,bookId:String,eventId:String,uris:List<android.net.Uri>,onFinish:()->Unit={}) {
-        if(uris.isEmpty()){onFinish();return}
-        execute {
+    /** Adds a record's first receipts using the global photo setting. [onFinish] reports full commit on Main. */
+    fun importRecordReceipts(context:android.content.Context,bookId:String,eventId:String,uris:List<android.net.Uri>,onFinish:(Boolean)->Unit={}) {
+        if(uris.isEmpty()){onFinish(false);return}
+        var allImported=false
+        execute(onComplete={onFinish(allImported)}) {
             try {
                 val result=repository.importRecordReceipts(bookId,eventId,uris.map{mediaSource(context,it)},preferences.photoSaveOriginal.first()){mediaImportProgress.value=MediaImportProgress(eventId,it,uris.size)}
+                allImported=result.success==uris.size
                 importNotice(bookId,result)
-            }finally{mediaImportProgress.value=null;onFinish()}
+            }finally{mediaImportProgress.value=null}
+        }
+    }
+    // Kept by the ViewModel: a recreated Activity observes the same import instead of starting it again.
+    internal val receiptScanImport=MutableStateFlow<ReceiptScanImport?>(null)
+    internal fun importReceiptScan(context:android.content.Context,scan:PendingReceiptScan,retry:Boolean=false) {
+        val path=requireNotNull(scan.outputPath)
+        val previous=receiptScanImport.value?.takeIf{it.path==path}
+        if(previous!=null&&(!retry||previous.status!=ReceiptScanImportStatus.FAILED))return
+        receiptScanImport.value=ReceiptScanImport(path,ReceiptScanImportStatus.IMPORTING)
+        val file=java.io.File(path)
+        val uri=androidx.core.content.FileProvider.getUriForFile(context,context.packageName+".files",file)
+        val finish:(Boolean)->Unit={imported->
+            if(!imported)receiptScanImport.value=ReceiptScanImport(path,ReceiptScanImportStatus.FAILED)
+            else viewModelScope.launch {
+                withContext(Dispatchers.IO){com.yohaku.expensetracker.receipt.scan.ScanTemporaryFiles.discard(file.parentFile!!)}
+                receiptScanImport.value=ReceiptScanImport(path,ReceiptScanImportStatus.IMPORTED)
+            }
+        }
+        when(val target=scan.target) {
+            is ReceiptTarget.Record->importRecordReceipts(context,scan.bookId,target.eventId,listOf(uri),finish)
+            is ReceiptTarget.Draft->importFiles(context,scan.bookId,listOf(uri),true,target.session,
+                replaceReceiptId=target.replaceFileId,preserveOriginalOverride=scan.preserveOriginal,onFinish=finish)
         }
     }
     private suspend fun importNotice(bookId:String,result:MediaBatchResult)=withContext(Dispatchers.Main){

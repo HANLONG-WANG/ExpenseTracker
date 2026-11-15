@@ -5,7 +5,6 @@ import android.os.Process
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -26,15 +25,14 @@ import java.time.LocalDate
 /** Run each phase separately, force-stopping the app between phases. Own DB, preferences and media only. */
 @RunWith(AndroidJUnit4::class)
 class ManagementProcessRecoveryTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule("phase-e-management-recovery")
     @get:Rule val ui=createComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val context get()=instrumentation.targetContext
     private val database="phase-e-management-recovery.db"
     private val marker get()=File(context.filesDir,"verification/phase-e-management-recovery.json")
     private val media get()=File(context.filesDir,"verification/phase-e-management-recovery-media")
-    private val preferenceFile get()=File(context.filesDir,"verification/phase-e-management-recovery.preferences_pb")
     private lateinit var db:YohakuDatabase
-    private lateinit var scope:CoroutineScope
     private lateinit var repo:LedgerRepository
     private lateinit var prefs:AppPreferences
     private lateinit var vm:AppViewModel
@@ -42,15 +40,13 @@ class ManagementProcessRecoveryTest {
     @Before fun open() {
         Assume.assumeTrue("Requires external process stops",InstrumentationRegistry.getArguments().getString("managementRecovery")=="true")
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,database).build()
-        scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
-        prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={preferenceFile}))
+        prefs=testPreferences.preferences
         repo=LedgerRepository(db,mediaRoot=media);vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
     }
     @After fun close() {
         if(::vm.isInitialized)vm.viewModelScope.cancel()
-        if(::scope.isInitialized)scope.cancel()
         if(::db.isInitialized)db.close()
-        if(cleanup){context.deleteDatabase(database);media.deleteRecursively();preferenceFile.delete();marker.delete()}
+        if(cleanup){context.deleteDatabase(database);media.deleteRecursively();testPreferences.deleteAfterTest=true;marker.delete()}
     }
     private fun state()=JSONObject(marker.readText())
     private fun tap(tag:String) {

@@ -73,7 +73,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     var requestedOccurrenceBase by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedTemplate by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedOccurrence by rememberSaveable{mutableStateOf<String?>(null)}
-    var requestedTransferAccount by rememberSaveable{mutableStateOf<String?>(null)}
+    var requestedEntryAccount by rememberSaveable{mutableStateOf<String?>(null)}
     var detailReturnRoute by rememberSaveable{mutableStateOf("home")}
     var pendingRecordAction by rememberSaveable{mutableStateOf("edit")}
     var selectedEventId by rememberSaveable{mutableStateOf<String?>(null)}
@@ -91,7 +91,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     var financialInitialTab by rememberSaveable{mutableStateOf("overview")}
     var financialRequestId by rememberSaveable{mutableLongStateOf(0L)}
     val financialPages=rememberSaveableStateHolder()
-    var editAccount by remember{mutableStateOf<AccountEntity?>(null)}
+    var editAccountId by rememberSaveable{mutableStateOf<String?>(null)}
     var editBookId by rememberSaveable{mutableStateOf<String?>(null)}
     var leaveTarget by rememberSaveable{mutableStateOf("home")}
     var categoryParent by remember{mutableStateOf<String?>(null)}
@@ -140,13 +140,13 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                     return
                 }
                 val kind=EntryKind.valueOf(requestedEntryKind)
-                if(kind==EntryKind.TRANSFER)vm.startTransfer(current,requestedTransferAccount,requestedDestination)
-                else vm.startEntry(current,kind,requestedActivity,requestedTreatFriend,requestedMerchant)
+                if(kind==EntryKind.TRANSFER)vm.startTransfer(current,requestedEntryAccount,requestedDestination)
+                else if(!vm.startEntry(current,kind,requestedActivity,requestedTreatFriend,requestedMerchant,accountId=requestedEntryAccount))return
                 requestedDate?.let{date->vm.entry.value?.let{d->vm.changeEntry(book.id,d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate))}}
                 vm.markEntryBaseline()
             }
-            fun requestEntry(kind:EntryKind=EntryKind.EXPENSE,fromAccountId:String?=null,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,toAccountId:String?=null,date:String?=null){
-                requestedTemplate=null;requestedDate=date;requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedTransferAccount=fromAccountId;requestedDestination=toAccountId;requestedOccurrence=null
+            fun requestEntry(kind:EntryKind=EntryKind.EXPENSE,accountId:String?=null,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,toAccountId:String?=null,date:String?=null){
+                requestedTemplate=null;requestedDate=date;requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedEntryAccount=accountId;requestedDestination=toAccountId;requestedOccurrence=null
                 if(snapshot.draft!=null)sheet="existing-draft"else startRequestedEntry(snapshot)
             }
             fun startStatementRequest() {
@@ -158,8 +158,8 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                 requestedStatement=vm.repository.json.encodeToString(seed);requestedStatementActual=null
                 if(snapshot.draft!=null)sheet="statement-existing-draft"else startStatementRequest()
             }
-            fun requestStatementActual(eventId:String,accountId:String,row:com.yohaku.expensetracker.data.files.StatementRow,date:String) {
-                requestedStatementActual=vm.repository.json.encodeToString(StatementActualSeed(eventId,accountId,row,date));requestedStatement=null
+            fun requestStatementActual(eventId:String,accountId:String,row:com.yohaku.expensetracker.data.files.StatementRow,date:String,postingId:String) {
+                requestedStatementActual=vm.repository.json.encodeToString(StatementActualSeed(eventId,accountId,row,date,postingId));requestedStatement=null
                 if(snapshot.draft!=null)sheet="statement-existing-draft"else startStatementRequest()
             }
             fun openFinancial(id:String,month:String?=null,target:String=if(month==null)"overview"else"statement") {
@@ -229,7 +229,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
             }
             fun requestOccurrence(occurrence:OccurrenceEntity,amount:String,baseAmount:String) {
                 requestedOccurrenceAmount=amount;requestedOccurrenceBase=baseAmount
-                requestedTemplate=null;requestedDate=null;requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedTransferAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
+                requestedTemplate=null;requestedDate=null;requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedEntryAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
                 if(snapshot.draft!=null)sheet="existing-draft"else vm.startOccurrence(snapshot,occurrence,amount,baseAmount)
             }
             LaunchedEffect(book.id,YearMonth.from(today).toString(),snapshot.recurrences){vm.materializeMonth(book.id,YearMonth.from(today).toString())}
@@ -257,7 +257,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                     val receiptItems by remember(snapshot.book.id){vm.repository.db.fileWorkflowDao().items(snapshot.book.id)}.collectAsStateWithLifecycle(emptyList())
                     LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today,Modifier.weight(1f),chrome,receiptItems)
                 }
-                else if(baseRoute=="account-detail"&&detailAccount!=null)detailAccount.let{a->AccountDetail(snapshot,a,{editAccount=a;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)},{managedAccountId=a.id},Modifier.weight(1f),chrome)}
+                else if(baseRoute=="account-detail"&&detailAccount!=null)detailAccount.let{a->AccountDetail(snapshot,a,{editAccountId=a.id;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)},{managedAccountId=a.id},Modifier.weight(1f),chrome)}
                 else if(baseRoute=="rules"&&detailAccount!=null) financialPages.SaveableStateProvider(book.id+"/"+detailAccount.id) {
                     FinancialAccountScreen(snapshot,detailAccount,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,
                         {from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)},
@@ -271,7 +271,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                         "home"->HomeScreen(snapshot,{vm.navigate(it)},{requestEntry()},{vm.resumeEntry(snapshot)},{openRecord(it)},{vm.navigate("budget")},today=today,onRecurring={recurringInitialMonth=null;vm.navigate("recurring")},onTemplate={t->requestedTemplate=t.id;requestedOccurrence=null;if(snapshot.draft!=null)sheet="existing-draft"else vm.startTemplate(snapshot,t)},statementDue={HomeStatementDue(snapshot,vm,today)},financialContent={HomeFinancialOutlook(snapshot,vm,{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openTimelineItem(it)},{openAttention(it)},{vm.navigate("reminders")})})
                         "books"->BooksScreen(ready.overviews.filter{!it.book.archived&&it.book.deletedAt==null},book.id,{vm.selectBook(it)},{sheet="new-book"},{editBookId=it;sheet="rename-book"},{vm.navigate("book-management")})
                         "book-management"->BookManagementScreen(ready.overviews,book.id,vm,{sheet="new-book"})
-                        "accounts"->AccountsScreen(snapshot,{editAccount=null;sheet="account"},{selectedAccountId=it.id;vm.navigate("account-detail")},vm.referenceRates,financialContent={AccountsFinancialOutlook(snapshot,vm,{requestEntry(EntryKind.TRANSFER)},{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openAttention(it)},{vm.navigate("reminders")})},today=today)
+                        "accounts"->AccountsScreen(snapshot,{editAccountId=null;sheet="account"},{selectedAccountId=it.id;vm.navigate("account-detail")},vm.referenceRates,financialContent={AccountsFinancialOutlook(snapshot,vm,{requestEntry(EntryKind.TRANSFER)},{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openAttention(it)},{vm.navigate("reminders")})},today=today)
                         "calendar"->PaymentCalendarScreen(snapshot,vm,{openTimelineItem(it)},{vm.navigate("forecast")})
                         "notification-settings"->NotificationSettingsScreen(snapshot,vm)
                         "reminders"->ImportantItemsScreen(snapshot,vm,{openTimelineItem(it)},{account,month->openFinancial(account,month)},{openRisk(it)},{openAttention(it)},{vm.navigate("forecast")})
@@ -282,7 +282,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                         "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
                         "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")},{vm.navigate("merchants")},onTemplates={vm.navigate("templates")},vm=vm)
-                        "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
+                        "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date,postingId->requestStatementActual(event,account,row,date,postingId)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
                         "monthly-plan"->key(book.id){MonthlyPlanScreen(snapshot,vm)}
@@ -323,10 +323,10 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                 val toCurrency=snapshot.accounts.find{it.id==activeDraft.toAccountId}?.currency
                 val transferTitle=if(fromCurrency!=null&&toCurrency!=null&&fromCurrency==toCurrency)word("账户转账","口座振替")else word("换汇与转账","両替と振替")
                 YSheet(if(activeDraft.kind==EntryKind.TRANSFER)transferTitle else if(activeDraft.kind==EntryKind.REFUND)word("退款 · 原币与实际到账","返金・原通貨と実入金") else if(route=="category-picker")word("先选一个分类","まずカテゴリを選ぶ") else if(draft?.id!=null)word("编辑这笔记录","この記録を編集") else if(activeDraft.occurrenceId!=null)word("确认周期账单","定期支払を確認") else word("记一笔","一筆を記録"),{requestLeave()},if(route=="category-picker")rememberScrollState() else entryScroll){
-                    if(activeDraft.kind==EntryKind.TRANSFER)TransferForm(snapshot,activeDraft,vm,busy,{editAccount=null;sheet="account"},{vm.leaveEntry(book.id,false,entryReturnRoute)})
+                    if(activeDraft.kind==EntryKind.TRANSFER)TransferForm(snapshot,activeDraft,vm,busy,{editAccountId=null;sheet="account"},{vm.leaveEntry(book.id,false,entryReturnRoute)})
                     else if(activeDraft.kind==EntryKind.REFUND)RefundForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},busy,{vm.leaveEntry(book.id,false,entryReturnRoute)},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)},mediaOption={MediaPreserveToggle(activeDraft,vm)})
                     else if(route=="category-picker")CategoryPicker(vm,snapshot,activeDraft,{vm.changeEntry(book.id,it)},{categoryParent=it;categoryKind=activeDraft.kind;editCategory=null;sheet="category"},{vm.finishCategoryPick()})
-                    else EntryForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},{editAccount=null;sheet="account"},{vm.navigate("category-picker")},busy,{
+                    else EntryForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},{editAccountId=null;sheet="account"},{vm.navigate("category-picker")},busy,{
                         if(entryReturnRoute!="detail"){selectedEventId=activeDraft.id;detailReturnRoute=entryReturnRoute}
                         vm.leaveEntry(book.id,false,entryReturnRoute){if(entryReturnRoute!="detail")vm.navigate("detail")}
                     },focusAmount=amountFocusSession==activeDraft.mediaSession,onAmountFocused={vm.amountFocusSession.value=null},onSaveTemplate={sheet="save-template"},referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},locationContent={EntryLocation(snapshot,activeDraft,vm){vm.changeEntry(book.id,it)}},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)},mediaOption={MediaPreserveToggle(activeDraft,vm)})
@@ -389,7 +389,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                     YButton(word("放弃草稿，记录退款","下書きを破棄して返金を記録"),{vm.execute({vm.startRefund(snapshot,original);sheet=null}){vm.repository.clearDraft(book.id);vm.haptic(Haptic.Removed)}})
                 }}
 
-                "account"->AccountEditor(snapshot,vm,{sheet=null},editAccount,debtOnly=if(openEntry&&draft?.kind in listOf(EntryKind.INCOME,EntryKind.TRANSFER))false else null)
+                "account"->AccountEditor(snapshot,vm,{sheet=null},editAccountId,debtOnly=if(openEntry&&draft?.kind in listOf(EntryKind.INCOME,EntryKind.TRANSFER))false else null)
                 "category"->CategoryEditor(snapshot,categoryKind,categoryParent,editCategory,vm,{sheet=null},
                     onUse=if(openEntry&&route=="category-picker"&&editCategory==null){id->vm.entry.value?.let{vm.changeEntry(book.id,it.copy(categoryId=id));vm.finishCategoryPick()};sheet=null} else null)
                 "books"->YSheet(word("切换账本","帳簿を切替"),{sheet=null}) {
@@ -612,9 +612,9 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
         if(d.kind==EntryKind.EXPENSE)locationContent()
         if(d.kind==EntryKind.EXPENSE)EntryMerchantInput(s,d,onChange)
         else YField(word("名称 / 说明","名称 / 内容"),d.merchant,{onChange(d.copy(merchant=it,merchantId=null,merchantManuallyEdited=true))})
-        var activeDate by remember{mutableStateOf<Int?>(null)}
-        YDateFields(listOf((if(confirmingOccurrence)word("实际付款日期","実際の支払日")else word("日期","日付")) to d.date)+if(foreign)listOf(word("实际 / 预计入账日期","実際・予定計上日") to d.settlementDate)else emptyList(),activeDate,{activeDate=it},{index,date->
-            onChange(if(index==0)d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate)else d.copy(settlementDate=date))
+        var activeDate by remember{mutableStateOf<YDateSelection?>(null)}
+        YDateFields(listOf(YDateField("date",if(confirmingOccurrence)word("实际付款日期","実際の支払日")else word("日期","日付"),d.date))+if(foreign)listOf(YDateField("settlementDate",word("实际 / 预计入账日期","実際・予定計上日"),d.settlementDate))else emptyList(),activeDate,{activeDate=it},{index,date->
+            onChange(if(index=="date")d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate)else d.copy(settlementDate=date))
         })
         EntryNotes(d.id,d.note,{onChange(d.copy(note=it))}){
             Column {
@@ -694,14 +694,22 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     }
 }
 
-@Composable internal fun AccountEditor(s:BookSnapshot,vm:AppViewModel,onClose:()->Unit,original:AccountEntity?=null,debtOnly:Boolean?=null) {
+@Composable internal fun AccountEditor(s:BookSnapshot,vm:AppViewModel,onClose:()->Unit,accountId:String?=null,debtOnly:Boolean?=null) {
+    val original=s.accounts.firstOrNull{it.id==accountId}
+    if(accountId!=null&&original==null) {
+        YSheet(word("编辑账户与期初信息","口座・期首情報を編集"),onClose) {
+            YText(word("待编辑账户已不存在，请关闭后重新选择账户。","編集する口座が見つかりません。閉じて口座を選び直してください。"),modifier=Modifier.testTag("account-edit-missing"))
+            YButton(word("关闭","閉じる"),onClose,Modifier.testTag("account-edit-missing-close"))
+        }
+        return
+    }
     val types=AccountType.entries.filter{debtOnly==null||it.debt==debtOnly}
     var name by rememberSaveable(original?.id){mutableStateOf(original?.name.orEmpty())}
     var type by rememberSaveable(original?.id,debtOnly){mutableStateOf(original?.let{AccountType.valueOf(it.type)} ?: types.first())}
     var currency by rememberSaveable(original?.id){mutableStateOf(Currency.valueOf(original?.currency ?: s.book.currency))}
     var opening by rememberSaveable(original?.id){mutableStateOf(original?.let{Money(currency,it.openingMinor).decimal.toPlainString()} ?: "0")}
     var date by rememberSaveable(original?.id){mutableStateOf(original?.openingDate ?: s.book.startDate)}
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     var saving by remember(original?.id){mutableStateOf(false)}
     var hasHistory by remember(original?.id){mutableStateOf(original!=null)}
     LaunchedEffect(original?.id,s) {if(original!=null)vm.execute{hasHistory=vm.repository.accountUsage(s.book.id,original.id).inUse}}
@@ -714,7 +722,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
         if(!hasHistory)YSelect(word("账户币种","通貨"),currency,Currency.entries.map{it to (it.name+" · "+when(it){Currency.JPY->word("日元","日本円");Currency.CNY->word("人民币","人民元");Currency.USD->word("美元","米ドル")})},{currency=it},modifier=Modifier.padding(bottom=16.dp),displayLabel=word("账户币种","口座通貨"))
         else Box(Modifier.padding(bottom=17.dp)){AccountCurrencyFixed(currency.name)}
         YField(if(type.debt)word("期初欠款","期首借入残高") else word("期初余额","期首残高"),opening,{opening=it},Modifier.padding(bottom=16.dp),numeric=true,displayLabel=(if(type.debt)word("期初未还本金","期首未返済元金") else word("期初实际余额","期首実残高"))+" · "+currency.name)
-        YDateFields(listOf(word("余额 / 欠款对应日期","残高・借入の基準日") to date),owner,{owner=it},{_,v->date=v})
+        YDateFields(listOf(YDateField("date",word("余额 / 欠款对应日期","残高・借入の基準日"),date)),owner,{owner=it},{_,v->date=v})
         if(original!=null){
             val proposed=opening.toBigDecimalOrNull()?.let{runCatching{Money.parse(opening,currency).minor}.getOrNull()}
             if(proposed!=null&&proposed!=original.openingMinor)YText(word("保存后账户余额：","保存後の残高：")+Money(currency,Math.addExact(s.balance(original)-original.openingMinor,proposed)).display(),16,Modifier.padding(top=16.dp),number=true)
@@ -725,7 +733,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
             val submittedName=name;val submittedType=type;val submittedCurrency=currency;val submittedOpening=opening;val submittedDate=date
             var id:String?=null
             vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose();vm.entry.value?.takeIf{it.accountId==null}?.let{vm.changeEntry(s.book.id,it.copy(accountId=id))}},onComplete={saving=false}){
-                id=vm.repository.saveAccount(s.book.id,submittedName,submittedType,submittedCurrency,Money.parse(submittedOpening,submittedCurrency),submittedDate,original?.id)
+                id=vm.repository.saveAccount(s.book.id,submittedName,submittedType,submittedCurrency,Money.parse(submittedOpening,submittedCurrency),submittedDate,accountId)
             }
         },Modifier.padding(top=31.dp).testTag("account-save-button"),primary=true,enabled=!saving)
         }
@@ -802,7 +810,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     var currency by rememberSaveable(setupKey){mutableStateOf(Currency.valueOf(s?.book?.currency ?: first.currency))}
     var date by rememberSaveable(setupKey){mutableStateOf(s?.book?.startDate ?: first.date)}
     var budget by rememberSaveable(setupKey){mutableStateOf(s?.book?.budgetMinor?.let{Money(Currency.valueOf(s.book.currency),it).decimal.toPlainString()} ?: first.budget)}
-    var dateOwner by remember{mutableStateOf<Int?>(null)}
+    var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     var accountSheet by rememberSaveable{mutableStateOf(false)}
     var originalAccountId by rememberSaveable{mutableStateOf<String?>(null)}
     var settingsSheet by rememberSaveable{mutableStateOf(false)}
@@ -835,7 +843,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                     YField(word("账本名称","帳簿名"),name,{name=it;if(s==null)persistFirst()},Modifier.padding(bottom=16.dp))
                     YSelect(word("统计本位币","基準通貨"),currency,Currency.entries.map{it to (it.name+" · "+when(it){Currency.JPY->word("日元","日本円");Currency.CNY->word("人民币","人民元");Currency.USD->word("美元","米ドル")})},{currency=it;if(s==null)persistFirst()},Modifier.padding(bottom=16.dp),displayLabel=word("统计本位币","集計の基準通貨"))
                     YField(word("月预算 / 可稍后设置","月予算・後から設定可"),budget,{budget=it;if(s==null)persistFirst()},modifier=Modifier.padding(bottom=16.dp),numeric=true,displayLabel=word("月预算 / 可稍后设置","月予算・後から設定可")+" · "+currency.name)
-                    YDateFields(listOf(word("开始记账日期","記録の開始日") to date),dateOwner,{dateOwner=it},{_,v->date=v;if(s==null)persistFirst()})
+                    YDateFields(listOf(YDateField("date",word("开始记账日期","記録の開始日"),date)),dateOwner,{dateOwner=it},{_,v->date=v;if(s==null)persistFirst()})
                     Box(Modifier.padding(vertical=15.dp)){SetupNote(word("新账本没有预建分类，也不复制其他账本的账户和记录。","新しい帳簿はカテゴリ未作成。他の口座・記録はコピーしません。"))}
                     YButton(word("下一步：资金账户","次へ：資金口座"),{
                         if(creating)return@YButton
@@ -884,7 +892,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
         SetupSettingOption(word("备份与恢复","バックアップと復元"),{settingsSheet=false;vm.navigate("backup")})
         SetupSettingOption(word("切换为日语","中国語へ切替"),{haptics.perform(Haptic.Select);persistFirst(t.id,if(language=="zh")"ja" else "zh")},Modifier.testTag("settings-language"))
     }
-    if(accountSheet&&s!=null)AccountEditor(s,vm,{accountSheet=false},s.accounts.find{it.id==originalAccountId},debtOnly=if(step==4)null else step==3)
+    if(accountSheet&&s!=null)AccountEditor(s,vm,{accountSheet=false},originalAccountId,debtOnly=if(step==4)null else step==3)
 }
 
 @Composable internal fun AccountDetail(s:BookSnapshot,a:AccountEntity,onEdit:()->Unit,onEvent:(EventEntity)->Unit,onTransfer:()->Unit={},onFinancial:(()->Unit)?=null,today:LocalDate=LocalDate.now(),onRisk:(()->Unit)?=null,onManage:(()->Unit)?=null,modifier:Modifier=Modifier,chrome:PageChrome=PageChrome()) {
@@ -893,7 +901,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     LazyPage(chrome,s.book.id to a.id,modifier,top={
         val debt=AccountType.valueOf(a.type).debt
         val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
-        YLead(a.name,a.currency+" · "+if(AccountType.valueOf(a.type).debt)word("账户原币欠款","口座の元通貨借入残高") else word("账户原币余额","口座の元通貨残高"),"AVAILABLE BALANCE",amount,word("本位币参考","基準通貨参考")+" "+if(a.currency==s.book.currency)amount else "—",pageFlow=true)
+        YLead(a.name,a.currency+" · "+if(AccountType.valueOf(a.type).debt)word("账户原币欠款","口座の元通貨借入残高") else word("账户原币余额","口座の元通貨残高"),"AVAILABLE BALANCE",amount,word("本位币参考","基準通貨参考")+" "+if(a.currency==s.book.currency)amount else "—",pageFlow=true,supportingText=if(debt)pendingRepaymentLabel(s,a.id,today.toString()).orEmpty()else "")
         if(a.type!=AccountType.LOAN.name&&a.active)AccountTransferShortcut(onTransfer)
         if(debt&&onFinancial!=null)YButton(word("账单、计划与金融规则","請求・予定と金融条件"),onFinancial,Modifier.testTag("account-financial"),primary=true)
         if(!debt&&onRisk!=null)YButton(word("核对未来资金安排","将来の資金予定を確認"),onRisk,Modifier.testTag("account-cash-risk"))

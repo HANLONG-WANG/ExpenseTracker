@@ -69,6 +69,47 @@ class CommandWorkflowExecutionTest {
         commands.confirm(original.planId,commandChecks(model));assertEquals("UNDONE",commands.plan(row.planId).status)
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
     }
+    @Test fun statementSupplementPreservesSourceMoneyAndForeignConfirmation()=runBlocking<Unit> {
+        val (book,account,category)=setup()
+        val rows=listOf(StatementRow(r.id(),"2026-11-02","out",FileMoney("JPY","1000"),"同币种"),
+            StatementRow(r.id(),"2026-11-02","out",FileMoney("JPY","1200"),"外币",original=FileMoney("CNY","60.00")))
+        val file=StatementFile("yohaku.statement",1,r.id(),book,account,"JPY","2026-11-01","2026-11-02","posted_date",true,"银行",emptyList(),rows)
+        r.saveStatement(book,r.previewStatement(book,FileProtocols.json.encodeToString(file)))
+        fun supplement(id:String,index:Int,set:String)=step(id,"statement.supplement","""{"batch":"${file.file_id}","row":"${rows[index].row_id}","occurredDate":"2026-11-02","postedDate":"2026-11-02","set":$set}""")
+        val before=CommandUndoJournal(r,book).snapshot()
+        val bad=receive(book,listOf(supplement("bad",0,"""{"category":"$category","amount":{"currency":"JPY","minor":2000}}""")))
+        // A business-rule violation fails preview itself; nothing is written.
+        val rejected=runCatching{commands.preview(bad.planId)}.exceptionOrNull()
+        assertTrue(rejected is IllegalArgumentException);assertEquals("FAILED",commands.plan(bad.planId).status)
+        assertEquals(before,CommandUndoJournal(r,book).snapshot())
+        val good=receive(book,listOf(supplement("same",0,"""{"category":"$category"}"""),supplement("foreign",1,"""{"category":"$category"}""")))
+        execute(good)
+        val s=snapshot(book)
+        assertEquals(listOf(1000L,1200L),s.settlements.map{it.accountMinor}.sorted())
+        assertTrue(s.settlements.all{it.confirmed});assertEquals(97800L,s.balance(s.accounts.single{it.id==account}))
+        assertEquals(6000L,s.events.single{it.currency=="CNY"}.amountMinor)
+        undo(good);assertEquals(before,CommandUndoJournal(r,book).snapshot())
+    }
+
+    @Test fun statementActualConfirmsSeparateTransferFeeWithoutChangingPrincipal()=runBlocking<Unit> {
+        val (book,bank,_)=setup()
+        val target=r.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")
+        val transfer=r.previewEntry(book,EntryDraft(kind=EntryKind.TRANSFER,accountId=bank,toAccountId=target,amount="1000",toAmount="1000",
+            date="2026-11-02",toDate="2026-11-02",fromConfirmed=true,toConfirmed=true,feePosition=TransferFeePosition.SEPARATE,
+            feeAccountId=bank,feeAmount="10",feeCurrency=Currency.JPY,feeDate="2026-11-02",feeConfirmed=false))
+        val event=requireNotNull(r.commitEntryReview(book,transfer))
+        val row=StatementRow(r.id(),"2026-11-02","out",FileMoney("JPY","15"),"手续费")
+        val file=StatementFile("yohaku.statement",1,r.id(),book,bank,"JPY","2026-11-01","2026-11-02","posted_date",true,"银行",emptyList(),listOf(row))
+        r.saveStatement(book,r.previewStatement(book,FileProtocols.json.encodeToString(file)))
+        val plan=receive(book,listOf(step("fee","statement.confirmActual","""{"batch":"${file.file_id}","row":"${row.row_id}","entry":"$event","postingId":"$event:fee","postedDate":"2026-11-02"}""")))
+        execute(plan)
+        val s=snapshot(book)
+        assertEquals(1000L,s.events.single().amountMinor);assertEquals(1000L,s.transfers.single().toMinor)
+        assertEquals(15L,s.expenseComponents.single().amountMinor);assertTrue(s.expenseComponents.single().confirmed)
+        assertEquals(98985L,s.balance(s.accounts.single{it.id==bank}))
+        undo(plan)
+    }
+
     @Test fun statementsProductsAndSourceAttachmentRetryThenUndo()=runBlocking<Unit> {
         val (book,account,category)=setup()
         val draft=EntryDraft(accountId=account,categoryId=category,amount="1000",date="2026-11-02")
@@ -147,7 +188,7 @@ class CommandWorkflowExecutionTest {
         assertTrue(blocked.conflicts.any{it.type=="preference"&&it.key=="scanAutoCapture"});assertTrue(blocked.conflicts.any{it.type=="preference"&&it.key=="scanAutoProcess"})
         assertTrue(runCatching{commands.confirm(inverse.planId,commandChecks(blocked))}.isFailure)
         prefs.setPhotoSaveOriginal(true);prefs.setHapticsEnabled(false);prefs.setScanAutoCapture(true);prefs.setScanAutoProcess(false);undo(row)
-        assertEquals(before,prefs.commandValues(book));assertEquals(journal,CommandUndoJournal(r,book).snapshot())
+        assertEquals(before,prefs.commandValues(book));assertCommandRowsRestored(journal,CommandUndoJournal(r,book).snapshot(),restoredDraft=true)
         // An already queued v37 preference has no monthlyReview field. Upgrade uses its default.
         val legacyBefore=JsonObject(before.getValue("reminders").jsonObject.filterKeys{it!="monthlyReview"})
         val legacyAfter=JsonObject(legacyBefore+("enabled" to JsonPrimitive(false)))

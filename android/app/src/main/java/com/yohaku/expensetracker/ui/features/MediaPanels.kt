@@ -27,6 +27,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.db.*
@@ -45,6 +47,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable internal fun EntryMediaPanel(s:BookSnapshot,d:EntryDraft,vm:AppViewModel) {
@@ -99,9 +102,10 @@ internal sealed interface ReceiptTarget {
     @Serializable data class Record(val eventId:String):ReceiptTarget
 }
 @Serializable
-private data class PendingReceiptScan(
+internal data class PendingReceiptScan(
     val bookId:String,val target:ReceiptTarget,val photoPath:String?=null,
     val preserveOriginal:Boolean?=null,val theme:String,val language:String,
+    val outputPath:String?=null,
 )
 /** App-level owner: the destination and borrowed source survive Activity/process recreation. */
 internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,target:ReceiptTarget)->Unit)?>{null}
@@ -125,6 +129,9 @@ private class ReceiptCameraController(val launch:(String,ReceiptTarget)->Unit,va
     scanFlow:@Composable (ScanFlowRequest,AppPreferences,(ScanFlowResult)->Unit,()->Unit)->Unit,
 ):ReceiptCameraController {
     val context=LocalContext.current
+    val scope=rememberCoroutineScope()
+    val importing by vm.receiptScanImport.collectAsStateWithLifecycle()
+    var discarding by remember { mutableStateOf(false) }
     var pending by rememberSaveable(stateSaver=Saver<PendingReceiptScan?,String>(
         save={it?.let{value->Json.encodeToString(value)}},restore={Json.decodeFromString<PendingReceiptScan>(it)},
     )){mutableStateOf(null)}
@@ -136,19 +143,34 @@ private class ReceiptCameraController(val launch:(String,ReceiptTarget)->Unit,va
         pending?.let { scan ->
             val targetKey=Json.encodeToString(scan.target)
             YohakuTheme(scan.theme,scan.language) {
-                scanFlow(ScanFlowRequest(targetKey,scan.photoPath?.let(::File),
-                    if(scan.photoPath==null)ScanPhotoSource.CAMERA else ScanPhotoSource.EXISTING_IMAGE),vm.preferences,{result->
-                    check(result.target==targetKey)
-                    pending=null
-                    val uri=FileProvider.getUriForFile(context,context.packageName+".files",result.file)
-                    val cleanup={ScanTemporaryFiles.discard(result.file.parentFile!!);Unit}
-                    // Both processed output and original bytes follow the ordinary photo storage option.
-                    when(val target=scan.target) {
-                        is ReceiptTarget.Record->vm.importRecordReceipts(context,scan.bookId,target.eventId,listOf(uri),cleanup)
-                        is ReceiptTarget.Draft->vm.importFiles(context,scan.bookId,listOf(uri),true,target.session,
-                            replaceReceiptId=target.replaceFileId,preserveOriginalOverride=scan.preserveOriginal,onFinish=cleanup)
+                val outputPath=scan.outputPath
+                if(outputPath==null) {
+                    scanFlow(ScanFlowRequest(targetKey,scan.photoPath?.let(::File),
+                        if(scan.photoPath==null)ScanPhotoSource.CAMERA else ScanPhotoSource.EXISTING_IMAGE),vm.preferences,{result->
+                        check(result.target==targetKey)
+                        pending=scan.copy(outputPath=result.file.path)
+                    },{pending=null})
+                } else {
+                    val status=importing?.takeIf{it.path==outputPath}?.status
+                    LaunchedEffect(outputPath,status) {
+                        if(status==null)vm.importReceiptScan(context.applicationContext,scan)
+                        else if(status==ReceiptScanImportStatus.IMPORTED)pending=null
                     }
-                },{pending=null})
+                    val failed=status==ReceiptScanImportStatus.FAILED
+                    fun discard() {
+                        if(vm.receiptScanImport.value?.status!=ReceiptScanImportStatus.FAILED||discarding)return
+                        discarding=true
+                        scope.launch {
+                            withContext(Dispatchers.IO){ScanTemporaryFiles.discard(File(outputPath).parentFile!!)}
+                            pending=null;discarding=false
+                        }
+                    }
+                    Dialog(onDismissRequest={discard()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
+                        ScanReviewWaiting(failed&&!discarding,
+                            {vm.importReceiptScan(context.applicationContext,scan,retry=true)},
+                            {discard()},cancellable=failed&&!discarding)
+                    }
+                }
             }
         }
     }

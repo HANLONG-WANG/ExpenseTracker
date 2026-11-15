@@ -116,7 +116,7 @@ internal class ExpectedIncomeAdapter(private val action:String):LedgerAdapter() 
                 val draft=v.set?.let{values->
                     val base=s.expectedIncomeReceiptDraft(income,run.context.asOfDate)
                     require("amount" in values&&"category" in values){"请提供实际到账金额和收入分类 / 実入金額と収入カテゴリを指定してください"}
-                    entryDraft(values,run,s,base)
+                    entryDraft(values,run,s,base,preserveSettlementFact=true)
                 }
                 val review=r.previewExpectedIncomeArrival(run.bookId,id,draft,v.entry?.let(run::resolve))
                 run.output(step.id,"entry",requireNotNull(r.commitExpectedIncomeArrival(review)),draft!=null)}

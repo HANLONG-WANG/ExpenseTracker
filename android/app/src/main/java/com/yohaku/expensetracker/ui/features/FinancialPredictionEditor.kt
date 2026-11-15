@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.time.LocalDate
 
-@Serializable private data class PredictionPeriodDraft(val date:String,val start:String,val end:String,val override:Boolean=false,val principal:String="",val fee:String="")
+@Serializable private data class PredictionPeriodDraft(val date:String,val start:String,val end:String,val override:Boolean=false,val principal:String="",val fee:String="",val calendarId:String=java.util.UUID.randomUUID().toString())
 
 @Composable internal fun FinancialPredictionEditor(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,old:FinancialPlanEntity?,vm:AppViewModel,onClose:()->Unit,contract:DebtContractEntity?=null,onSaved:((String,String?)->Unit)?=null) {
     FinancialDraftHost(s,FinancialDraftContext("PREDICTION",account.id,targetId=old?.id),vm,onClose){FinancialPredictionEditorContent(s,account,finance,old,vm,onClose,contract,onSaved)}
@@ -31,9 +31,10 @@ import java.time.LocalDate
     val sourceContract=s.contracts.firstOrNull{it.id==contractId}
     val currency=Currency.valueOf(account.currency)
     val saved=remember(old?.id){old?.termsJson?.let{vm.repository.json.decodeFromString<FinancialPredictionInput>(it)}}
+    val incoming=finance.currentArrangements.firstOrNull{it.targetPlanId==old?.id}
     val existingBills=finance.bills.filter{it.planId==old?.id&&it.active}.sortedBy{it.number}
     val today=LocalDate.now(vm.repository.clock).toString()
-    val initialStart=saved?.terms?.agreementDate?:old?.sourceEventId?.let{id->s.events.firstOrNull{it.id==id}?.date}?:sourceContract?.date?:account.openingDate
+    val initialStart=incoming?.effectiveDate?:saved?.terms?.agreementDate?:old?.sourceEventId?.let{id->s.events.firstOrNull{it.id==id}?.date}?:sourceContract?.date?:account.openingDate
     var name by financialField("name"){(old?.name?:sourceContract?.name).orEmpty()}
     var mode by financialField("mode"){old?.mode?:sourceContract?.mode?:if(account.type==AccountType.CREDIT.name)FinanceMode.SINGLE.name else FinanceMode.FIXED_LOAN.name}
     var source by financialField("source"){if(old?.sourceEventId!=null||sourceContract?.fundingEventId!=null)"EVENT"else"OPENING"}
@@ -48,11 +49,12 @@ import java.time.LocalDate
     var firstEnd by financialField("firstEnd"){saved?.terms?.accrualWindows?.firstOrNull()?.end?:today}
     var encoded by financialField("encoded"){vm.repository.json.encodeToString(saved?.terms?.paymentDates?.mapIndexed{i,date->val w=saved.terms.accrualWindows.getOrNull(i);val o=saved.terms.overrides.firstOrNull{it.number==i+1}
         PredictionPeriodDraft(date,w?.start?:initialStart,w?.end?:date,o!=null,o?.principalMinor?.let{Money(currency,it).decimal.toPlainString()}.orEmpty(),o?.feeMinor?.let{Money(currency,it).decimal.toPlainString()}.orEmpty())}.orEmpty())}
-    val rows=vm.repository.json.decodeFromString<List<PredictionPeriodDraft>>(encoded)
+    val rows=remember(encoded){vm.repository.json.decodeFromString<List<PredictionPeriodDraft>>(encoded)}
     // This is a fresh user confirmation, not a resumable draft field.
     var arrangementConfirmed by remember{mutableStateOf(old!=null)}
-    var calendar by remember{mutableStateOf<Int?>(null)}
+    var calendar by remember{mutableStateOf<YDateSelection?>(null)}
     val event=s.visibleEvents.firstOrNull{it.id==eventId}
+    val baseDate=if(source=="EVENT"&&incoming==null)event?.date else agreement
     val activeMode=FinanceMode.valueOf(mode)
     val revolving=activeMode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -77,12 +79,13 @@ import java.time.LocalDate
                 onSaved={if(onSaved!=null)onSaved(activeReview.plan.id,contractId)else onClose()},
                 onStale={vm.financialPredictionReview.value=null;arrangementConfirmed=old!=null;refreshed=true;vm.financialReviewRefreshed.value=true})else {
         YButton(word("预览预测与影响","予測と影響を確認"),{
-            val inputName=name;val inputMode=mode;val inputSource=source;val selectedEvent=eventId;val amount=principal;val selectedBank=bank;val dates=rows;val current=firstPeriod;val agreed=arrangementConfirmed;val fees=remainingFee;val baseDate=if(source=="EVENT"&&finance.arrangements.none{it.targetPlanId==old?.id})event?.date else agreement
+            val inputName=name;val inputMode=mode;val inputSource=source;val selectedEvent=eventId;val amount=principal;val selectedBank=bank;val dates=rows;val current=firstPeriod;val agreed=arrangementConfirmed;val fees=remainingFee
             vm.execute {
                 require(dates.isNotEmpty()){"请先生成并确认逐期日期 / 各回の日付を生成・確認してください"}
-                val terms=FinancialScheduleTerms(baseDate?:error("请选择来源记录 / 対象の記録を選択してください"),dates.map{it.date},if(revolving)dates.map{AccrualWindow(it.start,it.end)}else emptyList(),
-                    dates.mapIndexedNotNull{i,p->if(p.override)PeriodOverride(i+1,Money.parse(p.principal,currency).minor,Money.parse(p.fee,currency).minor)else null},
-                    if(activeMode==FinanceMode.SINGLE)1 else current.toIntOrNull()?:error("请填写原合同期数 / 元の契約の回数を入力してください"),fees.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor})
+                val terms=(saved?.terms?:FinancialScheduleTerms(agreement,emptyList())).copy(
+                    agreementDate=baseDate?:error("请选择来源记录 / 対象の記録を選択してください"),paymentDates=dates.map{it.date},accrualWindows=if(revolving)dates.map{AccrualWindow(it.start,it.end)}else emptyList(),
+                    overrides=dates.mapIndexedNotNull{i,p->if(p.override)PeriodOverride(i+1,Money.parse(p.principal,currency).minor,Money.parse(p.fee,currency).minor)else null},
+                    firstPeriodNumber=if(activeMode==FinanceMode.SINGLE)1 else current.toIntOrNull()?:error("请填写原合同期数 / 元の契約の回数を入力してください"),remainingFeeMinor=fees.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor})
                 val input=FinancialPredictionInput(account.id,inputName,FinanceMode.valueOf(inputMode),terms,if(inputSource=="EVENT")selectedEvent else null,if(inputSource=="OPENING")Money.parse(amount,currency).minor else null,selectedBank,old?.id,agreed)
                 refreshed=false;vm.financialReviewRefreshed.value=false;vm.financialPredictionReview.value=vm.repository.previewFinancialPrediction(s.book.id,input)
             }
@@ -111,14 +114,12 @@ import java.time.LocalDate
             YField(word("起于原合同第几期","元の契約の何回目からか"),firstPeriod,{firstPeriod=it;clearRows()},numeric=true)
         }
         if(source=="OPENING"&&activeMode==FinanceMode.INSTALLMENT)YField(word("平台已知剩余总费用 / 未知留空","返済先で判明した残手数料・不明なら空欄")+" · "+currency.name,remainingFee,{remainingFee=it},numeric=true)
-        val labels=mutableListOf<Pair<String,String>>()
-        if(source!="EVENT")labels+=word("合同 / 期初基准日","契約日・期首基準日") to agreement
-        labels+=word("首次付款日期","初回支払日") to firstDate
-        if(revolving)labels+=word("首次计费截止日","初回計算終了日") to firstEnd
-        YDateFields(labels,calendar?.takeIf{it<10},{calendar=it},{i,v->
-            var n=i
-            if(source!="EVENT"){if(n==0)agreement=v;n--}
-            if(n==0)firstDate=v else if(n==1)firstEnd=v
+        val labels=mutableListOf<YDateField>()
+        if(source!="EVENT")labels+=YDateField("agreement",word("合同 / 期初基准日","契約日・期首基準日"),agreement)
+        labels+=YDateField("firstDate",word("首次付款日期","初回支払日"),firstDate)
+        if(revolving)labels+=YDateField("firstEnd",word("首次计费截止日","初回計算終了日"),firstEnd)
+        YDateFields(labels,calendar,{calendar=it},{i,v->
+            when(i){"agreement"->agreement=v;"firstDate"->firstDate=v;"firstEnd"->firstEnd=v}
             clearRows()
         })
         YSelect(word("付款账户 / 按规则可留空","引落口座・条件から取得する場合は未選択"),bank,listOf(null to word("按规则 / 未确定","条件から取得・未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{bank=it},columns=2)
@@ -126,20 +127,20 @@ import java.time.LocalDate
             vm.execute {
                 val n=if(activeMode==FinanceMode.SINGLE)1 else count.toIntOrNull()?:error("请输入有效期数 / 有効な回数を入力してください")
                 require(n in 1..1200){"请输入1至1200期 / 1〜1200回を入力してください"}
-                val start=LocalDate.parse(if(source=="EVENT")event?.date?:error("请选择来源记录 / 対象の記録を選択してください")else agreement)
+                val start=LocalDate.parse(baseDate?:error("请选择来源记录 / 対象の記録を選択してください"))
                 val selectedRule=finance.rules.filter{it.accountId==account.id&&it.mode==mode&&it.effectiveFrom<=start.toString()}.maxWithOrNull(compareBy<FinancialRuleEntity>{it.effectiveFrom}.thenBy{it.version})?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
                 encoded=vm.repository.json.encodeToString(predictionCandidates(activeMode,n,start,LocalDate.parse(firstDate),LocalDate.parse(firstEnd),selectedRule,event)
                     .map{(date,window)->PredictionPeriodDraft(date,window.start,window.end)})
             }
         },Modifier.testTag("prediction-generate"),enabled=!busy,haptic=Haptic.Select)
         if(rows.isNotEmpty())YText(word("以下为候选日期，请逐期核对；保存前可以修改。","以下は候補日です。各回を確認し、保存前に修正できます。"),11,color=LocalYohaku.current.muted)
-        rows.forEachIndexed{i,row->Panel(Modifier.testTag("prediction-period-$i")) {
+        rows.forEachIndexed{i,row->key(row.calendarId){Panel(Modifier.testTag("prediction-period-$i")) {
             YText(word("第${i+1}期","第${i+1}回"),15)
-            val fields=if(revolving)listOf(word("计费开始","計算開始") to row.start,word("计费截止","計算終了") to row.end,word("付款日","支払日") to row.date)else listOf(word("付款日","支払日") to row.date)
-            YDateFields(fields,calendar?.takeIf{it/10==i+1}?.rem(10),{owner->calendar=owner?.let{(i+1)*10+it}},{field,value->
-                val next=if(!revolving||field==2)row.copy(date=value)else if(field==0)row.copy(start=value)else row.copy(end=value)
+            val fields=if(revolving)listOf(YDateField("start",word("计费开始","計算開始"),row.start),YDateField("end",word("计费截止","計算終了"),row.end),YDateField("date",word("付款日","支払日"),row.date))else listOf(YDateField("date",word("付款日","支払日"),row.date))
+            YDateFields(fields,calendar,{calendar=it},{field,value->
+                val next=if(field=="date")row.copy(date=value)else if(field=="start")row.copy(start=value)else row.copy(end=value)
                 encoded=vm.repository.json.encodeToString(rows.mapIndexed{n,p->if(n==i)next else p})
-            })
+            },group="period-${row.calendarId}")
             if(activeMode==FinanceMode.INSTALLMENT) {
                 YToggle(word("采用本期平台本金与费用","この回の返済先の元金・手数料を使用"),row.override,{value->encoded=vm.repository.json.encodeToString(rows.mapIndexed{n,p->if(n==i)p.copy(override=value)else p})})
                 if(row.override){
@@ -147,7 +148,7 @@ import java.time.LocalDate
                     YField(word("本期费用","当期手数料"),row.fee,{v->encoded=vm.repository.json.encodeToString(rows.mapIndexed{n,p->if(n==i)p.copy(fee=v)else p})},numeric=true)
                 }
             }
-        }}
+        }}}
         if(old==null)YToggle(word("以上是平台当前已采用的安排，不是拟办理方案","返済先で現在適用中のプランです。変更予定ではありません"),arrangementConfirmed,{arrangementConfirmed=it},Modifier.testTag("prediction-current-arrangement"))
 
         }

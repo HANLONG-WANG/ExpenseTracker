@@ -79,10 +79,7 @@ private fun FinancialReviewState.sourcePrincipal(input:FinancialPredictionInput,
     val amount=input.openingPrincipalMinor?:old?.principalMinor?:error("请填写期初已有本金 / 期首の既存元金を入力してください")
     require(amount>0)
     if(old?.origin!="MANUAL") {
-        val allocated=finance.plans.filter{it.active&&it.accountId==account.id&&it.origin=="OPENING"&&it.id!=old?.id}
-        require(allocated.all{it.principalMinor!=null}){"其他期初计划本金尚未明确 / 他の期首プランの元金が未確定です"}
-        val used=allocated.fold(0L){sum,p->Math.addExact(sum,p.principalMinor!!)}
-        require(amount<=Math.subtractExact(account.openingMinor,used)){"计划本金超过未分配的期初欠款 / プラン元金が未割当ての期首残高を超えています"}
+        finance.requireOpeningPrincipal(account,amount,exceptPlanId=old?.id)
     }
     return amount to false
 }
@@ -116,10 +113,11 @@ internal fun LedgerRepository.prepareFinancialPrediction(state:FinancialReviewSt
     require(old!=null||input.currentArrangementConfirmed){"请确认这是平台当前已采用的安排；拟办理方案请先试算 / 返済先で現在適用中のプランであることを確認してください。変更予定は先に試算してください"}
     old?.termsJson?.let{saved->
         val previous=json.decodeFromString<FinancialPredictionInput>(saved)
+        if(incoming!=null)require(input.terms.additionalFees.filter{it.minor!=0L}.sortedBy{it.number}==previous.terms.additionalFees.filter{it.minor!=0L}.sortedBy{it.number}){"重算须保留已办理手续费及所属账期；费用变更请记录已办理调整 / 再計算では手続き済みの手数料と対象回を維持してください。変更は手続き済みの変更として記録してください"}
         if(input.mode in listOf(FinanceMode.INSTALLMENT,FinanceMode.FIXED_LOAN))require(previous.terms.paymentDates.size==input.terms.paymentDates.size&&previous.terms.firstPeriodNumber==input.terms.firstPeriodNumber){"期数变更需记录已办理方案，不能仅重算覆盖 / 回数変更は手続き済みのプランとして記録してください。再計算だけでは変更できません"}
     }
     if(old!=null)require(old.mode==input.mode.name&&old.sourceEventId==input.sourceEventId){"重算不能改换债务来源或模式，请记录已办理变更 / 再計算で対象債務・方式は変更できません。手続き済みの変更を記録してください"}
-    require(state.finance.plans.none{it.active&&it.id!=old?.id&&input.sourceEventId!=null&&it.sourceEventId==input.sourceEventId&&state.finance.arrangements.none{a->a.originalPlanId==it.id}}){"该记录已有计划，请打开原计划重算 / この記録にはプランがあります。元のプランを再計算してください"}
+    input.sourceEventId?.let{state.requireFinancialSourceAvailable(it,old?.id)}
     input.sourceEventId?.takeIf{incoming==null}?.let{source->state.finance.contracts.firstOrNull{it.fundingEventId==source}?.let{contract->
         require(contract.mode==input.mode.name){"计划方式须与借款合同一致，变更需单独记录已办理 / プランの方式は借入契約と一致させてください。変更は手続き済みとして別途記録してください"}
     }}

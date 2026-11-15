@@ -68,7 +68,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
     val busy by vm.busy.collectAsStateWithLifecycle()
     val review by vm.financialLedgerReview.collectAsStateWithLifecycle()
     val refreshed by vm.financialReviewRefreshed.collectAsStateWithLifecycle()
-    var dateOwner by remember{mutableStateOf<Int?>(null)}
+    var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     val formScroll=rememberScrollState();val reviewScroll=rememberScrollState()
     LaunchedEffect(review){if(review!=null)reviewScroll.scrollTo(0)}
     fun selectTarget(value:String?) {
@@ -109,7 +109,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             if(paidSuggestion?.differsFromPaid(it,Currency.valueOf(sourceCurrency))==true)details=true
         },numeric=true)
         if(old==null&&currentSuggestion?.paid!=null)YText(word("本期已知待付建议：","当期の既知の未払推奨額：")+Money(Currency.valueOf(account.currency),currentSuggestion.paid).display()+word("。已扣除明确的已付待确认分配，请核对实际付款。","。明示済みの確認待ち充当額を差し引いています。実支払額をご確認ください。"),11)
-        Column(Modifier.testTag("finance-repay-payment-date")) { YDateFields(listOf(word("实际付款日期","実際の支払日") to d.date),dateOwner?.takeIf{it==0},{dateOwner=it},{_,v->update(d.copy(date=v))}) }
+        Column(Modifier.testTag("finance-repay-payment-date")) { YDateFields(listOf(YDateField("date",word("实际付款日期","実際の支払日"),d.date)),dateOwner,{dateOwner=it},{_,v->update(d.copy(date=v))},group="payment") }
         YToggle(word("平台已确认清偿组成","返済先が内訳を確定した"),confirmed,{confirmed=it;if(it)details=true},Modifier.testTag("finance-repay-cleared"))
         FinancialRepaymentSummary(word("组成与分配摘要","内訳・充当の概要"),"finance-repay-allocation-summary") {
             YText(if(confirmed)word("平台清偿已确认","返済先の返済確定済み")else word("实际已付款 · 清偿待确认","支払済み・返済確定待ち"),12,color=LocalYohaku.current.accent)
@@ -139,7 +139,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             if(account.currency!=s.book.currency)YField(word("利息及平台费用统计合计","利息・返済先手数料の集計合計")+" · "+s.book.currency,d.feeBase,{update(d.copy(feeBase=it))},numeric=true)
             YField(word("总扣款内含付款端费用","実出金総額に含む出金側手数料")+" · "+sourceCurrency,d.sourceFee,{update(d.copy(sourceFee=it))},numeric=true)
             if(sourceCurrency!=s.book.currency)YField(word("付款端费用统计金额","出金側手数料の集計額")+" · "+s.book.currency,d.sourceFeeBase,{update(d.copy(sourceFeeBase=it))},numeric=true)
-            Column(Modifier.testTag("finance-repay-clearing-date")) { YDateFields(listOf(word("平台清偿日期","返済先の確定日") to d.clearingDate),dateOwner?.takeIf{it==1}?.let{0},{dateOwner=it?.let{1}},{_,v->update(d.copy(clearingDate=v))}) }
+            Column(Modifier.testTag("finance-repay-clearing-date")) { YDateFields(listOf(YDateField("clearingDate",word("平台清偿日期","返済先の確定日"),d.clearingDate)),dateOwner,{dateOwner=it},{_,v->update(d.copy(clearingDate=v))},group="clearing") }
         }
         if(links) {
             if(eventId==null) {

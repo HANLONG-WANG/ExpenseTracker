@@ -23,7 +23,7 @@ private val tapeShape=GenericShape{size,_->
 
 // Page columns supply 15dp. Only the remainder of collapsed HTML margins belongs here.
 // SetupProgress supplies 7dp below itself, so its following cover contributes another 3dp.
-@Composable fun YLead(title:String,description:String,kicker:String,amount:String="",aside:String="",amountIsText:Boolean=false,pageFlow:Boolean=false,afterSetupProgress:Boolean=false) {
+@Composable fun YLead(title:String,description:String,kicker:String,amount:String="",aside:String="",amountIsText:Boolean=false,pageFlow:Boolean=false,afterSetupProgress:Boolean=false,amountIsStatus:Boolean=false,supportingText:String="") {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val editionHeight=with(LocalDensity.current){11.sp.toDp()}
@@ -40,7 +40,8 @@ private val tapeShape=GenericShape{size,_->
                     Column(Modifier.weight(1f).padding(top=10.dp)){
                         YText(title,if(narrow)25 else 28,Modifier.testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.6f,balanced=true)
                         YText(description,11,Modifier.padding(top=10.dp,bottom=if(amount.isEmpty())10.dp else 0.dp).testTag("lead-description"),color=t.muted,lineHeightMultiplier=2f)
-                        if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 35,if(amountIsText)if(narrow)44f else 50f else if(narrow)35f else 40f,amountIsText,Modifier.padding(top=17.dp))
+                        if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 35,if(amountIsText)if(narrow)44f else 50f else if(narrow)35f else 40f,amountIsText,Modifier.padding(top=17.dp),statusRole=amountIsStatus)
+                        LeadSupportingText(supportingText)
                     }
                     Column(Modifier.width(if(narrow)55.dp else 75.dp),horizontalAlignment=Alignment.End){
                         ThemeArtwork(width=if(narrow)54 else 74,height=if(narrow)77 else 94)
@@ -63,7 +64,8 @@ private val tapeShape=GenericShape{size,_->
                         YText("✳ $kicker",11,color=t.warm,lineHeightMultiplier=16f/11)
                         YText(title,if(narrow)25 else 28,Modifier.padding(top=10.dp).testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.5f,balanced=true)
                         YText(description,12,Modifier.padding(top=10.dp,bottom=if(amount.isEmpty())10.dp else 0.dp).testTag("lead-description"),color=t.muted,lineHeightMultiplier=1.9f)
-                        if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 39,if(narrow)44f else 56f,amountIsText,Modifier.fillMaxWidth().padding(top=24.dp),t.accent,arrow=true)
+                        if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 39,if(narrow)44f else 56f,amountIsText,Modifier.fillMaxWidth().padding(top=24.dp),t.accent,arrow=true,statusRole=amountIsStatus)
+                        LeadSupportingText(supportingText)
                         if(aside.isNotEmpty())YText(aside,11,Modifier.padding(top=13.dp).drawBehind{drawLine(Color(0x49be8778),Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())},color=t.warm,lineHeightMultiplier=1.9f)
                     }
                 }
@@ -79,7 +81,8 @@ private val tapeShape=GenericShape{size,_->
                         YText(kicker,8,Modifier.drawBehind{drawRoundRect(Color(0xffb78a62),Offset((-10).dp.toPx(),0f),androidx.compose.ui.geometry.Size(5.dp.toPx(),12.dp.toPx()),androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()))},color=Color(0xffac8860),letterSpacing=1.4f,lineHeightMultiplier=19f/8)
                         YText(title,if(narrow)25 else 26,Modifier.fillMaxWidth(.95f).padding(top=10.dp).testTag("lead-title"),weight=FontWeight.Medium,lineHeightMultiplier=1.5f,letterSpacing=-.6f,balanced=true)
                         YText(description,11,Modifier.padding(top=10.dp,bottom=if(amount.isEmpty())10.dp else 0.dp).testTag("lead-description"),color=t.muted,lineHeightMultiplier=1.9f)
-                        if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 37,if(narrow)44f else 54f,amountIsText,Modifier.padding(top=17.dp),t.accent)
+                        if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 37,if(narrow)44f else 54f,amountIsText,Modifier.padding(top=17.dp),t.accent,statusRole=amountIsStatus)
+                        LeadSupportingText(supportingText)
                         if(aside.isNotEmpty())YText(aside,9,Modifier.padding(top=17.dp).background(Color(0xfffffae9),RoundedCornerShape(6.dp)).padding(horizontal=11.dp,vertical=7.dp),color=Color(0xffa0815a),lineHeightMultiplier=1.9f)
                     }
                 }
@@ -88,7 +91,13 @@ private val tapeShape=GenericShape{size,_->
     }
 }
 
-@Composable private fun LeadAmount(text:String,fontSize:Int,line:Float,textRole:Boolean,modifier:Modifier=Modifier,color:Color=LocalYohaku.current.ink,arrow:Boolean=false) {
+@Composable private fun LeadAmount(text:String,fontSize:Int,line:Float,textRole:Boolean,modifier:Modifier=Modifier,color:Color=LocalYohaku.current.ink,arrow:Boolean=false,statusRole:Boolean=false) {
+    if(statusRole){
+        val t=LocalYohaku.current
+        val size=if(t.id=="journal")18 else 16
+        YText(text,size,modifier.testTag("lead-amount"),color=if(t.id=="magazine")t.muted else t.accent,lineHeightMultiplier=1.7f,balanced=true)
+        return
+    }
     var lines by remember(text,fontSize){mutableIntStateOf(1)}
     val height=with(LocalDensity.current){line.sp.toDp()*lines}
     val frame=modifier.height(height).wrapContentHeight(Alignment.CenterVertically,unbounded=true).testTag("lead-amount")
@@ -99,6 +108,18 @@ private val tapeShape=GenericShape{size,_->
             withStyle(SpanStyle(fontSize=18.sp,letterSpacing=0.sp)){append(" ")}
             withStyle(SpanStyle(fontSize=26.sp,fontFamily=t.body,color=t.warm)){append("↗")}
         }
-        androidx.compose.material3.Text(rich,frame,style=TextStyle(color=color,fontSize=fontSize.sp,fontFamily=if(textRole)t.body else t.number,fontWeight=FontWeight.Normal,letterSpacing=(-1).sp,lineHeight=line.sp),onTextLayout={lines=it.lineCount})
+        androidx.compose.material3.Text(rich,frame,style=TextStyle(color=color,fontSize=fontSize.sp,fontFamily=if(textRole)t.body else t.number,fontWeight=FontWeight.Normal,letterSpacing=(-1).sp,lineHeight=line.sp,lineBreak=if(textRole)androidx.compose.ui.text.style.LineBreak.Heading else androidx.compose.ui.text.style.LineBreak.Simple,localeList=if(textRole)androidx.compose.ui.text.intl.LocaleList(LocalLanguage.current)else null),onTextLayout={lines=it.lineCount})
     }else YText(text,fontSize,frame,color=color,number=!textRole,letterSpacing=-1f,lineHeightMultiplier=line/fontSize,onTextLayout={lines=it.lineCount})
+}
+
+/** A payment/status annotation stays inside each theme's cover, separate from its hero value. */
+@Composable private fun LeadSupportingText(text:String) {
+    if(text.isEmpty())return
+    val t=LocalYohaku.current
+    val frame=when(t.id){
+        "journal"->Modifier.drawBehind{drawLine(t.warm,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}
+        "objects"->Modifier.background(Color(0xfffffae9),RoundedCornerShape(6.dp)).padding(horizontal=10.dp,vertical=7.dp)
+        else->Modifier
+    }
+    YText(text,if(t.id=="journal")12 else 11,Modifier.padding(top=10.dp).then(frame).testTag("lead-supporting"),color=if(t.id=="journal")t.warm else t.accent)
 }

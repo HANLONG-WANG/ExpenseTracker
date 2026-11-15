@@ -30,6 +30,8 @@ Authorization: Bearer <deviceToken>
 5. GET `/api/v1/tasks/{id}/result` 只返回当前输入版本已发布结果，未就绪返回409。
 6. POST `/api/v1/tasks/{id}/ack`；JSON `{resultId,status:"imported"|"failed"}`；确认成功导入与仅下载分开记录。
 
+源文件先写入 R2，再由同一 D1 batch 事务登记文件元数据、增加输入版本并写入上传日志。日志失败会回滚整个事务并清理尚未登记的 R2 对象，错误继续向上传播；任务状态冲突未插入文件时同样清理对象，返回 409。成功以事务的插入行数为准，不再执行提交后查询或日志写入；后续同名同校验值重试返回原 fileId，不重复增加版本或日志。
+
 类型 `receipt` / `statement` / `general`。context 可包含 `manifest` 或 `identifiers`；安卓云端办理使用 `general`，context 带 `purpose=command|monthly-review`、`yohaku_protocol=yohaku.command-task`、`protocol_version=1`，协议、能力、完整方案schema与账本结构随附件提供；月评另带 month 和月汇总附件。办理每任务必带协议、能力、方案schema、结构四份，records及源文件按用户选择；月评初次只有协议、能力、方案schema、结构、月汇总五份。网站仍只接收结果文本，不直接执行命令。也可以另行上传 JSON。小票 ZIP 内清单自动读取。分包必须属于同一账本和同一 bundle，原始文件不变。银行任务需上传原始流水和账户标识；未提供应用账目时，结果仅是流水转换，不代表已完成对账。
 
 手机不能管理设备、接管分析或发布结果。Web UI 可保存源文件、分析包和任意历史结果；手机文件接口只开放当前可领取结果。后台不执行导入手机账目。
@@ -45,6 +47,8 @@ Authorization: Bearer <deviceToken>
 - Sites 私有认证在网关执行；直接访问本地 Worker 的模拟测试不能证明生产认证正确。
 
 ## 开发与发布
+
+本交接包的离线检查入口是从包目录执行 `node contract-test.mjs`（在 reference 目录则执行 `node ../contract-test.mjs`），使用 Node.js 22.13 以上且支持 node:sqlite、stripTypeScriptTypes 的版本。17 项检查包含上传日志失败时的事务回滚与重试、提交后不依赖额外读取、状态冲突时的对象清理。以下 scripts、构建与验收记录路径属于完整网站，不随本参考快照提供；离线检查不代表已部署本次修复。
 
 保留 Sites Vinext 集成。依照 Sites 技能使用 `install-dependencies.mjs`、`build-site.mjs` 和 `site-workflow.mjs`。`npm run db:generate` 生成 D1 迁移，托管发布应用迁移。`.openai/hosting.json` 的 `DB` / `BUCKET` 由 Sites 配置。环境密钥 `SITES_SERVICE_ACCESS_TOKEN` 在 Sites 服务端配置，不进入源码和前端静态包。
 

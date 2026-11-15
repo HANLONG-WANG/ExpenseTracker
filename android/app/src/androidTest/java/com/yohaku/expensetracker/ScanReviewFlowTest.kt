@@ -85,7 +85,7 @@ class ScanReviewFlowTest {
         root.deleteRecursively()
     }
 
-    @Test fun existingImageProcessesAndUseTransfersJpegAndDeletesOriginalCopy() {
+    @Test fun existingImageUseHandsOffSessionWithoutDeletingItsRecoveryFiles() {
         val borrowed = input()
         install(ScanFlowRequest("draft-1", borrowed, ScanPhotoSource.EXISTING_IMAGE))
         result()
@@ -98,7 +98,8 @@ class ScanReviewFlowTest {
         assertTrue(output.processed); assertEquals("draft-1", output.target)
         assertArrayEquals(originalResult, output.file.readBytes())
         assertNotNull(BitmapFactory.decodeFile(output.file.path))
-        assertFalse(directory.exists()); assertTrue(borrowed.exists()); assertEquals(0, cancelled)
+        assertTrue(File(directory, "original.jpg").isFile); assertEquals(directory, output.file.parentFile)
+        assertTrue(borrowed.exists()); assertEquals(0, cancelled)
     }
 
     @Test fun cameraRetakeReturnsToCameraAndUnprocessedCaptureBypassesReview() {
@@ -115,7 +116,8 @@ class ScanReviewFlowTest {
         assertFalse(results.single().processed)
         assertArrayEquals(asset("flat.jpg"), results.single().file.readBytes())
         ui.onNodeWithTag("scan-review").assertDoesNotExist()
-        assertTrue(directories().flatMap { it.listFiles().orEmpty().toList() }.none { it.name == "original.jpg" })
+        assertEquals("original.jpg", results.single().file.name)
+        assertTrue(results.single().file.isFile)
     }
 
     @Test fun dragReprocessChangesOutputCancelEditKeepsPreviousAndRestoreIsExact() {
@@ -217,7 +219,9 @@ class ScanReviewFlowTest {
         ui.onNodeWithTag("scan-render").performClick(); result()
         ui.onNodeWithTag("scan-use").performClick()
         ui.waitUntil(10_000) { results.size == 1 }
-        assertTrue(results.single().file.isFile); assertFalse(directory.exists())
+        // This callback only takes ownership; no database import has completed yet.
+        assertTrue(results.single().file.isFile); assertEquals(directory, results.single().file.parentFile)
+        assertTrue(File(directory, "original.jpg").isFile)
     }
 
     @Test fun reviewAdjustmentMagnifierAndNoDetectionAcrossLooks() {

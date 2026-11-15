@@ -150,7 +150,7 @@ import java.time.YearMonth
     var activity by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.activityId)}
     var fixed by remember(original?.id){mutableStateOf(EntryDraft(merchant=original?.merchant.orEmpty(),merchantId=original?.merchantId,merchantBaseline=original?.let{MerchantBaseline(it.merchant,it.merchantId)},note=original?.note.orEmpty(),cardPaymentChoice=original?.cardPaymentChoice,cardPaymentPeriods=original?.cardPaymentPeriods?.toString().orEmpty()))}
     LaunchedEffect(original?.merchant,original?.merchantId,s.merchants){if(original!=null)fixed=fixed.syncMerchantFields(MerchantBaseline(original.merchant,original.merchantId),s.merchants).clearMissingMerchant(s.merchants)}
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     val account=accounts.find{it.id==accountId}
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(if(original==null)word("添加周期账单","定期支払を追加")else word("编辑周期账单","定期支払を編集"),onClose) {
@@ -158,7 +158,7 @@ import java.time.YearMonth
             YField(word("名称","名称"),name,{name=it})
             YField(word("金额 / 未定可留空","金額・未定なら空欄")+" · "+(account?.currency?:"—"),amount,{amount=it},numeric=true)
             if(account?.currency!=s.book.currency)YField(word("本位币预留 / 未折算可留空","基準通貨の確保額・未換算なら空欄")+" · "+s.book.currency,base,{base=it},numeric=true)
-            YDateFields(listOf(word("首次安排日期","最初の予定日") to date)+if(endEnabled)listOf(word("结束日期","終了日") to end)else emptyList(),owner,{owner=it},{index,value->if(index==0)date=value else end=value})
+            YDateFields(listOf(YDateField("date",word("首次安排日期","最初の予定日"),date))+if(endEnabled)listOf(YDateField("end",word("结束日期","終了日"),end))else emptyList(),owner,{owner=it},{index,value->if(index=="date")date=value else end=value})
             YSelect(word("频率","頻度"),frequency,listOf(RecurrenceFrequency.MONTHLY,RecurrenceFrequency.WEEKLY,RecurrenceFrequency.YEARLY).map{it.name to frequencyName(it)},{frequency=it})
             YSelect(word("付款账户","支払口座"),accountId,accounts.map{it.id as String? to it.name},{id->
                 val next=accounts.first{it.id==id};if(next.currency!=account?.currency){amount="";base="";estimated=true};accountId=id;fixed=fixed.clearCardPayment()

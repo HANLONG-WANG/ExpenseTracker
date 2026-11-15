@@ -109,6 +109,18 @@ class FinancialArrangementTest {
             assertEquals(14500L,s.balance(s.accounts.first{it.id==bank}));assertEquals(9500L,s.balance(s.accounts.first{it.id==card}));assertEquals(0L,s.monthExpense("2026-10"))
             assertTrue(f.plans.first{it.id==plan}.active);assertEquals(listOf(4120L,4080L),f.bills.filter{it.planId==target}.map{it.totalMinor})
             assertEquals(bills,db.financialDao().bills(book,plan))
+            // These future, unconfirmed bills must keep the applied fee even when no bill is retained.
+            val saved=repo.json.decodeFromString<FinancialPredictionInput>(f.plans.first{it.id==target}.termsJson!!).copy(planId=target)
+            for(fees in listOf(emptyList(),listOf(AdditionalPeriodFee(1,20)),listOf(AdditionalPeriodFee(2,40)))) {
+                assertThrows(IllegalArgumentException::class.java){runBlocking{
+                    repo.previewFinancialPrediction(book,saved.copy(terms=saved.terms.copy(additionalFees=fees)))
+                }}
+            }
+            val recalculated=repo.previewFinancialPrediction(book,saved)
+            assertTrue(recalculated.calculation is Calculation.Ready)
+            assertEquals(listOf(4120L,4080L),recalculated.bills.map{it.totalMinor})
+            assertEquals(target,repo.commitFinancialPrediction(recalculated))
+            assertEquals(saved.terms.additionalFees,repo.json.decodeFromString<FinancialPredictionInput>(db.financialDao().plan(book,target)!!.termsJson!!).terms.additionalFees)
         }finally{db.close()}
     }
 

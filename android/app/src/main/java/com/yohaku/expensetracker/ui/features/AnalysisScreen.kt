@@ -292,10 +292,10 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
 @Composable private fun AnalysisFilterEditor(s:BookSnapshot,old:AnalysisFilter,vm:AppViewModel,onDismiss:()->Unit,onApply:(AnalysisFilter)->Unit) {
     var start by rememberSaveable{mutableStateOf(old.start)};var end by rememberSaveable{mutableStateOf(old.end)}
     var category by rememberSaveable{mutableStateOf(old.categoryId)};var merchant by rememberSaveable{mutableStateOf(old.merchantKey)};var activity by rememberSaveable{mutableStateOf(old.activityId)}
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(word("分析筛选","分析の絞込"),onDismiss) {
-        YDateFields(listOf(word("开始日期","開始日") to start,word("结束日期","終了日") to end),owner,{owner=it},{index,value->if(index==0)start=value else end=value})
+        YDateFields(listOf(YDateField("start",word("开始日期","開始日"),start),YDateField("end",word("结束日期","終了日"),end)),owner,{owner=it},{index,value->if(index=="start")start=value else end=value})
         YSelect(word("分类","カテゴリ"),category,listOf(null to word("全部","すべて"))+s.categories.filter{it.kind==EntryKind.EXPENSE.name}.map{it.id as String? to s.path(it.id)},{category=it})
         val keys=s.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name||it.kind==EntryKind.TRANSFER.name}.map{s.merchantKey(it)}.distinct()
         YSelect(word("商户","お店"),merchant,listOf(null to word("全部","すべて"))+keys.map{it as String? to s.merchantLabel(it).ifBlank{word("未填写商户","お店未入力")}},{merchant=it})

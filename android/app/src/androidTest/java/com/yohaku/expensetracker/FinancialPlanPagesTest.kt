@@ -25,6 +25,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class FinancialPlanPagesTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
@@ -33,7 +34,7 @@ class FinancialPlanPagesTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
+        vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -80,7 +81,7 @@ class FinancialPlanPagesTest {
                 val book=repo.createBook("商户来源",Currency.JPY,theme,language,startDate="2026-10-01")
                 repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
                 val bank=repo.saveAccount(book,"支払銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-10-01")
-                val card=repo.saveAccount(book,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val card=repo.saveAccount(book,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,100),"2026-10-01")
                 val category=repo.saveCategory(book,"食事",EntryKind.EXPENSE,null)
                 repo.commitFinancialRule(repo.previewFinancialRule(book,card,FinancialRuleVersion("",book,card,FinanceMode.INSTALLMENT,"2026-10-01","Asia/Tokyo",BillingRule(20,true,1,5,bank),installment=InstallmentRule(listOf(3),InstallmentFeeMethod.TOTAL_AMOUNT,totalFeeMinor=60,principalRemainder=RemainderPlacement.LAST,feeRemainder=RemainderPlacement.LAST,roundingMode="HALF_UP"))))
                 val merchant=repo.saveMerchant(book,"朝の喫茶")
@@ -111,6 +112,56 @@ class FinancialPlanPagesTest {
             tapTag("finance-plan-period-$bill")
             ui.onNodeWithText("夜の喫茶",substring=true).performScrollTo().assertExists()
             shot("$theme-$language-merchant-source-period")
+            assertNull(vm.error.value)
+        }
+    }
+
+    @Test fun arrangedPredictionKeepsItsFeeAndRegeneratesFromTheEffectiveDate() {
+        for((theme,language) in testLooks(this@FinancialPlanPagesTest)) {
+            val values=runBlocking {
+                val book=repo.createBook("办理后重算",Currency.JPY,theme,language,startDate="2026-10-01")
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val bank=repo.saveAccount(book,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-10-01")
+                val card=repo.saveAccount(book,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val category=repo.saveCategory(book,"買物",EntryKind.EXPENSE,null)
+                val event=repo.saveEntry(book,EntryDraft(accountId=card,categoryId=category,amount="10000",date="2026-10-01"))
+                val original=repo.commitManualFinancialPlan(repo.previewManualFinancialPlan(book,ManualFinancialPlanInput(card,"元の一括払い",FinanceMode.SINGLE,
+                    listOf(KnownBillInput("2026-11-27",10000,10000,0,bank)),10000,true,sourceEventId=event)))!!
+                val rule=FinancialRuleVersion("",book,card,FinanceMode.REVOLVING,"2026-10-01","Asia/Tokyo",billing=BillingRule(31,true,1,27,bank),
+                    revolving=RevolvingRule(InterestRule("0.12",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL),PaymentMethod.FIXED_PRINCIPAL,5000,allocation=AllocationOrder.FEES_FIRST,automatic=false))
+                repo.commitFinancialRule(repo.previewFinancialRule(book,card,rule))!!
+                val terms=FinancialScheduleTerms("2026-10-15",listOf("2026-11-27","2026-12-27"),listOf(AccrualWindow("2026-10-15","2026-10-31"),AccrualWindow("2026-11-01","2026-11-30")))
+                val plan=repo.commitFinancialArrangement(repo.previewFinancialArrangement(book,FinancialArrangementInput(original,"办理后的循环",FinanceMode.REVOLVING,terms,bank,OriginalFeeTreatment.RETAIN,300)),"2026-10-15T00:00:00Z",true)!!
+                vm.preferences.select(book)
+                listOf(book,card,plan)
+            }
+            val (book,card,plan)=values
+            val before=runBlocking{db.financialDao().bills(book,plan).sortedBy{it.number}}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans")
+            tapTag("finance-plan-row-$plan");tapTag("finance-recalculate-$plan")
+            // Opening the editor and immediately saving used to discard the fee.
+            tapTag("prediction-preview")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialPredictionReview.value!=null}
+            assertEquals(listOf(AdditionalPeriodFee(1,300)),vm.financialPredictionReview.value!!.input.terms.additionalFees)
+            assertEquals(before.map{it.totalMinor},vm.financialPredictionReview.value!!.bills.map{it.totalMinor})
+            tapTag("prediction-confirm")
+            tapTag("finance-recalculate-$plan");tapTag("prediction-generate")
+            ui.waitUntil(10000){!vm.busy.value}
+            ui.onNodeWithTag("prediction-period-0").performScrollTo()
+            ui.onNode(hasText("2026-10-15") and hasAnyAncestor(hasTestTag("prediction-period-0"))).assertExists()
+            shot("$theme-$language-arranged-prediction-dates")
+            tapTag("prediction-preview")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialPredictionReview.value!=null}
+            val review=vm.financialPredictionReview.value!!
+            assertTrue(review.calculation.toString(),review.calculation is Calculation.Ready)
+            assertEquals("2026-10-15",review.input.terms.accrualWindows.first().start)
+            assertEquals(before.map{it.totalMinor},review.bills.map{it.totalMinor})
+            shot("$theme-$language-arranged-prediction-review")
+            tapTag("prediction-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialPredictionReview.value==null}
+            val saved=runBlocking{repo.json.decodeFromString<FinancialPredictionInput>(db.financialDao().plan(book,plan)!!.termsJson!!)}
+            assertEquals(review.input.terms,saved.terms)
             assertNull(vm.error.value)
         }
     }

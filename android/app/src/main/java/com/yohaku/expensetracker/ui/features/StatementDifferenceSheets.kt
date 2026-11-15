@@ -16,7 +16,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
 import java.time.LocalDate
 
 @Composable internal fun StatementDifferenceSheet(s:BookSnapshot,p:StatementReviewProjection,all:List<StatementReviewProjection>,row:StatementRow,
-    vm:AppViewModel,onClose:()->Unit,onActual:(String,String)->Unit,onRepayment:(EventEntity)->Unit) {
+    vm:AppViewModel,onClose:()->Unit,onActual:(String,String,String)->Unit,onRepayment:(EventEntity)->Unit) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     val manual=p.decisions.find{it.saved.rowId==row.row_id}
     val occupied=all.flatMap{other->other.result.exact.filterNot{other.batch.id==p.batch.id&&it.rowId==row.row_id}.map{it.postingId}+
@@ -28,7 +28,7 @@ import java.time.LocalDate
     val knownPosted=row.posted_date?:row.date.takeIf{p.file.date_basis=="posted_date"}
     var posted by rememberSaveable(p.batch.id,row.row_id){mutableStateOf(knownPosted?:LocalDate.now(vm.repository.clock).toString())}
     var confirmedDate by rememberSaveable(p.batch.id,row.row_id){mutableStateOf(knownPosted!=null)}
-    var dateOwner by remember{mutableStateOf<Int?>(null)}
+    var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     YSheet(word("待确认差异","差異の確認"),{if(!busy)onClose()}) {
         ThemeAuditPanel(word("外部流水","外部明細")) {
             RecordFacts(listOf(word("日期","日付") to row.date,word("方向","方向") to if(row.direction=="in")word("流入","入金")else word("流出","出金"),
@@ -73,20 +73,22 @@ import java.time.LocalDate
             val account=s.accounts.first{it.id==post.accountId}
             val out=if(AccountType.valueOf(account.type).debt)post.deltaMinor>0 else post.deltaMinor<0
             (if(out)"out"else "in")==row.direction
-        }.map{it.eventId}.toSet()
-        val pending=s.visibleEvents.filter{it.id in expected&&it.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name,EntryKind.REFUND.name,EntryKind.TRANSFER.name)}
+        }
+        val pending=expected.filter{post->s.visibleEvents.any{it.id==post.eventId&&it.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name,EntryKind.REFUND.name,EntryKind.TRANSFER.name)}}
         val pendingRepayments=s.repayments.filter{it.debtAccountId==p.file.account_id&&!it.platformConfirmed}.mapNotNull{r->s.visibleEvents.find{it.id==r.eventId}}
         if(pending.isNotEmpty()||pendingRepayments.isNotEmpty()) {
             ThemeSection(word("预计资金端，实际入账待确认","見込みの資金側・実計上未確認"),"ACTUAL SETTLEMENT")
             if(knownPosted==null) {
                 YText(word("文件未提供明确入账日。请按原始资料选择并确认；不拿发生日替代。","明確な計上日がありません。元資料で日付を選んで確認してください。利用日で代用しません。"),12,color=LocalYohaku.current.warm)
-                YDateFields(listOf(word("实际入账日","実計上日") to posted),dateOwner,{dateOwner=it},{_,value->posted=value})
+                YDateFields(listOf(YDateField("posted",word("实际入账日","実計上日"),posted)),dateOwner,{dateOwner=it},{_,value->posted=value})
                 YToggle(word("已确认实际入账日","実計上日を確認済み"),confirmedDate,{confirmedDate=it})
             }
             pendingRepayments.forEach{event->YButton(word("查看原还款，确认平台清偿","元の支払を見て返済先を確定"),{onRepayment(event)},Modifier.testTag("statement-confirm-clearing-${event.id}"),enabled=!busy)}
-            pending.forEach { event->
-                YText(event.date+" · "+event.merchant+" · "+word("尚未确认实际","実計上未確認"),12)
-                YButton(word("进入原记录，预览实际确认","元記録で実計上を確認"),{onActual(event.id,posted)},Modifier.testTag("statement-confirm-actual-${event.id}"),enabled=!busy&&confirmedDate)
+            pending.forEach { post->
+                val event=s.visibleEvents.first{it.id==post.eventId}
+                val fee=post.id==event.id+":fee"
+                YText(post.date+" · "+event.merchant+" · "+(if(fee)word("独立手续费","別途手数料")else word("尚未确认实际","実計上未確認"))+" · "+receiptCurrencyText(Money(Currency.valueOf(post.currency),kotlin.math.abs(post.deltaMinor)).decimal.toPlainString(),post.currency),12)
+                YButton(word("进入原记录，预览实际确认","元記録で実計上を確認"),{onActual(event.id,posted,post.id)},Modifier.testTag("statement-confirm-actual-${event.id}"+if(fee)"-fee"else""),enabled=!busy&&confirmedDate)
             }
             YText(word("进入普通记账表单，核对原币、实际入账和本位币统计值，再预览并保存。仅查看此页不会确认入账。","通常の記録フォームで元通貨・実計上・基準通貨額を確認し、プレビューして保存。このページの閲覧だけでは計上を確定しません。"),11,color=LocalYohaku.current.muted)
         }
@@ -105,7 +107,7 @@ import java.time.LocalDate
     var occurred by rememberSaveable(row.row_id){mutableStateOf(knownOccurred?:LocalDate.now(vm.repository.clock).toString())}
     var posted by rememberSaveable(row.row_id){mutableStateOf(knownPosted?:LocalDate.now(vm.repository.clock).toString())}
     var dateConfirmed by rememberSaveable(row.row_id){mutableStateOf(knownOccurred!=null&&knownPosted!=null)}
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     val options=buildList<Pair<String?,String>> {
         add(null to word("请选择类型","種類を選択"))
         if(row.direction=="out") {
@@ -129,7 +131,7 @@ import java.time.LocalDate
             YButton(word("打开正式金融表单","正式な金融フォームを開く"),{onFinancial(kind!!,debtAccount!!)},Modifier.testTag("statement-start-supplement"),primary=true,enabled=debtAccount!=null)
         }else if(kind!=null) {
             if(kind==EntryKind.REFUND.name)YSelect(word("关联原消费","元の支出と関連付け"),original,listOf(null to word("请选择","選択してください"))+s.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name}.map{it.id as String? to (it.date+" · "+it.merchant+" · "+Money(Currency.valueOf(it.currency),it.amountMinor).display())},{original=it})
-            YDateFields(listOf(word("交易发生日","利用日") to occurred,word("实际入账日","実計上日") to posted),owner,{owner=it},{i,date->if(i==0)occurred=date else posted=date})
+            YDateFields(listOf(YDateField("occurred",word("交易发生日","利用日"),occurred),YDateField("posted",word("实际入账日","実計上日"),posted)),owner,{owner=it},{i,date->if(i=="occurred")occurred=date else posted=date})
             if(knownOccurred==null||knownPosted==null) {
                 YText(word("文件未提供全部日期。未知日期以今天作为选择器起点，请按原始资料修改并确认，不会自动保存。","日付がすべて揃っていません。不明な日付の選択は今日から始まります。元資料で修正・確認してください。自動保存しません。"),11,color=LocalYohaku.current.warm)
                 YToggle(word("已核对缺少的日期","不足している日付を確認済み"),dateConfirmed,{dateConfirmed=it})

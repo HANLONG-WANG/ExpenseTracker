@@ -37,6 +37,7 @@ fun reconciledSchedule(
     val totalCleared=facts.fold(0L){sum,p->Math.addExact(sum,p.principalMinor)}
     if(totalCleared>additions.fold(principalMinor){sum,p->Math.addExact(sum,p.principalMinor)})return Calculation.Incomplete(listOf("plan.clearedExceedsSource"))
     val revolving=mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)
+    if(revolving&&terms.accrualWindows.any{LocalDate.parse(it.start)<LocalDate.parse(terms.agreementDate)})return Calculation.Incomplete(listOf("plan.accrualBeforeAgreement"))
     val fixed=if(revolving)null else when(val result=predictedSchedule(principalMinor,mode,terms,versions)) {
         is Calculation.Ready->result.value
         is Calculation.Incomplete->return result
@@ -136,7 +137,8 @@ fun reconciledSchedule(
             else minOf(nominalAvailable,base.principalMinor)
             base.copy(date=date,principalMinor=principal,feeMinor=fee,interestCharge=charge)
         }
-        val nominalPrincipal=known?.principalMinor?:if(known!=null&&index!=terms.paymentDates.lastIndex&&date>=asOf)return Calculation.Incomplete(listOf("plan.confirmedPrincipal"))else candidate.principalMinor
+        // Even the last (or overdue) retained bill needs a known split; a forecast is not a fact.
+        val nominalPrincipal=if(known!=null)known.principalMinor?:return Calculation.Incomplete(listOf("plan.confirmedPrincipal"))else candidate.principalMinor
         if(nominalPrincipal<paid)return Calculation.Incomplete(listOf("plan.clearedExceedsBill"))
         val unpaid=nominalPrincipal-paid
         if(date<asOf&&known==null)overdueReserved=Math.addExact(overdueReserved,unpaid)

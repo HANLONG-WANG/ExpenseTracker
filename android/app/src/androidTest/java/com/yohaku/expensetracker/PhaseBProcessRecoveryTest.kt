@@ -25,6 +25,7 @@ import java.time.*
 /** Each step must run in a distinct instrumentation process, separated by host force-stop. */
 @RunWith(AndroidJUnit4::class)
 class PhaseBProcessRecoveryTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule("phase-b-process")
     @get:Rule val ui=createComposeRule()
     private val context=InstrumentationRegistry.getInstrumentation().targetContext
     private val marker get()=File(context.filesDir,"verification/phase-b-process.json")
@@ -32,7 +33,7 @@ class PhaseBProcessRecoveryTest {
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
-    private val prefs get()=AppPreferences(context)
+    private val prefs get()=testPreferences.preferences
     @Before fun open() {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("phaseBRecovery")=="true")
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"phase-b-process-check.db").build()
@@ -51,7 +52,6 @@ class PhaseBProcessRecoveryTest {
     }
     @Test fun seedTransferDraft()=runBlocking {
         assertFalse("Do not replace an unfinished recovery check",marker.exists())
-        val previous=prefs.activeBook.first()
         val book=repo.createBook("阶段B恢复",Currency.JPY,"objects","zh",startDate="2026-09-01",budgetMinor=100000)
         repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
         val source=repo.saveAccount(book,"银行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,100000),"2026-09-01")
@@ -65,7 +65,7 @@ class PhaseBProcessRecoveryTest {
         File(mediaRoot,"interrupted.part").writeText("incomplete")
         prefs.select(book)
         marker.parentFile!!.mkdirs()
-        marker.writeText(JSONObject().put("book",book).put("previous",previous?:"").put("source",source).put("target",target).put("category",category).put("attachment",attachment.id).put("receipt",receipt.id).put("pid",Process.myPid()).toString())
+        marker.writeText(JSONObject().put("book",book).put("source",source).put("target",target).put("category",category).put("attachment",attachment.id).put("receipt",receipt.id).put("pid",Process.myPid()).toString())
     }
     @Test fun resumeTransferAndSeedActivityDraft() {
         val data=JSONObject(marker.readText());assertNotEquals(data.getInt("pid"),Process.myPid())
@@ -119,8 +119,7 @@ class PhaseBProcessRecoveryTest {
             assertEquals(listOf(AnalysisModule.MERCHANTS,AnalysisModule.TREND),repo.analysisModules(saved));assertEquals(setOf(AnalysisModule.TREND),repo.analysisPins(saved))
             assertEquals("journal",saved.book.theme);assertEquals("ja",saved.book.language);assertNull(saved.draft)
             assertEquals(2,saved.attachments.size);assertEquals(2,saved.receipts.size)
-            prefs.select(data.getString("previous"))
         }
-        vm.viewModelScope.cancel();db.close();context.deleteDatabase("phase-b-process-check.db");mediaRoot.deleteRecursively();marker.delete()
+        vm.viewModelScope.cancel();db.close();context.deleteDatabase("phase-b-process-check.db");mediaRoot.deleteRecursively();marker.delete();testPreferences.deleteAfterTest=true
     }
 }

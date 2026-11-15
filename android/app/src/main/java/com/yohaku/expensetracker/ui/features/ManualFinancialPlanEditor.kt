@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.time.LocalDate
 
-@Serializable internal data class KnownBillDraft(val date:String,val total:String="",val principal:String="",val fee:String="",val paymentAccountId:String?=null) {
+@Serializable internal data class KnownBillDraft(val date:String,val total:String="",val principal:String="",val fee:String="",val paymentAccountId:String?=null,val calendarId:String=java.util.UUID.randomUUID().toString()) {
     fun input(currency:Currency)=KnownBillInput(date,Money.parse(total,currency).minor,principal.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor},fee.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor},paymentAccountId)
 }
 
@@ -39,9 +39,9 @@ import java.time.LocalDate
     var principal by financialField("principal"){sourceContract?.principalMinor?.let{Money(currency,it).decimal.toPlainString()}.orEmpty()}
     var complete by financialField("complete"){false}
     var encoded by financialField("encoded"){vm.repository.json.encodeToString(listOf(KnownBillDraft(LocalDate.now(vm.repository.clock).toString())))}
-    val periods=vm.repository.json.decodeFromString<List<KnownBillDraft>>(encoded)
+    val periods=remember(encoded){vm.repository.json.decodeFromString<List<KnownBillDraft>>(encoded)}
     fun update(index:Int,value:KnownBillDraft){encoded=vm.repository.json.encodeToString(periods.mapIndexed{i,p->if(i==index)value else p})}
-    var activeDate by remember{mutableStateOf<Int?>(null)}
+    var activeDate by remember{mutableStateOf<YDateSelection?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     val review by vm.manualFinancialPlanReview.collectAsStateWithLifecycle()
     val r=review?.takeIf{it.plan.accountId==account.id&&it.plan.bookId==s.book.id}
@@ -75,18 +75,18 @@ import java.time.LocalDate
         }
         YField(word("计划本金 / 不明可留空","プラン元金・不明なら空欄")+" · "+currency.name,principal,{principal=it},Modifier.testTag("finance-plan-principal"),numeric=true)
         YToggle(word("已知完整逐期计划","全回の予定が判明している"),complete,{complete=it},Modifier.testTag("finance-plan-complete"))
-        periods.forEachIndexed{i,p->Panel(Modifier.testTag("finance-known-period-$i")) {
+        periods.forEachIndexed{i,p->key(p.calendarId){Panel(Modifier.testTag("finance-known-period-$i")) {
             YText(word("第${i+1}期","第${i+1}回"),16)
-            KnownBillFields(s,p,{update(i,it)},if(activeDate==i)0 else null,{activeDate=if(it==null)null else i},"finance-known-$i")
-            if(periods.size>1)YButton(word("移除此期","この回を削除"),{activeDate=null;encoded=vm.repository.json.encodeToString(periods.filterIndexed{n,_->n!=i})},enabled=!busy)
-        }}
-        YButton(word("＋ 添加下一期","＋ 次の回を追加"),{activeDate=null;encoded=vm.repository.json.encodeToString(periods+KnownBillDraft(LocalDate.parse(periods.last().date).plusMonths(1).toString(),paymentAccountId=periods.last().paymentAccountId))},Modifier.testTag("finance-plan-add-period"),enabled=!busy,haptic=Haptic.Step)
+            KnownBillFields(s,p,{update(i,it)},activeDate,{activeDate=it},"finance-known-$i")
+            if(periods.size>1)YButton(word("移除此期","この回を削除"),{encoded=vm.repository.json.encodeToString(periods.filterIndexed{n,_->n!=i})},enabled=!busy)
+        }}}
+        YButton(word("＋ 添加下一期","＋ 次の回を追加"),{encoded=vm.repository.json.encodeToString(periods+KnownBillDraft(LocalDate.parse(periods.last().date).plusMonths(1).toString(),paymentAccountId=periods.last().paymentAccountId))},Modifier.testTag("finance-plan-add-period"),enabled=!busy,haptic=Haptic.Step)
 
     }
 }
 
-@Composable internal fun KnownBillFields(s:BookSnapshot,p:KnownBillDraft,onChange:(KnownBillDraft)->Unit,activeDate:Int?,onDateOwner:(Int?)->Unit,tag:String) {
-    YDateFields(listOf(word("实际扣款 / 到期日","実引落日・支払期日") to p.date),activeDate,onDateOwner,{_,v->onChange(p.copy(date=v))})
+@Composable internal fun KnownBillFields(s:BookSnapshot,p:KnownBillDraft,onChange:(KnownBillDraft)->Unit,activeDate:YDateSelection?,onDateOwner:(YDateSelection?)->Unit,tag:String) {
+    YDateFields(listOf(YDateField("date",word("实际扣款 / 到期日","実引落日・支払期日"),p.date)),activeDate,onDateOwner,{_,v->onChange(p.copy(date=v))},group="bill-${p.calendarId}")
     YField(word("已知合计","既知の合計"),p.total,{onChange(p.copy(total=it))},Modifier.testTag("$tag-total"),numeric=true)
     YField(word("其中本金 / 不明留空","うち元金・不明なら空欄"),p.principal,{onChange(p.copy(principal=it))},Modifier.testTag("$tag-principal"),numeric=true)
     YField(word("其中利息与费用 / 不明留空","うち利息・手数料・不明なら空欄"),p.fee,{onChange(p.copy(fee=it))},Modifier.testTag("$tag-fee"),numeric=true)

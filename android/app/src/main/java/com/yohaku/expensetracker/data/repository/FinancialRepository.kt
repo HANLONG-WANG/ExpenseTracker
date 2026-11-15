@@ -100,6 +100,7 @@ suspend fun LedgerRepository.previewManualFinancialPlan(bookId:String,input:Manu
     val state=financialReviewState(bookId)
     val account=requireNotNull(state.ledger.accounts.firstOrNull{it.id==input.accountId}){"账户不属于本账本 / 別の帳簿の口座です"}
     requireMode(account,input.mode)
+    require(state.finance.plans.none{it.active&&it.origin=="POOL"&&it.accountId==account.id&&it.mode==input.mode.name}){"本账户循环部分已由余额池计算，请从余额池更新 / この口座の循環分はプールで計算中です。プールから更新してください"}
     require(input.name.isNotBlank()&&input.periods.isNotEmpty()){ "请输入计划名称和至少一期金额 / プラン名と1回以上の支払額を入力してください" }
     input.periods.forEach { validateKnownBill(it);requirePaymentAccount(bookId,it.paymentAccountId) }
     require(input.periods.zipWithNext().all{(a,b)->a.date<b.date}){"请按还款日期顺序填写 / 支払日順に入力してください"}
@@ -111,10 +112,11 @@ suspend fun LedgerRepository.previewManualFinancialPlan(bookId:String,input:Manu
         require(input.periods.fold(0L){sum,p->Math.addExact(sum,p.principalMinor?:0)}<=input.principalMinor)
     }
     require(!input.opening||input.sourceEventId==null)
+    if(input.opening)state.finance.requireOpeningPrincipal(account,input.principalMinor,input.periods.fold(0L){sum,p->Math.addExact(sum,p.principalMinor?:0)})
     input.sourceEventId?.let{eventId->
         val event=state.ledger.visibleEvents.firstOrNull{it.id==eventId}
         require(event!=null&&event.accountId==account.id&&event.isFinancialSource(account)){"请选择本账户的消费或借入记录 / この口座の支出・借入記録を選択してください"}
-        require(state.finance.plans.none{it.active&&it.sourceEventId==eventId}){"该记录已有计划 / この記録には既にプランがあります"}
+        state.requireFinancialSourceAvailable(eventId)
     }
     input.sourceEventId?.let{source->state.finance.contracts.firstOrNull{it.fundingEventId==source}?.let{contract->
         require(contract.mode==input.mode.name){"计划方式须与借款合同一致，变更需单独记录已办理 / プランの方式は借入契約と一致させてください。変更は手続き済みとして別途記録してください"}

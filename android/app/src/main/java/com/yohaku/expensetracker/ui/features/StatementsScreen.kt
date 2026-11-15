@@ -25,7 +25,7 @@ import com.yohaku.expensetracker.ui.theme.*
 import com.yohaku.expensetracker.ui.haptics.Haptic
 
 @Composable internal fun StatementsScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,
-    onSupplement:(StatementSupplementSeed)->Unit,onActual:(String,String,StatementRow,String)->Unit,onFinancial:(String)->Unit) {
+    onSupplement:(StatementSupplementSeed)->Unit,onActual:(String,String,StatementRow,String,String)->Unit,onFinancial:(String)->Unit) {
     val context=LocalContext.current
     val busy by vm.busy.collectAsStateWithLifecycle()
     val batches by remember(s.book.id){vm.repository.db.fileWorkflowDao().statements(s.book.id)}.collectAsStateWithLifecycle(emptyList())
@@ -111,7 +111,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         }}
         YButton(word("保存完整原文件副本","元ファイル全体のコピーを保存"),{export.launch(null)},Modifier.testTag("statement-export-original"),enabled=!busy)
         YLink(word("删除此核对资料","この照合資料を削除"),{deleting=true},Modifier.testTag("statement-delete"))
-        rowId?.let{id->file.rows.find{it.row_id==id}?.let { row-> StatementDifferenceSheet(s,p,projections,row,vm,{rowId=null},{eventId,postedDate->rowId=null;onActual(eventId,file.account_id,row,postedDate)},{event->rowId=null;onRecord(event)}) } }
+        rowId?.let{id->file.rows.find{it.row_id==id}?.let { row-> StatementDifferenceSheet(s,p,projections,row,vm,{rowId=null},{eventId,postedDate,postingId->rowId=null;onActual(eventId,file.account_id,row,postedDate,postingId)},{event->rowId=null;onRecord(event)}) } }
         supplement?.let{id->file.rows.find{it.row_id==id}?.let{row->StatementSupplementSheet(s,file,row,vm,{supplement=null},{seed->supplement=null;onSupplement(seed)},{kind,debt->supplement=null;financialAccount=debt;financialKind=kind})}}
         if(deleting)YSheet(word("删除核对资料","照合資料を削除"),{deleting=false}) {
             YText(word("只移除本批原文件和核对关联，不删除或修改手动账目。","このバッチの元ファイルと照合関連だけを削除し、手動記録は削除・変更しません。"),13)

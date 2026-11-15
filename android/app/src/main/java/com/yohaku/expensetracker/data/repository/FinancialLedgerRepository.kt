@@ -163,32 +163,14 @@ private fun LedgerRepository.prepareRepaymentAllocations(state:FinancialReviewSt
         val billPlan=bill?.let{b->f.plans.first{it.id==b.planId}}
         if(billPlan?.origin=="POOL"&&contractId!=null)require(f.contracts.firstOrNull{it.id==contractId}?.mode==billPlan.mode||f.poolArrangements(billPlan.id).any{change->json.decodeFromString<FinancialArrangementBaseline>(change.baselineJson).contractId==contractId}){"此合同尚未并入该循环池，请先核对归属 / この契約はこの循環プールに未統合です。帰属を先に確認してください"}
         contractId?.let{id->require(f.contracts.any{it.id==id&&it.accountId==debt.id}){"合同不属于本债务账户 / 契約はこの債務口座のものではありません"}}
-        if(bill!=null&&input.platformConfirmed) {
-            val outstanding=s.billOutstanding(bill,input.eventId)
-            require(addExact(a.principalMinor!!,addExact(a.interestMinor!!,a.feeMinor!!))<=outstanding.totalMinor&&outstanding.principalMinor?.let{a.principalMinor!!<=it}!=false&&outstanding.feeMinor?.let{addExact(a.interestMinor!!,a.feeMinor!!)<=it}!=false){"本期分配超过剩余义务，请先核对平台账单 / 当期の充当額が残額を超えています。返済先の請求を先に確認してください"}
-        }
         FinancialRepaymentAllocationEntity(debt.bookId,eventId+":allocation:$i",eventId,bill?.id,contractId,a.principalMinor,a.interestMinor,a.feeMinor)
     }
     require(allocations.map{it.billId to it.contractId}.distinct().size==allocations.size){"同一义务被重复分配 / 同じ債務に重複充当されています"}
-    if(!input.platformConfirmed)return allocations
-    allocations.filter{it.billId!=null}.groupBy{it.billId}.forEach{(id,rows)->
-        val bill=f.bills.first{it.id==id};val outstanding=s.billOutstanding(bill,input.eventId)
-        val principal=rows.fold(0L){sum,a->addExact(sum,a.principalMinor!!)}
-        val fee=rows.fold(0L){sum,a->addExact(sum,addExact(a.interestMinor!!,a.feeMinor!!))}
-        require(addExact(principal,fee)<=outstanding.totalMinor&&outstanding.principalMinor?.let{principal<=it}!=false&&outstanding.feeMinor?.let{fee<=it}!=false){"该账期累计分配超过剩余义务 / この回の合計充当額が残額を超えています"}
+    require(repaymentAllocationsWithinAmounts(allocations,input.principal?.minor,input.interest?.minor,input.fee?.minor,input.received?.minor,
+        input.paid.minor.takeIf{input.paid.currency.name==debt.currency}?.let{subtractExact(it,input.sourceFee?.minor?:0)})) {
+        "清偿分配超过已知付款或清偿金额，请先核对分配 / 充当額が既知の支払・返済額を超えています。充当を確認してください"
     }
-    fun total(value:(FinancialRepaymentAllocationEntity)->Long)=allocations.fold(0L){sum,a->addExact(sum,value(a))}
-    require(total{it.principalMinor!!}<=input.principal!!.minor&&total{it.interestMinor!!}<=input.interest!!.minor&&total{it.feeMinor!!}<=input.fee!!.minor){"清偿分配超过实际确认金额 / 充当額が実際の確定額を超えています"}
-    allocations.filter{it.contractId!=null}.groupBy{it.contractId}.forEach{(id,values)->
-        val contract=f.contracts.first{it.id==id}
-        require(values.fold(0L){sum,a->addExact(sum,a.principalMinor!!)}<=s.contractRemaining(contract,input.eventId)){"合同分配超过剩余本金 / 契約への充当額が残元金を超えています"}
-    }
-    allocations.filter{row->row.contractId!=null&&row.billId!=null&&f.bills.any{b->b.id==row.billId&&f.plans.any{p->p.id==b.planId&&p.origin=="POOL"&&f.contracts.first{it.id==row.contractId}.mode!=p.mode}}}.groupBy{row->f.bills.first{it.id==row.billId}.planId to row.contractId!!}.forEach{(key,rows)->
-        val (poolId,contractId)=key
-        val transferred=f.poolArrangements(poolId).filter{change->json.decodeFromString<FinancialArrangementBaseline>(change.baselineJson).contractId==contractId}.fold(0L){n,change->addExact(n,change.principalMinor)}
-        val paid=s.appliedRepaymentAllocations(input.eventId).filter{it.contractId==contractId&&f.bills.any{b->b.id==it.billId&&b.planId==poolId}}.fold(0L){n,row->addExact(n,row.principalMinor!!)}
-        require(rows.sumOf{it.principalMinor!!}<=subtractExact(transferred,paid)){"本次分配超过此合同已并入池的剩余本金 / 充当額がこの契約からプールへ統合済みの残元金を超えています"}
-    }
+    if(input.platformConfirmed)s.validateRepaymentAllocationCapacity(f,eventId,allocations,json)
     return allocations
 }
 

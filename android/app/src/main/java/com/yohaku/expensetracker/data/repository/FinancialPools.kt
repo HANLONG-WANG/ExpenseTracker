@@ -18,7 +18,7 @@ import java.lang.Math.subtractExact
 @Serializable data class PoolArrangementFeeFact(val arrangementId:String,val date:String,val minor:Long,val includedInRetained:Boolean)
 @Serializable data class FinancialPoolFacts(val openingDate:String,val accountOpeningMinor:Long,val sources:List<PoolSourceFact>,val payments:List<PoolPaymentFact>,val retained:List<PoolBillFact>,val rules:List<FinancialRuleEntity>,val issues:List<String>,val arrangementFees:List<PoolArrangementFeeFact> = emptyList())
 
-private fun poolMode(s:BookSnapshot,f:FinancialGraph,accountId:String,eventId:String):String? = s.contracts.firstOrNull{it.accountId==accountId&&it.fundingEventId==eventId}?.mode
+internal fun poolMode(s:BookSnapshot,f:FinancialGraph,accountId:String,eventId:String):String? = s.contracts.firstOrNull{it.accountId==accountId&&it.fundingEventId==eventId}?.mode
     ?:s.visibleEvents.firstOrNull{it.id==eventId}?.cardPaymentMode
     ?:f.plans.filter{it.accountId==accountId&&it.sourceEventId==eventId&&(it.active||it.origin=="POOL_RETAINED"||f.arrangements.any{a->a.originalPlanId==it.id})&&f.arrangements.none{a->a.targetPlanId==it.id}}.map{it.mode}.distinct().singleOrNull()
 internal fun poolInput(plan:FinancialPlanEntity)=plan.termsJson?.let{kotlinx.serialization.json.Json.decodeFromString<FinancialPredictionInput>(it)}?.pool

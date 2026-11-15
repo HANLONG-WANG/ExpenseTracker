@@ -50,7 +50,7 @@ fun BookSnapshot.statementSupplementDraft(seed:StatementSupplementSeed):EntryDra
 }
 
 @Serializable
-data class StatementActualSeed(val eventId:String,val accountId:String,val row:StatementRow,val postedDate:String)
+data class StatementActualSeed(val eventId:String,val accountId:String,val row:StatementRow,val postedDate:String,val postingId:String?=null)
 
 fun BookSnapshot.statementActualDraft(seed:StatementActualSeed):EntryDraft {
     java.time.LocalDate.parse(seed.postedDate)
@@ -58,15 +58,50 @@ fun BookSnapshot.statementActualDraft(seed:StatementActualSeed):EntryDraft {
     val account=accounts.first{it.id==seed.accountId}
     require(account.currency==seed.row.settlement.currency)
     val current=editingEntryDraft(event)
-    val outgoing=when(event.kind){"EXPENSE"->true;"INCOME","REFUND"->false;"TRANSFER"->current.accountId==account.id;else->error("借入和还款请使用金融表单 / 借入・返済は金融フォームを使用してください")}
-    require(seed.row.direction==if(outgoing)"out"else"in"){"流水方向与记录不一致 / 明細と記録の方向が一致しません"}
+    val posting=statementPosting(seed.eventId,seed.accountId,seed.row,seed.postingId)
     return if(event.kind==EntryKind.TRANSFER.name) {
-        if(current.accountId==account.id)current.copy(amount=seed.row.settlement.amount,date=seed.postedDate,fromConfirmed=true)
-        else {require(current.toAccountId==account.id);current.copy(toAmount=seed.row.settlement.amount,toDate=seed.postedDate,toConfirmed=true)}
+        when(posting.id) {
+            event.id+":from"->current.copy(amount=seed.row.settlement.amount,date=seed.postedDate,fromConfirmed=true)
+            event.id+":to"->current.copy(toAmount=seed.row.settlement.amount,toDate=seed.postedDate,toConfirmed=true)
+            event.id+":fee"->{
+                require(current.feePosition==TransferFeePosition.SEPARATE)
+                current.copy(feeAmount=if(current.feeCurrency?.name==account.currency)seed.row.settlement.amount else current.feeAmount,
+                    feeAccountAmount=seed.row.settlement.amount,feeDate=seed.postedDate,feeConfirmed=true,
+                    feeBaseAmount=if(account.currency==book.currency)seed.row.settlement.amount else "")
+            }
+            else->error("转账资金端不存在 / 振替の資金側がありません")
+        }
     }else {
         require(event.kind in listOf("EXPENSE","INCOME","REFUND")&&event.accountId==account.id)
         current.copy(amount=if(event.currency==account.currency)seed.row.settlement.amount else current.amount,
             date=if(event.kind==EntryKind.REFUND.name)seed.postedDate else current.date,accountAmount=seed.row.settlement.amount,settlementDate=seed.postedDate,settlementConfirmed=true,
             baseAmount=if(seed.row.settlement.currency==book.currency)seed.row.settlement.amount else "",rateSource="statement",rateDate=seed.postedDate)
     }
+}
+
+/** Missing identity is accepted only when account and direction identify exactly one posting. */
+fun BookSnapshot.statementPosting(eventId:String,accountId:String,row:StatementRow,postingId:String?=null):com.yohaku.expensetracker.data.db.PostingEntity {
+    val account=accounts.first{it.id==accountId}
+    val candidates=storedPostings.filter{p->p.eventId==eventId&&p.accountId==accountId&&p.currency==row.settlement.currency&&p.deltaMinor!=0L&&
+        (if(if(AccountType.valueOf(account.type).debt)p.deltaMinor>0 else p.deltaMinor<0)"out"else"in")==row.direction&&
+        (postingId==null||p.id==postingId)}
+    require(candidates.size==1){"请指定与流水账户、币种和方向一致的具体资金端 postingId / 明細の口座・通貨・方向に一致する資金側 postingId を指定してください"}
+    return candidates.single()
+}
+
+/** Validate after adapting the draft, including derived same-currency amounts. */
+fun BookSnapshot.requireStatementSupplementFacts(seed:StatementSupplementSeed,draft:EntryDraft) {
+    val row=seed.row;val currency=Currency.valueOf(row.settlement.currency)
+    fun same(amount:String)=Money.parse(amount,currency)==Money.parse(row.settlement.amount,currency)
+    val valid=if(seed.kind==EntryKind.TRANSFER) {
+        if(row.direction=="out")draft.accountId==seed.accountId&&same(draft.amount)&&draft.date==seed.postedDate&&draft.fromConfirmed
+        else draft.toAccountId==seed.accountId&&same(draft.toAmount)&&draft.toDate==seed.postedDate&&draft.toConfirmed
+    }else {
+        val originalCurrency=draft.originalCurrency?:currency
+        draft.accountId==seed.accountId&&same(if(originalCurrency==currency)draft.amount else draft.accountAmount)&&
+            draft.date==seed.occurredDate&&draft.settlementDate==seed.postedDate&&draft.settlementConfirmed&&!draft.historicalIncluded&&
+            (if(seed.kind==EntryKind.EXPENSE)"out"else"in")==row.direction&&
+            (row.original==null||Money.parse(draft.amount,originalCurrency)==Money.parse(row.original.amount,Currency.valueOf(row.original.currency)))
+    }
+    require(draft.kind==seed.kind&&draft.originalEventId==seed.originalEventId&&valid){"不能改写流水已知的金额、币种、日期或方向 / 明細の既知の金額・通貨・日付・方向は変更できません"}
 }

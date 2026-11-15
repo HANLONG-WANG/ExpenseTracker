@@ -12,29 +12,25 @@ import com.yohaku.expensetracker.domain.model.*
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import java.io.File
-import java.util.UUID
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ReadFailureUiTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var vm:AppViewModel
-    private var preferencesScope:CoroutineScope?=null
-    private var preferencesFile:File?=null
-    @After fun close(){vm.viewModelScope.cancel();db.close();runBlocking{preferencesScope?.coroutineContext?.get(Job)?.cancelAndJoin()};preferencesFile?.delete()}
+    @After fun close(){vm.viewModelScope.cancel();db.close()}
     @Test fun databaseReadFailureShowsErrorInsteadOfEndlessStartup(){
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         // Fault is confined to this disposable database, before any UI subscription.
         db.openHelper.writableDatabase.execSQL("DROP TABLE books")
-        val prefs=AppPreferences(context);runBlocking{prefs.clearSetup()}
+        val prefs=testPreferences.preferences;runBlocking{prefs.clearSetup()}
         vm=AppViewModel(LedgerRepository(db),prefs, testReferenceRates(prefs))
         ui.setContent{NativeApp(vm)}
         ui.waitUntil(10000){vm.state.value is AppState.Failure}
@@ -44,7 +40,7 @@ class ReadFailureUiTest {
     @Test fun retryReadsExistingRecordsAfterTemporaryFailureWithoutReset(){
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        val repo=LedgerRepository(db);val prefs=AppPreferences(context)
+        val repo=LedgerRepository(db);val prefs=testPreferences.preferences
         val bookId=runBlocking{
             prefs.clearSetup()
             val id=repo.createBook("原有账本",Currency.JPY)
@@ -80,10 +76,8 @@ class ReadFailureUiTest {
     @Test fun invalidSetupDataShowsFailureAndRestoresKnownLanguageAfterRetry(){
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO);preferencesScope=scope
-        val file=File(context.cacheDir,"read-retry-${UUID.randomUUID()}.preferences_pb");preferencesFile=file
-        val storage=PreferenceDataStoreFactory.create(scope=scope,produceFile={file})
-        val prefs=AppPreferences(context,storage)
+        val storage=testPreferences.storage
+        val prefs=testPreferences.preferences
         val saved=SetupDraft(step=1,name="途中の帳簿",budget="68000",theme="journal",language="ja")
         runBlocking{prefs.saveSetup(saved)}
         vm=AppViewModel(LedgerRepository(db),prefs, testReferenceRates(prefs));ui.setContent{NativeApp(vm)}
@@ -105,7 +99,7 @@ class ReadFailureUiTest {
     @Test fun resumedSubscriptionKeepsReadyStateInsteadOfStartup(){
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        val repo=LedgerRepository(db);val prefs=AppPreferences(context)
+        val repo=LedgerRepository(db);val prefs=testPreferences.preferences
         val bookId=runBlocking{prefs.clearSetup();val id=repo.createBook("后台返回",Currency.JPY);repo.updateBook(repo.dao.book(id)!!.copy(initialized=true));prefs.select(id);id}
         vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))
         runBlocking {

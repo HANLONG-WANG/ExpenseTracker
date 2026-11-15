@@ -82,7 +82,7 @@ import java.time.format.DateTimeFormatter
     var review by remember{mutableStateOf<ArrangementReconciliationReview?>(null)}
     var confirmed by remember{mutableStateOf(false)}
     var refreshed by remember{mutableStateOf(false)}
-    var calendar by remember{mutableStateOf<Int?>(null)}
+    var calendar by remember{mutableStateOf<YDateSelection?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle();val formScroll=rememberScrollState();val previewScroll=rememberScrollState()
     LaunchedEffect(review){if(review!=null)previewScroll.scrollTo(0)}
     FinancialFlow(word("核对当前还款安排","現在の返済予定を確認"),step=if(review!=null)1 else 0,
@@ -128,7 +128,7 @@ import java.time.format.DateTimeFormatter
                 RecordFacts(listOf((if(sourcePool==null)word("当前来源本金","元データ元金")else word("生效日原循环还款计划本金 / 转出前","移行前元金")) to (physical.grossMinor?.let{Money(c,it).display()}?:word("待核对清偿归属","返済の帰属を要確認")),word("原办理转入本金","当初の元金") to Money(c,f.arrangements.first{it.id==applied.id}.principalMinor).display()))
                 if(!physical.exists)YText(word("原来源已删除。可先恢复原记录；若平台也已取消，可将当前转入本金及各期待付核对为0。实际清偿不会被删除。","元の記録は削除済みです。先に復元するか、返済先でも取消済みなら移す元金・各回残額を0として確認できます。実際の返済は削除しません。"),11,color=LocalYohaku.current.warm)
             }
-            YDateFields(listOf(word("当前确认的生效日","現在確認した適用日") to effective),calendar,{calendar=it},{_,v->effective=v})
+            YDateFields(listOf(YDateField("effective",word("当前确认的生效日","現在確認した適用日"),effective)),calendar,{calendar=it},{_,v->effective=v})
             YField(word("生效日转入的本金 / 非今日剩余","適用日に移す元金・今日の残額ではありません")+" · "+a.currency,principal,{principal=it},Modifier.testTag("reconciliation-principal"),numeric=true)
             if(source.sourceEventId==null&&f.arrangements.none{it.targetPlanId==source.id})YField(word("来源所属的期初本金","元データに属する期首元金")+" · "+a.currency,opening,{opening=it},Modifier.testTag("reconciliation-opening"),numeric=true)
             if(sourcePool!=null)YSelect(word("循环还款计划本金入账日期依据","循環返済プラン元金の日付基準"),poolDate,listOf(PoolSourceDate.TRANSACTION.name to word("交易日期","取引日"),PoolSourceDate.ACCOUNT_POSTING.name to word("账户入账日期","口座計上日")),{poolDate=it})

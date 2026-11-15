@@ -4,6 +4,7 @@ import com.yohaku.expensetracker.data.command.*
 import com.yohaku.expensetracker.data.cloud.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
+import org.junit.Assert.assertEquals
 import java.io.File
 import java.util.UUID
 
@@ -26,6 +27,23 @@ internal fun commandClaim(plan:CommandPlan,resultId:String="result-1",version:In
     return CloudClaim(localId,plan.book_id,"general","task-1",resultId,version,sha256(text),File("unused-test-claim"),text,null,emptyList(),"command")
 }
 internal fun commandChecks(model:ConfirmationModel)=model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.map{it.key}.toSet()
+
+/** Undo restores draft contents but advances its synchronization generation to reject queued stale saves. */
+internal fun assertCommandRowsRestored(before:Map<String,Pair<String,JsonObject>>,after:Map<String,Pair<String,JsonObject>>,restoredDraft:Boolean=false) {
+    assertEquals(before.keys,after.keys)
+    if(restoredDraft)assertEquals(1,before.values.count{it.first=="drafts"})
+    before.forEach{(key,expected)->
+        val actual=after.getValue(key)
+        if(restoredDraft&&expected.first=="drafts") {
+            assertEquals(key,expected.first,actual.first)
+            assertEquals(key,expected.second-"json",actual.second-"json")
+            val draft=commandJson.parseToJsonElement(expected.second.getValue("json").jsonPrimitive.content).jsonObject
+            val restored=commandJson.parseToJsonElement(actual.second.getValue("json").jsonPrimitive.content).jsonObject
+            val nextVersion=draft.getValue("merchantSyncVersion").jsonPrimitive.long+1
+            assertEquals(key,JsonObject(draft+("merchantSyncVersion" to JsonPrimitive(nextVersion))),restored)
+        }else assertEquals(key,expected,actual)
+    }
+}
 
 internal fun CommandPlan.withCommandCreditLimit():CommandPlan {
     val limit=commandJson.parseToJsonElement("""{"totalMinor":100000,"installmentMinor":null,"revolvingMinor":null,"sharing":"TOTAL_ONLY","combinedMinor":null,"effectiveFrom":"2026-11-01","basisDate":"2026-11-01","usedTotalMinor":30000,"usedInstallmentMinor":null,"usedRevolvingMinor":null,"recovery":"PAYMENT_DATE","usageBasis":"PRINCIPAL_ONLY","zoneId":"Asia/Tokyo","usageStart":"TRANSACTION_DATE","recoveryDelayDays":0}""")

@@ -46,7 +46,7 @@ import java.time.format.DateTimeFormatter
     var confirmed by remember{mutableStateOf(false)}
     var exception by remember{mutableStateOf(false)}
     var refreshed by remember{mutableStateOf(false)}
-    var calendar by remember{mutableStateOf<Int?>(null)}
+    var calendar by remember{mutableStateOf<YDateSelection?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     val formScroll=rememberScrollState();val previewScroll=rememberScrollState();val applyScroll=rememberScrollState()
     LaunchedEffect(review,applying){if(applying)applyScroll.scrollTo(0)else if(review!=null)previewScroll.scrollTo(0)}
@@ -69,7 +69,7 @@ import java.time.format.DateTimeFormatter
                 YText(word("调整原循环还款计划的月付款金额或计算方式。保留同一个循环还款计划与利率规则，已确认、关联付款和逾期账单按原义务保留。","元の循環返済プランの月支払額・方式を変更します。同じ循環返済プランと金利条件を保持し、確定・支払関連・期限経過の請求は元の債務を保持します。"),12)
             }
             definition.pool!!.paymentChanges.forEach{PoolPaymentSettingFacts(it.setting,c)}
-            YDateFields(listOf(word("变更生效日","変更適用日") to effective),calendar,{calendar=it},{_,v->effective=v})
+            YDateFields(listOf(YDateField("effective",word("变更生效日","変更適用日"),effective)),calendar,{calendar=it},{_,v->effective=v})
             YSelect(word("从哪次付款起采用","適用する最初の支払日"),from,listOf(null to word("请选择","選択してください"))+definition.terms.paymentDates.filter{it>=effective}.map{it as String? to it},{from=it},Modifier.testTag("pool-payment-from"))
             YSelect(word("新的月付款方式","新しい月支払方式"),method,listOf(null to word("请选择","選択してください"))+PaymentMethod.entries.map{it.name as String? to poolPaymentMethod(it)},{method=it},Modifier.testTag("pool-payment-method"))
             if(method==PaymentMethod.BALANCE_TIERS.name) {

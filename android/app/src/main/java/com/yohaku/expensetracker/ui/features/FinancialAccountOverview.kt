@@ -15,7 +15,7 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import java.time.*
 
-@Composable private fun financialAmount(c:Currency,n:Long?)=n?.let{Money(c,it).display()}?:word("未知","不明")
+@Composable internal fun financialAmount(c:Currency,n:Long?)=n?.let{Money(c,it).display()}?:word("未知","不明")
 @Composable private fun recordedPaymentLabel(s:BookSnapshot,e:EventEntity):String {
     val mode=e.cardPaymentMode?:s.contracts.firstOrNull{it.fundingEventId==e.id}?.mode
     return if(e.cardPaymentChoice in listOf("BONUS","DEFERRED"))cardPaymentLabel(e.cardPaymentChoice)+e.cardPaymentMonth?.let{" · "+it}.orEmpty()else if(mode==null)cardPaymentLabel(null)else financeLabel(mode)

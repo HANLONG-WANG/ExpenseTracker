@@ -21,8 +21,9 @@ fun BookSnapshot.financialAccountSummary(finance:FinancialGraph,accountId:String
     val rows=finance.bills.filter{it.active&&plans.any{p->p.id==it.planId}}.map{b->
         val remaining=billOutstanding(b)
         val pending=repaymentAllocations.filter{it.billId==b.id&&it.eventId in waiting}
-        val principal=pending.map{it.principalMinor}.knownTotal()
-        val fee=pending.map{p->if(p.interestMinor==null||p.feeMinor==null)null else addExact(p.interestMinor,p.feeMinor)}.knownTotal()
+        val known=pending.all{pendingRepaymentAmountKnown(it.eventId)}
+        val principal=if(known)pending.map{it.principalMinor}.knownTotal()else null
+        val fee=if(!known)null else pending.map{p->if(p.interestMinor==null||p.feeMinor==null)null else addExact(p.interestMinor,p.feeMinor)}.knownTotal()
         val total=if(principal==null||fee==null)null else addExact(principal,fee)
         FinancialStatementRow(plans.first{it.id==b.planId},b,remaining,principal,fee,total,total?.takeUnless{!b.confirmed&&b.planId in stalePlanIds}?.let{subtractExact(remaining.totalMinor,it).coerceAtLeast(0)})
     }.sortedWith(compareBy<FinancialStatementRow>{it.bill.date}.thenBy{it.plan.name}.thenBy{it.bill.number})

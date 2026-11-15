@@ -41,7 +41,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
     val funds=s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}
     val currency=s.accounts.firstOrNull{it.id==d.funds}?.currency?:account.currency
     val feeCurrency=s.accounts.firstOrNull{it.id==(d.separatePayer?:d.funds)}?.currency?:currency
-    var dateOwner by remember{mutableStateOf<Int?>(null)}
+    var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     val review by vm.financialLedgerReview.collectAsStateWithLifecycle()
     val formScroll=rememberScrollState();val reviewScroll=rememberScrollState()
@@ -65,7 +65,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
         YField(word("合同名称","契約名"),d.name,{update(d.copy(name=it))})
         YSelect(word("借款模式","借入方式"),d.mode,listOf(FinanceMode.FIXED_LOAN,FinanceMode.CREDIT_LINE).map{it.name to financeLabel(it.name)},{update(d.copy(mode=it))})
         YField(word("合同本金","契約元金")+" · "+account.currency,d.principal,{update(d.copy(principal=it))},numeric=true)
-        YDateFields(listOf(word("借入日期","借入日") to d.date),dateOwner,{dateOwner=it},{_,v->update(d.copy(date=v))})
+        YDateFields(listOf(YDateField("date",word("借入日期","借入日"),d.date)),dateOwner,{dateOwner=it},{_,v->update(d.copy(date=v))})
         if(!opening) {
             YSelect(word("实际到账账户","実際の入金先口座"),d.funds,listOf(null to word("请选择","選択してください"))+funds.map{it.id as String? to (it.name+" · "+it.currency)},{update(d.copy(funds=it,received="",separatePayer=null,separate="",separateBase=""))},columns=2)
             YField(word("实际到账","実入金額")+" · "+currency,d.received,{update(d.copy(received=it))},numeric=true)

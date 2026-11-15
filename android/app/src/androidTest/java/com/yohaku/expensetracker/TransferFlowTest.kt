@@ -24,6 +24,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class TransferFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
@@ -31,7 +32,8 @@ class TransferFlowTest {
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC));vm=AppViewModel(repo,AppPreferences(context),testReferenceRates(TestReferenceRateStore().apply{automaticReferenceRates.value=false},repo.clock))
+        runBlocking{testPreferences.preferences.setAutomaticReferenceRates(false)}
+        repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC));vm=AppViewModel(repo,testPreferences.preferences,testReferenceRates(testPreferences.preferences,repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}

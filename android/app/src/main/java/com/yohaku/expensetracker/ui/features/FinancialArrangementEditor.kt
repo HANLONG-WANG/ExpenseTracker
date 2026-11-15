@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.time.*
 
-@Serializable private data class ArrangementDateDraft(val date:String,val start:String,val end:String,val total:String="",val principal:String="",val fee:String="")
+@Serializable private data class ArrangementDateDraft(val date:String,val start:String,val end:String,val total:String="",val principal:String="",val fee:String="",val calendarId:String=java.util.UUID.randomUUID().toString())
 @Serializable private data class PoolTransferDraft(val billId:String,val principal:String="",val cancelFee:String="")
 @Serializable private data class ClearingMoveDraft(val allocationId:String,val destination:String?=null,val principal:String="0",val interest:String="0",val fee:String="0")
 
@@ -60,10 +60,10 @@ import java.time.*
     fun changePoolPart(index:Int,value:PoolTransferDraft){poolPartsJson=vm.repository.json.encodeToString(poolParts.mapIndexed{i,row->if(i==index)value else row})}
     val laterClearings=arrangementLaterAllocations(s,finance,old,effective).filter{old.origin!="POOL"||it.billId in poolParts.map{p->p.billId}}
     fun changeMove(index:Int,value:ClearingMoveDraft){movesJson=vm.repository.json.encodeToString(clearingMoves.mapIndexed{i,row->if(i==index)value else row})}
-    val rows=vm.repository.json.decodeFromString<List<ArrangementDateDraft>>(encoded)
+    val rows=remember(encoded){vm.repository.json.decodeFromString<List<ArrangementDateDraft>>(encoded)}
     val selected=FinanceMode.valueOf(mode)
     val revolving=selected in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     var merge by financialField("mergePool"){false}
     var mergeFeeDate by financialField<String?>("mergeFeeDate"){null}
     var mergeIncluded by financialField("mergeFeeIncluded"){false}
@@ -128,7 +128,7 @@ import java.time.*
                     }.toString();clearRows()
                 }},enabled=!busy,haptic=Haptic.Select)
             }
-            val dates=mutableListOf(word("变更生效日","変更適用日") to effective)
+            val dates=mutableListOf(YDateField("effective",word("变更生效日","変更適用日"),effective))
             if(destinationPool==null) {
                 YToggle(word("手动录入平台新方案","返済先の新プランを手入力"),manual,{manual=it},Modifier.testTag("arrangement-manual"))
                 if(manual) {
@@ -136,9 +136,9 @@ import java.time.*
                     YToggle(word("已列出完整新方案","新プランの全期間を入力済み"),manualComplete,{manualComplete=it},Modifier.testTag("arrangement-manual-complete"))
                 }
             }
-            if(destinationPool==null)dates+=word("首次付款日","初回支払日") to firstDate
-            if(revolving&&!manual&&destinationPool==null)dates+=word("首次计费截止日","初回計算終了日") to firstEnd
-            YDateFields(dates,owner?.takeIf{it<10},{owner=it},{i,v->when(i){0->effective=v;1->firstDate=v;else->firstEnd=v};clearRows()})
+            if(destinationPool==null)dates+=YDateField("firstDate",word("首次付款日","初回支払日"),firstDate)
+            if(revolving&&!manual&&destinationPool==null)dates+=YDateField("firstEnd",word("首次计费截止日","初回計算終了日"),firstEnd)
+            YDateFields(dates,owner,{owner=it},{i,v->when(i){"effective"->effective=v;"firstDate"->firstDate=v;"firstEnd"->firstEnd=v};clearRows()})
             if(selected!=FinanceMode.SINGLE&&destinationPool==null) {
                 YField(word("预测期数","予測回数"),count,{count=it;clearRows()},numeric=true)
                 if(!manual)YField(word("新安排从第几期计费","新しい予定の計算開始回数"),firstPeriod,{firstPeriod=it;clearRows()},numeric=true)
@@ -196,17 +196,17 @@ import java.time.*
                     val nextStart=if(i==0)start else if(interest?.frequency==ChargeFrequency.MONTHLY||interest?.includeStart==true&&interest.includeEnd==true)previous.plusDays(1)else if(interest?.includeStart==false&&interest.includeEnd==false)previous.minusDays(1)else previous
                     ArrangementDateDraft(payment.plusMonths(i.toLong()).toString(),nextStart.toString(),end.plusMonths(i.toLong()).toString())})
             }},Modifier.testTag("arrangement-generate"),enabled=!busy,haptic=Haptic.Step)
-            if(destinationPool==null)rows.forEachIndexed{i,row->Panel {
+            if(destinationPool==null)rows.forEachIndexed{i,row->key(row.calendarId){Panel(Modifier.testTag("arrangement-period-$i")) {
                 YText(word("第${i+1}期","第${i+1}回"),14)
-                val fields=if(revolving&&!manual)listOf(word("计费开始","計算開始") to row.start,word("计费截止","計算終了") to row.end,word("付款日","支払日") to row.date)else listOf(word("付款日","支払日") to row.date)
+                val fields=if(revolving&&!manual)listOf(YDateField("start",word("计费开始","計算開始"),row.start),YDateField("end",word("计费截止","計算終了"),row.end),YDateField("date",word("付款日","支払日"),row.date))else listOf(YDateField("date",word("付款日","支払日"),row.date))
                 fun changeRow(next:ArrangementDateDraft){encoded=vm.repository.json.encodeToString(rows.mapIndexed{k,r->if(k==i)next else r})}
-                YDateFields(fields,owner?.takeIf{it/10==i+1}?.rem(10),{owner=it?.let{v->(i+1)*10+v}},{j,v->changeRow(if(!revolving||manual||j==2)row.copy(date=v)else if(j==0)row.copy(start=v)else row.copy(end=v))})
+                YDateFields(fields,owner,{owner=it},{j,v->changeRow(if(j=="date")row.copy(date=v)else if(j=="start")row.copy(start=v)else row.copy(end=v))},group="period-${row.calendarId}")
                 if(manual) {
                     YField(word("本期金额 / 不含另列变更费","当期金額・別途変更手数料を除く")+" · "+account.currency,row.total,{changeRow(row.copy(total=it))},Modifier.testTag("arrangement-manual-total-$i"),numeric=true)
                     YField(word("本期本金 / 未知留空","当期元金・不明は空欄")+" · "+account.currency,row.principal,{changeRow(row.copy(principal=it))},Modifier.testTag("arrangement-manual-principal-$i"),numeric=true)
                     YField(word("本期费用 / 未知留空","当期手数料・不明は空欄")+" · "+account.currency,row.fee,{changeRow(row.copy(fee=it))},Modifier.testTag("arrangement-manual-fee-$i"),numeric=true)
                 }
-            }}
+            }}}
             if(laterClearings.isNotEmpty()||clearingMoves.isNotEmpty()) {
                 ThemeSection(word("生效后的已记录清偿","適用日後の記録済み返済"),"CLEARING ALLOCATION")
                 YText(word("生效日当天已清偿的部分按变更前处理。之后的清偿请明确保留原账单或转到新期次，可拆分本金、利息和费用；每项合计必须与原清偿一致。实际付款和资金不变。","適用日当日の返済は変更前として扱います。その後は元の請求か新しい回へ明示的に充当し、元金・利息・手数料を分割できます。各合計は元の返済と一致させ、実支払・資金は変えません。"),11)

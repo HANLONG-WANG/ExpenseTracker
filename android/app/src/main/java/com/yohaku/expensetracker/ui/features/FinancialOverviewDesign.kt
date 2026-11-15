@@ -26,7 +26,7 @@ import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-/** The cover uses actual debt for loans and the next saved payment for cards. */
+/** Loan debt awaits clearing; card funding excludes known pending allocations, like the cash timeline. */
 @Composable internal fun FinancialAccountLead(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,vm:AppViewModel) {
     val date by vm.today.collectAsStateWithLifecycle()
     val today=date.toString();val currency=Currency.valueOf(a.currency)
@@ -40,12 +40,18 @@ import com.yohaku.expensetracker.ui.theme.*
         "FIXED_LOAN" in modes->word("固定计划借款","固定計画の借入")
         else->word("借款方式待补齐","借入方式は未補完")
     }
+    val totals=summary.next.statementTotals()
+    val nextUnknown=summary.next.any{!it.bill.confirmed&&it.plan.id in stale}||totals.cashRequiredMinor==null
+    val awaitingClearing=summary.rows.any{it.outstanding.totalMinor>0}
     val next=when {
+        summary.next.isEmpty()&&awaitingClearing->word("已付款，待平台确认","支払済み・返済先の確認待ち")
+        summary.next.isEmpty()&&summary.rows.isNotEmpty()->word("已知账单无需备款","既知の請求に資金準備は不要")
         summary.next.isEmpty()->word("尚无已知待付日期","既知の支払日はありません")
-        summary.next.any{!it.bill.confirmed&&it.plan.id in stale}->word("待核对","要確認")
-        else->Money(currency,summary.next.statementTotals().totalMinor).display()
+        nextUnknown->word("待核对","要確認")
+        else->financialAmount(currency,totals.cashRequiredMinor)
     }
     val status=when {
+        summary.next.isEmpty()&&summary.rows.isNotEmpty()->word("已知账单无需重复备款","既知の請求の資金を再度準備する必要はありません")
         summary.next.isEmpty()->word("请补齐已知付款安排","既知の支払予定を補完してください")
         summary.next.all{it.bill.confirmed}->word("已确认","確認済")
         summary.next.none{it.bill.confirmed}->word("本地预测 / 待核对","ローカル予測・要確認")
@@ -57,8 +63,10 @@ import com.yohaku.expensetracker.ui.theme.*
     YLead(a.name,if(loan)a.currency+" · "+loanCaption else if(wideTitle)word("账单、预测与信用额度分开。","確定額・予測・利用枠を区別。")else word("已知账单、预计安排和信用额度分开。","確定明細・見込み・利用枠を分ける。"),
         if(loan)"MY BORROWING"else"CREDIT / IN CONTEXT",
         if(loan)Money(currency,s.cashBalanceAt(a,today)).display()else next,
-        if(loan)word("未还本金","未返済元金")else listOfNotNull(summary.nextDate,status).joinToString(" · "),
-        amountIsText=!loan&&(summary.next.isEmpty()||summary.next.any{!it.bill.confirmed&&it.plan.id in stale}),pageFlow=true)
+        if(loan)word("未还本金","未返済元金")else listOfNotNull(summary.nextDate,if(summary.next.isNotEmpty())word("仍需备款","今後必要な資金")else null,status).joinToString(" · "),
+        amountIsText=!loan&&(summary.next.isEmpty()||nextUnknown),pageFlow=true,
+        amountIsStatus=!loan&&(summary.next.isEmpty()||nextUnknown),
+        supportingText=pendingRepaymentLabel(s,a.id,today).orEmpty())
 }
 
 /** The balance column belongs to each saved plan, never the account's total actual debt. */

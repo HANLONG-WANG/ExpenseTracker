@@ -44,23 +44,22 @@ internal suspend fun batchHistoryFixture(repo:LedgerRepository,theme:String,lang
 
 @RunWith(AndroidJUnit4::class)
 class FinancialBatchRevolvingFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
     private val haptics=RecordingHapticOutput()
-    private var hapticsPreviouslyEnabled=true
     private val clock=Clock.fixed(Instant.parse("2026-11-04T01:59:42.123456789Z"),ZoneId.of("Asia/Tokyo"))
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,clock)
-        vm=AppViewModel(repo,AppPreferences(context),testReferenceRates(AppPreferences(context),repo.clock))
-        hapticsPreviouslyEnabled=runBlocking{vm.preferences.hapticsEnabled.first()}
+        vm=AppViewModel(repo,testPreferences.preferences,testReferenceRates(testPreferences.preferences,repo.clock))
         runBlocking{vm.preferences.setHapticsEnabled(true)}
         ui.setContent{NativeApp(vm,haptics=haptics)}
     }
-    @After fun close(){runBlocking{vm.preferences.setHapticsEnabled(hapticsPreviouslyEnabled)};vm.viewModelScope.cancel();db.close()}
+    @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(tag:String) {
         finishFinancialInputBeforeTap(ui,tag)
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()}

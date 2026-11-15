@@ -105,6 +105,28 @@ class MediaFlowTest {
         ui.onNodeWithTag("scan-use").performClick()
         return result
     }
+    /** Fail actual attachment writes without changing the scan cache or requiring a full disk. */
+    private fun blockMediaStorage(book:String):()->Unit {
+        val directory=File(root,book)
+        val backup=File(root,"$book-blocked")
+        val existed=directory.exists()
+        if(existed)check(directory.renameTo(backup))
+        directory.writeText("Not a directory")
+        return { check(directory.delete());if(existed)check(backup.renameTo(directory)) }
+    }
+    private fun waitForFailedImport():File {
+        ui.waitUntil(15000){vm.receiptScanImport.value?.status==ReceiptScanImportStatus.FAILED}
+        ui.onNodeWithTag("scan-waiting-retry").assertIsDisplayed()
+        return File(vm.receiptScanImport.value!!.path).also{assertTrue(it.isFile)}
+    }
+    private fun scanImportShot(name:String) {
+        if(!visualEnabled())return
+        ui.waitForIdle()
+        val bitmap=instrumentation.uiAutomation.takeScreenshot()
+        val folder=File(instrumentation.targetContext.filesDir,"verification/receipt-media").apply{mkdirs()}
+        File(folder,"$name${InstrumentationRegistry.getArguments().getString("captureSuffix", "")}.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        bitmap.recycle()
+    }
     private fun nodes(root:AccessibilityNodeInfo?):List<AccessibilityNodeInfo> = if(root==null)emptyList()else listOf(root)+(0 until root.childCount).flatMap{nodes(root.getChild(it))}
     private fun systemNodes()=nodes(instrumentation.uiAutomation.rootInActiveWindow)
     private fun systemClick(text:String,long:Boolean=false,rootOnly:Boolean=false) {
@@ -294,6 +316,43 @@ class MediaFlowTest {
         waitScan("scan-camera");ui.onNodeWithTag("scan-back").performClick()
         ui.waitUntil{!vm.busy.value};assertEquals(1,vm.entry.value!!.receiptFileIds.size);assertTrue(scanDirectories().isEmpty())
     }
+    @Test fun failedCameraImportRetainsPhotoAndRecreationDoesNotDuplicateRetryAcrossLooks() {
+        cameraPhoto=syntheticReceipt()
+        runBlocking{prefs.setScanAutoProcess(false)}
+        for((theme,language) in testLooks(this)) {
+            val book=startMediaDraft(theme,language)
+            ui.runOnIdle{vm.setMediaImportOption(vm.entry.value!!.mediaSession,true)}
+            val unblock=blockMediaStorage(book)
+            val photo:File
+            try {
+                ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();shoot()
+                photo=waitForFailedImport()
+                assertArrayEquals(cameraPhoto,photo.readBytes())
+                assertTrue(vm.entry.value!!.receiptFileIds.isEmpty())
+                assertTrue(runBlocking{repo.snapshot(repo.dao.book(book)!!).first().files.isEmpty()})
+                ui.activityRule.scenario.recreate()
+                assertEquals(photo,waitForFailedImport())
+                scanImportShot("$theme-$language-scan-import-failed")
+            } finally {unblock()}
+            // Hold real repository I/O while recreating the Activity during the retry.
+            runBlocking{repo.mediaWrites.lock()}
+            try {
+                ui.onNodeWithTag("scan-waiting-retry").performClick()
+                ui.waitUntil{vm.receiptScanImport.value?.status==ReceiptScanImportStatus.IMPORTING}
+                assertArrayEquals(cameraPhoto,photo.readBytes())
+                ui.activityRule.scenario.recreate()
+                ui.onNodeWithTag("scan-review-waiting").assertIsDisplayed()
+                ui.onNodeWithTag("scan-waiting-cancel").assertIsNotEnabled()
+                scanImportShot("$theme-$language-scan-import-pending")
+            } finally {repo.mediaWrites.unlock()}
+            ui.waitUntil(15000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==1}
+            val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            assertEquals(1,saved.files.size)
+            assertArrayEquals(cameraPhoto,repo.mediaFile(saved.files.single()).readBytes())
+            assertFalse(photo.parentFile!!.exists());assertTrue(scanDirectories().isEmpty())
+            ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil{vm.entry.value==null&&!vm.busy.value}
+        }
+    }
     @Test fun unprocessedCameraOriginalFollowsBothStorageOptions() {
         cameraPhoto=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(2400,4800,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.WHITE);compress(Bitmap.CompressFormat.JPEG,95,out);recycle()}}.toByteArray()
         runBlocking{prefs.setScanAutoProcess(false)}
@@ -327,8 +386,19 @@ class MediaFlowTest {
         receiptAction("media-receipt-process-${ids[1]}").performClick()
         waitScan("scan-result");assertTrue(vm.busy.value)
         ui.activityRule.scenario.recreate();waitScan("scan-result")
-        val processed=acceptScan()
+        val unblock=blockMediaStorage(book)
+        val processed:ByteArray
+        val retained:File
+        try {
+            processed=acceptScan()
+            retained=waitForFailedImport()
+            assertArrayEquals(processed,retained.readBytes())
+            assertEquals(ids,vm.entry.value!!.receiptFileIds)
+            assertTrue(File(retained.parentFile,"original.jpg").isFile)
+        } finally {unblock()}
+        ui.onNodeWithTag("scan-waiting-retry").performClick()
         ui.waitUntil(10000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.get(1)!=ids[1]}
+        assertFalse(retained.parentFile!!.exists())
         val replacement=vm.entry.value!!.receiptFileIds[1]
         assertEquals(listOf(ids[0],replacement,ids[2]),vm.entry.value!!.receiptFileIds)
         val current=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
@@ -347,11 +417,20 @@ class MediaFlowTest {
         val original=startMediaDraft();val session=vm.entry.value!!.mediaSession
         ui.runOnIdle{vm.setMediaImportOption(session,true)}
         ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();shoot();waitScan("scan-result")
-        val other=runBlocking{repo.createBook("另一账本",Currency.JPY).also{repo.updateBook(repo.dao.book(it)!!.copy(initialized=true));prefs.select(it)}}
-        // Drop the old ViewModel as process recreation would; saved Compose state restores the request.
-        ui.runOnIdle{vm.viewModelScope.cancel();vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))}
+        val unblock=blockMediaStorage(original)
+        val processed:ByteArray
+        val retained:File
+        val other:String
+        try {
+            processed=acceptScan();retained=waitForFailedImport()
+            other=runBlocking{repo.createBook("另一账本",Currency.JPY).also{repo.updateBook(repo.dao.book(it)!!.copy(initialized=true));prefs.select(it)}}
+            // Drop the old ViewModel as process recreation would; saved state must restore the OUTPUT and target.
+            ui.runOnIdle{vm.viewModelScope.cancel()}
+            assertArrayEquals(processed,retained.readBytes())
+        } finally {unblock()}
+        // The restored pending output can now be imported; startup media collection must see normal storage.
+        ui.runOnIdle{vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))}
         ui.activityRule.scenario.recreate()
-        waitScan("scan-result");val processed=acceptScan()
         ui.waitUntil(15000){!vm.busy.value&&runBlocking{repo.dao.storedDraft(original)?.let{repo.json.decodeFromString<EntryDraft>(it.json).receiptFileIds.size==1}==true}}
         val restored=runBlocking{repo.json.decodeFromString<EntryDraft>(repo.dao.storedDraft(original)!!.json)}
         assertEquals(session,restored.mediaSession);assertEquals(1,restored.receiptFileIds.size)
@@ -386,7 +465,14 @@ class MediaFlowTest {
         ui.waitUntil(10000){vm.entry.value!=null&&!vm.busy.value&&vm.route.value=="entry"}
         val session=vm.entry.value!!.mediaSession
         ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();waitScan("scan-camera")
-        ui.activityRule.scenario.recreate();waitScan("scan-camera");shoot()
+        ui.activityRule.scenario.recreate();waitScan("scan-camera")
+        val unblock=blockMediaStorage(book)
+        try {
+            shoot();val retained=waitForFailedImport()
+            assertArrayEquals(cameraPhoto,retained.readBytes())
+            assertEquals(session,vm.entry.value!!.mediaSession)
+        } finally {unblock()}
+        ui.onNodeWithTag("scan-waiting-retry").performClick()
         ui.waitUntil(10000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==1}
         assertEquals(session,vm.entry.value!!.mediaSession)
         val stored=runBlocking{repo.json.decodeFromString<EntryDraft>(repo.dao.storedDraft(book)!!.json)}
@@ -457,8 +543,19 @@ class MediaFlowTest {
                 openDetail(shot)
                 ui.onNodeWithTag("record-take-receipt").performScrollTo().performClick()
                 shoot();waitScan("scan-result");ui.activityRule.scenario.recreate()
-                val processed=acceptScan()
+                val unblock=blockMediaStorage(book)
+                val processed:ByteArray
+                val retained:File
+                try {
+                    processed=acceptScan();retained=waitForFailedImport()
+                    assertArrayEquals(processed,retained.readBytes())
+                    assertTrue(runBlocking{repo.snapshot(repo.dao.book(book)!!).first().entryReceiptImages(shot).isEmpty()})
+                    ui.activityRule.scenario.recreate()
+                    assertEquals(retained,waitForFailedImport())
+                } finally {unblock()}
+                ui.onNodeWithTag("scan-waiting-retry").performClick()
                 ui.waitUntil(15000){!vm.busy.value&&current()?.entryReceiptImages(shot)?.size==1}
+                assertFalse(retained.parentFile!!.exists())
                 val stored=current()!!.entryReceiptImages(shot).single()
                 assertEquals("image/jpeg",stored.mime)
                 val size=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}.also{android.graphics.BitmapFactory.decodeFile(repo.mediaFile(stored).path,it)}

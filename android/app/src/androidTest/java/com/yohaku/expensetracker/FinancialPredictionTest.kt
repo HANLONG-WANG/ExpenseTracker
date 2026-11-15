@@ -186,28 +186,39 @@ class FinancialPredictionTest {
         }finally{db.close()}
     }
 
-    @Test fun manualKnownAmountGainsItsFirstPredictionWithoutLosingUnknownBreakdown()=runBlocking {
+    @Test fun lastManualBillRequiresKnownPrincipalBeforePredictionCanBeSaved()=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         try {
             val repo=LedgerRepository(db,clock)
             val book=repo.createBook("金融",Currency.JPY)
             val bank=repo.saveAccount(book,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-10-01")
             val card=repo.saveAccount(book,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
-            val r=repo.commitFinancialRule(repo.previewFinancialRule(book,card,rule(book,card,bank).copy(mode=FinanceMode.SINGLE)))!!
-            val plan=repo.commitManualFinancialPlan(repo.previewManualFinancialPlan(book,ManualFinancialPlanInput(card,"既知",FinanceMode.SINGLE,listOf(KnownBillInput("2026-11-27",10100,paymentAccountId=bank)),principalMinor=10000,opening=true)))!!
+            repo.commitFinancialRule(repo.previewFinancialRule(book,card,rule(book,card,bank).copy(mode=FinanceMode.SINGLE)))!!
+            val plan=repo.commitManualFinancialPlan(repo.previewManualFinancialPlan(book,ManualFinancialPlanInput(card,"既知",FinanceMode.SINGLE,listOf(KnownBillInput("2026-11-27",5000,paymentAccountId=bank)),principalMinor=10000,opening=true)))!!
             val bill=db.financialDao().bills(book,plan).single()
             val input=FinancialPredictionInput(card,"既知",FinanceMode.SINGLE,FinancialScheduleTerms("2026-10-01",listOf("2026-11-27")),openingPrincipalMinor=10000,planId=plan)
+            val before=repo.financialReviewState(book)
             val review=repo.previewFinancialPrediction(book,input)
-            assertTrue(review.calculation is Calculation.Ready)
-            assertEquals(10100L,review.bills.single().totalMinor)
-            assertEquals(10000L,review.bills.single().predictedTotalMinor)
-            assertNull(review.bills.single().principalMinor);assertNull(review.bills.single().feeMinor)
-            repo.commitFinancialPrediction(review)
+            assertEquals(Calculation.Incomplete(listOf("plan.confirmedPrincipal")),review.calculation)
+            assertFalse(review.plan.complete)
+            assertTrue(review.bills.isEmpty())
+            assertEquals(bill,review.retainedConfirmed.single())
+            try{repo.commitFinancialPrediction(review);fail("unknown principal must block saving")}catch(_:IllegalArgumentException){}
+            assertEquals(before,repo.financialReviewState(book))
+            assertNull(db.financialDao().bill(book,bill.id)!!.principalMinor)
+            assertNull(db.financialDao().bill(book,bill.id)!!.feeMinor)
+
+            assertTrue(repo.commitFinancialBillConfirmation(repo.previewFinancialBillConfirmation(book,bill.id,KnownBillInput(bill.date,5000,4900,100,bank))))
+            val corrected=repo.previewFinancialPrediction(book,input)
+            val remaining=(corrected.calculation as Calculation.Ready).value.single()
+            assertEquals(4900L,remaining.basis.assumedPrincipalMinor)
+            assertEquals(5100L,remaining.basis.remainingPrincipalMinor)
+            assertFalse(corrected.plan.complete)
+            assertEquals(plan,repo.commitFinancialPrediction(corrected))
             val saved=db.financialDao().bill(book,bill.id)!!
-            assertEquals(bill.confirmedAt,saved.confirmedAt);assertEquals(bill.confirmedDate,saved.confirmedDate)
-            assertNull(saved.confirmedPrincipalMinor);assertNull(saved.confirmedFeeMinor)
-            repo.validateFinancialRule(book,bill.id)
-            assertEquals("DIFFERENT",db.financialDao().graph(book).first()!!.ruleValidationStatus(r))
+            assertEquals(5000L,saved.totalMinor)
+            assertEquals(4900L,saved.confirmedPrincipalMinor);assertEquals(100L,saved.confirmedFeeMinor)
+            assertFalse(db.financialDao().plan(book,plan)!!.complete)
             assertTrue(repo.snapshot(repo.dao.book(book)!!).first().events.isEmpty())
         }finally{db.close()}
     }

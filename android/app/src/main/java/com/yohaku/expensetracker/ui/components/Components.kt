@@ -39,7 +39,7 @@ import com.yohaku.expensetracker.ui.theme.*
 import java.time.LocalDate
 import java.time.YearMonth
 
-@Composable fun YText(text:String,size:Int=14,modifier:Modifier=Modifier,color:Color=LocalYohaku.current.ink,number:Boolean=false,bold:Boolean=false,letterSpacing:Float=0f,lineHeightMultiplier:Float=1.65f,weight:FontWeight=if(bold)FontWeight.SemiBold else FontWeight.Normal,textAlign:androidx.compose.ui.text.style.TextAlign?=null,onTextLayout:(androidx.compose.ui.text.TextLayoutResult)->Unit={},cssLineBox:Boolean=false,fontStyle:FontStyle=FontStyle.Normal,balanced:Boolean=false,maxLines:Int=Int.MAX_VALUE,overflow:androidx.compose.ui.text.style.TextOverflow=androidx.compose.ui.text.style.TextOverflow.Clip) {
+@Composable fun YText(text:String,size:Int=14,modifier:Modifier=Modifier,color:Color=LocalYohaku.current.ink,number:Boolean=false,bold:Boolean=false,letterSpacing:Float=0f,lineHeightMultiplier:Float=1.65f,weight:FontWeight=if(bold)FontWeight.SemiBold else FontWeight.Normal,textAlign:androidx.compose.ui.text.style.TextAlign?=null,onTextLayout:(androidx.compose.ui.text.TextLayoutResult)->Unit={},cssLineBox:Boolean=false,fontStyle:FontStyle=FontStyle.Normal,balanced:Boolean=!number&&size>=20,maxLines:Int=Int.MAX_VALUE,overflow:androidx.compose.ui.text.style.TextOverflow=androidx.compose.ui.text.style.TextOverflow.Clip) {
     val t=LocalYohaku.current
     // CSS includes trailing tracking in an inline box; Android omits it.
     // Match the box width without rescaling or clipping the number glyphs.
@@ -49,8 +49,9 @@ import java.time.YearMonth
     } else Modifier
     val lines=if(cssLineBox)remember(text,size,lineHeightMultiplier){mutableIntStateOf(1)} else null
     val lineBox=if(lines!=null)Modifier.height(with(LocalDensity.current){(size*lineHeightMultiplier).sp.toDp()*lines.intValue}).wrapContentHeight(Alignment.CenterVertically,unbounded=true) else Modifier
-    // Balanced phrase breaking keeps short display lines from ending on a single orphaned character.
-    Text(text,modifier.then(lineBox).then(tracking),maxLines=maxLines,overflow=overflow,style=if(balanced)androidx.compose.material3.LocalTextStyle.current.copy(lineBreak=androidx.compose.ui.text.style.LineBreak.Heading)else androidx.compose.material3.LocalTextStyle.current,color=color,fontSize=size.sp,fontFamily=if(number)t.number else t.body,fontWeight=weight,fontStyle=fontStyle,lineHeight=(size*lineHeightMultiplier).sp,letterSpacing=letterSpacing.sp,textAlign=textAlign,onTextLayout={lines?.intValue=it.lineCount;onTextLayout(it)})
+    // Display text uses balanced phrase breaking by default; amounts retain their numeric layout.
+    // Use the book language for CJK phrase boundaries, independently of the device language.
+    Text(text,modifier.then(lineBox).then(tracking),maxLines=maxLines,overflow=overflow,style=if(balanced)androidx.compose.material3.LocalTextStyle.current.copy(lineBreak=androidx.compose.ui.text.style.LineBreak.Heading,localeList=androidx.compose.ui.text.intl.LocaleList(LocalLanguage.current))else androidx.compose.material3.LocalTextStyle.current,color=color,fontSize=size.sp,fontFamily=if(number)t.number else t.body,fontWeight=weight,fontStyle=fontStyle,lineHeight=(size*lineHeightMultiplier).sp,letterSpacing=letterSpacing.sp,textAlign=textAlign,onTextLayout={lines?.intValue=it.lineCount;onTextLayout(it)})
 }
 /** pageFlow accounts for the parent page's 15dp gap and collapsed title margins. */
 @Composable fun YTitle(title:String,eyebrow:String="",description:String="",icon:String="leaf",pageFlow:Boolean=false) {
@@ -232,8 +233,21 @@ import java.time.YearMonth
         if(open)ThemedSelectMenu(label,selected,options,{id->onSelect(id);open=false},Modifier.bringIntoViewRequester(menuRequester),displayLabel=displayLabel,columns=columns)
     }
 }
-/** Owner identifies the only calendar expanded in the enclosing form. */
-@Composable fun YDateFields(fields:List<Pair<String,String>>,activeOwner:Int?,onOwner:(Int?)->Unit,onDate:(Int,String)->Unit,displayValues:List<String>?=null) {
+data class YDateField(val id:String,val label:String,val value:String)
+data class YDateSelection(val group:String,val field:String)
+
+/** Stable group/field identities keep a calendar attached to its field, never its position. */
+@Composable fun YDateFields(fields:List<YDateField>,activeOwner:YDateSelection?,onOwner:(YDateSelection?)->Unit,onDate:(String,String)->Unit,displayValues:List<String>?=null,group:String="dates") {
+    val selectedField=fields.firstOrNull{activeOwner==YDateSelection(group,it.id)}
+    val currentOwner by rememberUpdatedState(activeOwner)
+    val currentOnOwner by rememberUpdatedState(onOwner)
+    // Reconcile before rendering; a removed field must never open another field's calendar.
+    LaunchedEffect(group,fields.map{it.id},activeOwner) {
+        if(activeOwner?.group==group&&selectedField==null)onOwner(null)
+    }
+    DisposableEffect(group) {
+        onDispose { if(currentOwner?.group==group)currentOnOwner(null) }
+    }
     val t=LocalYohaku.current
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
@@ -244,18 +258,19 @@ import java.time.YearMonth
             val textSize=if(t.id=="journal")15 else 13
             val reserved=if(t.id=="objects")48.dp else if(t.id=="journal")37.dp else 35.dp
             val available=with(density){((maxWidth-12.dp*(fields.size-1))/fields.size-reserved).toPx()}
-            val stacked=fields.mapIndexed{i,pair->displayValues?.get(i)?:pair.second.replace("T"," ")}.any{value->measurer.measure(value,TextStyle(fontFamily=t.body,fontSize=textSize.sp),softWrap=false).size.width>available}
-            @Composable fun trigger(i:Int,label:String,value:String,modifier:Modifier) {
-                DateTrigger(label,displayValues?.get(i)?:value.replace("T"," "),modifier.testTag("date-field-$i")){
-                    if(activeOwner!=i){focus.clearFocus();keyboard?.hide()}
-                    onOwner(if(activeOwner==i)null else i)
+            val stacked=fields.mapIndexed{i,pair->displayValues?.get(i)?:pair.value.replace("T"," ")}.any{value->measurer.measure(value,TextStyle(fontFamily=t.body,fontSize=textSize.sp),softWrap=false).size.width>available}
+            @Composable fun trigger(i:Int,field:YDateField,modifier:Modifier) {
+                DateTrigger(field.label,displayValues?.get(i)?:field.value.replace("T"," "),modifier.testTag("date-field-$i")){
+                    if(activeOwner!=YDateSelection(group,field.id)){focus.clearFocus();keyboard?.hide()}
+                    onOwner(if(activeOwner==YDateSelection(group,field.id))null else YDateSelection(group,field.id))
                 }
             }
-            if(stacked)Column(verticalArrangement=Arrangement.spacedBy(16.dp)){fields.forEachIndexed{i,(label,value)->trigger(i,label,value,Modifier.fillMaxWidth())}}
-            else Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){fields.forEachIndexed{i,(label,value)->trigger(i,label,value,Modifier.weight(1f))}}
+            if(stacked)Column(verticalArrangement=Arrangement.spacedBy(16.dp)){fields.forEachIndexed{i,field->trigger(i,field,Modifier.fillMaxWidth())}}
+            else Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){fields.forEachIndexed{i,field->trigger(i,field,Modifier.weight(1f))}}
         }
-        activeOwner?.let{owner->
-            val raw=fields[owner].second
+        selectedField?.let{field->
+            val owner=field.id
+            val raw=field.value
             val selected=LocalDate.parse(raw.substringBefore("T"))
             val hasTime=raw.contains("T")
             val time=raw.substringAfter("T","09:00").take(5)
@@ -270,7 +285,7 @@ import java.time.YearMonth
             }
             var month by remember(owner){mutableStateOf(YearMonth.from(selected))}
             CalendarSurface {
-                CalendarBody(fields[owner].first,month,selected,{month=it},{date->commit(date.toString());onOwner(null)},{onOwner(null)},timeFields=if(hasTime){ {
+                CalendarBody(field.label,month,selected,{month=it},{date->commit(date.toString());onOwner(null)},{onOwner(null)},timeFields=if(hasTime){ {
                     Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){
                         YSelect(word("时","時"),time.substringBefore(":"),(0..23).map{it.toString().padStart(2,'0').let{n->n to n}},{v->commitTime(java.time.LocalDateTime.parse(raw).withHour(v.toInt()))},Modifier.weight(1f))
                         YSelect(word("分","分"),time.substringAfter(":"),(0..59).map{it.toString().padStart(2,'0').let{n->n to n}},{v->commitTime(java.time.LocalDateTime.parse(raw).withMinute(v.toInt()))},Modifier.weight(1f))

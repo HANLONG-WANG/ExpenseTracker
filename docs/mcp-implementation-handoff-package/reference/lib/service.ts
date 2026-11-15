@@ -31,9 +31,15 @@ export async function upload(owner:string,t:any,req:Request){
  const length=Number(req.headers.get('content-length'));assert(Number.isInteger(length)&&length>0&&length<100_000_000,'需提供 Content-Length，单文件严格小于 100 MB',413);const sha=req.headers.get('x-content-sha256')||'';assert(/^[a-f0-9]{64}$/.test(sha),'需要 X-Content-SHA256 原文件校验值');assert(req.body,'缺少文件内容');
  const old:any=await sql('SELECT id FROM files WHERE taskId=? AND role=? AND name=? AND sha256=?',t.id,role,name,sha).first();if(old)return {fileId:old.id,duplicate:true};const count:any=await sql('SELECT COUNT(*) n FROM files WHERE taskId=? AND role=\'input\'',t.id).first();assert(count.n<200,'单任务最多 200 个源文件');const id=crypto.randomUUID(),key=`${owner}/${t.id}/${id}`,at=now();let size=0;
  const body=req.body.pipeThrough(new TransformStream<Uint8Array,Uint8Array>({transform(chunk,c){size+=chunk.length;if(size>length||size>=100_000_000)throw Error('文件大小超限');c.enqueue(chunk);},flush(){if(size!==length)throw Error('文件长度不符');}}));
- try{const fixed=new FixedLengthStream(length);await Promise.all([body.pipeTo(fixed.writable),bucket().put(key,fixed.readable,{sha256:sha,httpMetadata:{contentType:'application/octet-stream'}})]);await db().batch([
+ try{const fixed=new FixedLengthStream(length);await Promise.all([body.pipeTo(fixed.writable),bucket().put(key,fixed.readable,{sha256:sha,httpMetadata:{contentType:'application/octet-stream'}})]);}catch(e){await bucket().delete(key);if(e instanceof HttpError)throw e;throw new HttpError(400,'文件校验或保存失败，请检查大小、SHA-256 后重试');}
+ // D1 batch commits file metadata, revision and upload history together. No follow-up read is needed.
+ try{const saved=await db().batch([
  sql('INSERT INTO files(id,taskId,owner,role,name,mime,size,sha256,objectKey,createdAt) SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM tasks WHERE id=? AND owner=? AND status IN (\'uploading\',\'needs_info\'))',id,t.id,owner,role,name,(req.headers.get('content-type')||'application/octet-stream').slice(0,100),length,sha,key,at,t.id,owner),
- sql('UPDATE tasks SET inputRevision=inputRevision+1,updatedAt=? WHERE id=? AND EXISTS(SELECT 1 FROM files WHERE id=?)',at,t.id,id)]);const saved=await sql('SELECT id FROM files WHERE id=?',id).first();assert(saved,'上传期间任务状态已变化，请重试',409);await log(owner,t.id,'已上传原始资料：'+name);return {fileId:id,size:length,sha256:sha};}catch(e){await bucket().delete(key);if(e instanceof HttpError)throw e;throw new HttpError(400,'文件校验或保存失败，请检查大小、SHA-256 后重试');}
+ sql('UPDATE tasks SET inputRevision=inputRevision+1,updatedAt=? WHERE id=? AND EXISTS(SELECT 1 FROM files WHERE id=?)',at,t.id,id),
+ sql('INSERT INTO events(id,taskId,owner,message,createdAt) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM files WHERE id=?)',crypto.randomUUID(),t.id,owner,'已上传原始资料：'+name,at,id)]);
+ assert(saved[0].meta.changes,'上传期间任务状态已变化，请重试',409);
+ }catch(e){await bucket().delete(key);throw e;}
+ return {fileId:id,size:length,sha256:sha};
 }
 export async function sourceContext(owner:string,t:any){const context=JSON.parse(t.context);const fs=await all('SELECT * FROM files WHERE taskId=? AND owner=? AND role=\'input\'',t.id,owner);const manifests:any[]=[];
  for(const f of fs){let data:any=null;if(f.name.toLowerCase().endsWith('.json')&&f.size<=2_000_000){try{const o=await bucket().get(f.objectKey);data=JSON.parse((await o!.text()).replace(/^\uFEFF/,''));}catch{continue;}}else if(f.name.toLowerCase().endsWith('.zip')){try{data=await zipManifest(bucket(),f.objectKey,f.size);}catch{continue;}}

@@ -3,6 +3,7 @@ package com.yohaku.expensetracker.receipt.scan
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
+import java.io.File
 import org.junit.Test
 
 class ScanContourEditorTest {
@@ -63,7 +64,7 @@ class ScanContourEditorTest {
         }
         assertEquals(rotated, Json.decodeFromString<ScanEditFrame>(Json.encodeToString(rotated)))
     }
-    @Test fun temporaryFilesExpireTogetherAndExportKeepsOnlyTheSelectedJpeg() {
+    @Test fun temporaryFilesKeepLiveRecoveryFilesUntilSessionIsDiscarded() {
         val cache = java.nio.file.Files.createTempDirectory("scan-files-test").toFile()
         try {
             val stale = ScanTemporaryFiles.newDirectory(cache)
@@ -76,8 +77,10 @@ class ScanContourEditorTest {
             assertTrue(stale.setLastModified(now - ScanTemporaryFiles.MAX_AGE_MS - 1_000))
             ScanTemporaryFiles.cleanExpired(cache, now)
             assertFalse(stale.exists()); assertTrue(active.exists())
-            val exported = ScanTemporaryFiles.export(cache, active, result)
-            assertArrayEquals(byteArrayOf(3), exported.readBytes()); assertFalse(active.exists())
+            assertArrayEquals(byteArrayOf(2), File(active, "original.jpg").readBytes())
+            assertArrayEquals(byteArrayOf(3), result.readBytes())
+            ScanTemporaryFiles.discard(active)
+            assertFalse(active.exists())
             assertThrows(IllegalStateException::class.java) { ScanTemporaryFiles.write(active, "late.jpg", byteArrayOf(4)) }
         } finally { cache.deleteRecursively() }
     }

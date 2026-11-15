@@ -27,6 +27,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class ReceiptWorkbenchFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
@@ -38,7 +39,7 @@ class ReceiptWorkbenchFlowTest {
         root=File(context.filesDir,"receipt-workbench-test").apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC),root)
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=recorder)}
+        vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=recorder)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
     private fun picture(label:String):ByteArray {

@@ -12,6 +12,7 @@ import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.domain.ledger.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.ui.haptics.*
 
 @Composable internal fun TransferForm(s:BookSnapshot,d:EntryDraft,vm:AppViewModel,busy:Boolean,onAccount:()->Unit,onCancel:()->Unit) {
     val eligible=s.transferSources();val targets=s.transferTargets()
@@ -19,14 +20,19 @@ import com.yohaku.expensetracker.ui.theme.*
     val source=Currency.valueOf(from?.currency?:s.book.currency);val target=Currency.valueOf(to?.currency?:s.book.currency)
     val different=source!=target
     val knownPair=from!=null&&to!=null
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     val currentFeeCurrency=Currency.valueOf(when(d.feePosition){TransferFeePosition.INCLUDED_FROM->source.name;TransferFeePosition.DEDUCTED_TO->target.name;TransferFeePosition.SEPARATE->s.accounts.find{it.id==d.feeAccountId}?.currency?:source.name})
     val preservedFeeCurrency=if(d.feeAmount.isBlank())d.feeCurrency else d.feeCurrency?:currentFeeCurrency
     fun change(value:EntryDraft)=vm.changeEntry(s.book.id,value)
-    fun estimate(direction:String) {
-        var value=d
-        vm.execute(onSuccess={change(value)}){value=estimateTransfer(d,source,target,direction)}
+    var estimateError by remember(d){mutableStateOf<String?>(null)}
+    val resultHaptic=LocalResultHaptic.current
+    fun acceptEstimate(result:TransferEstimateResult,notifyError:Boolean=false) {
+        when(result) {
+            is TransferEstimateResult.Ready->{estimateError=null;change(result.draft)}
+            is TransferEstimateResult.Incomplete->{estimateError=result.message;if(notifyError)resultHaptic(Haptic.Error)}
+        }
     }
+    fun estimate(direction:String)=acceptEstimate(transferEstimateResult(d,source,target,direction),notifyError=true)
     if(d.id==null&&d.occurrenceId==null)CategoryKindTabs(d.kind){vm.switchEntryKind(s,it)}
     TransferPair(from?.currency?:"—",to?.currency?:"—")
     Column(Modifier.fillMaxWidth().testTag("transfer-form"),verticalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -54,11 +60,11 @@ import com.yohaku.expensetracker.ui.theme.*
         if(knownPair&&different) {
             val referenceDirection=if(d.toConfirmed&&!d.fromConfirmed)"FROM"else if(d.fromConfirmed&&!d.toConfirmed)"TO"else d.estimateDirection
             ReferenceRatePanel(vm.referenceRates,source,target,d.referenceQueryDate?:d.date,enabled=!(d.fromConfirmed&&d.toConfirmed),
-                autoKey=d.amount+"/"+d.toAmount+"/"+d.manualRate+"/"+d.fromConfirmed+"/"+d.toConfirmed,
+                autoKey=d,
                 onAuto={q->if(d.id==null&&d.manualRate.isBlank()) {
-                    if(!d.toConfirmed&&d.toAmount.isBlank()&&runCatching{Money.parse(d.amount,source).minor>0}.getOrDefault(false))change(applyReferenceTransfer(d,source,target,q,"TO"))
-                    else if(!d.fromConfirmed&&d.amount.isBlank()&&runCatching{Money.parse(d.toAmount,target).minor>0}.getOrDefault(false))change(applyReferenceTransfer(d,source,target,q,"FROM"))
-                }},onUse={q->change(applyReferenceTransfer(d,source,target,q,referenceDirection))},
+                    if(!d.toConfirmed&&d.toAmount.isBlank()&&runCatching{Money.parse(d.amount,source).minor>0}.getOrDefault(false))acceptEstimate(transferEstimateResult(d,source,target,"TO",q))
+                    else if(!d.fromConfirmed&&d.amount.isBlank()&&runCatching{Money.parse(d.toAmount,target).minor>0}.getOrDefault(false))acceptEstimate(transferEstimateResult(d,source,target,"FROM",q))
+                }},onUse={q->acceptEstimate(transferEstimateResult(d,source,target,referenceDirection,q),notifyError=true)},
                 useLabel=if(referenceDirection=="TO")word("按参考值估算到账额","参考値で入金額を見積もる")else word("按参考值反推转出额","参考値で出金額を逆算"))
             CurrencyEntryNote {
                 YField(word("手填汇率","手入力レート")+" · 1 ${source.name} = ${target.name}",d.manualRate,{change(d.copy(manualRate=it,rateSource="manual",rateDate=d.referenceQueryDate?:d.date,referenceExpectedFromMinor=null,referenceExpectedToMinor=null,referenceRates=emptyList()))},numeric=true)
@@ -68,6 +74,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 YText(word("由两端金额反算，可能含费用影响，不推断手续费。","両側の金額から算出。費用の影響を含む場合がありますが、手数料とは断定しません。"),10,color=LocalYohaku.current.muted)
             }
         }else YText(if(knownPair)word("同币种转账，不进行汇率换算。","同じ通貨の振替。レート換算は行いません。")else word("先选择两端账户，再确认币种与金额。","出金・入金口座を選び、通貨と金額を確認してください。"),11,color=LocalYohaku.current.muted)
+        estimateError?.let{YText(it,11,Modifier.testTag("transfer-estimate-error"),color=LocalYohaku.current.warm)}
         TransferEstimateActions({estimate("TO")},!busy&&!d.toConfirmed&&knownPair,{estimate("FROM")},!busy&&!d.fromConfirmed&&knownPair)
         var feeOpen by rememberSaveable(s.book.id,d.id){mutableStateOf(true)}
         YLink((if(feeOpen)"− "else "+ ")+word("手续费 · 避免重复扣款","手数料・二重控除しない"),{feeOpen=!feeOpen})
@@ -78,7 +85,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 YField(word("明确收取的手续费 / 可留空","確定手数料・空欄可")+" · "+feeCurrency.name,d.feeAmount,{change(d.copy(feeAmount=it))},Modifier.weight(1f),numeric=true)
                 YSelect(word("费用币种","手数料通貨"),feeCurrency.name,Currency.entries.map{it.name as String? to it.name},{change(d.copy(feeCurrency=Currency.valueOf(it!!),feeAccountAmount="",feeBaseAmount=""))},Modifier.weight(1f))
             }
-            YSelect(word("手续费如何扣收","手数料の扱い"),d.feePosition.name,TransferFeePosition.entries.map{it.name as String? to feePositionName(it)},{owner=null;change(d.copy(feePosition=TransferFeePosition.valueOf(it!!),feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))})
+            YSelect(word("手续费如何扣收","手数料の扱い"),d.feePosition.name,TransferFeePosition.entries.map{it.name as String? to feePositionName(it)},{change(d.copy(feePosition=TransferFeePosition.valueOf(it!!),feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))})
             if(d.feePosition==TransferFeePosition.SEPARATE)YSelect(word("另扣手续费的账户","別途手数料の口座"),d.feeAccountId,s.accounts.filter{it.active}.map{it.id as String? to it.name},{change(d.copy(feeAccountId=it,feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))},columns=2)
             if(d.feeAmount.isNotBlank()&&payer!=null) {
                 if(feeCurrency.name!=payer.currency)YField(word("费用在账户中的金额","口座通貨での手数料額")+" · "+payer.currency,d.feeAccountAmount,{change(d.copy(feeAccountAmount=it))},numeric=true)
@@ -91,9 +98,9 @@ import com.yohaku.expensetracker.ui.theme.*
             "confirmed" as String? to word("已转出，已到账","出金・入金済"),"inTransit" as String? to word("已转出，尚在途中","出金済・送金中"),
             "planned" as String? to word("只是计划，未转出","予定のみ・未出金"),"received" as String? to word("已到账，转出待确认","入金済・出金確認待ち")
         ),{change(d.copy(fromConfirmed=it in listOf("confirmed","inTransit"),toConfirmed=it in listOf("confirmed","received")))})
-        val dates=listOf(word("转出日期","出金日") to d.date,(if(d.toConfirmed)word("实际到账日期","実際の入金日")else word("预计到账日期","入金予定日")) to d.toDate)+
-            (if(d.feePosition==TransferFeePosition.SEPARATE)listOf(word("手续费扣收日期","手数料の引落日") to d.feeDate)else emptyList())+if(different)listOf(word("参考汇率查询日期","参考レートの照会日") to (d.referenceQueryDate?:d.date))else emptyList()
-        YDateFields(dates,owner,{owner=it},{index,value->change(when{index==0->d.copy(date=value);index==1->d.copy(toDate=value);d.feePosition==TransferFeePosition.SEPARATE&&index==2->d.copy(feeDate=value);else->d.copy(referenceQueryDate=value)})})
+        val dates=listOf(YDateField("date",word("转出日期","出金日"),d.date),YDateField("toDate",if(d.toConfirmed)word("实际到账日期","実際の入金日")else word("预计到账日期","入金予定日"),d.toDate))+
+            (if(d.feePosition==TransferFeePosition.SEPARATE)listOf(YDateField("feeDate",word("手续费扣收日期","手数料の引落日"),d.feeDate))else emptyList())+if(different)listOf(YDateField("referenceQueryDate",word("参考汇率查询日期","参考レートの照会日"),d.referenceQueryDate?:d.date))else emptyList()
+        YDateFields(dates,owner,{owner=it},{index,value->change(when{index=="date"->d.copy(date=value);index=="toDate"->d.copy(toDate=value);index=="feeDate"->d.copy(feeDate=value);else->d.copy(referenceQueryDate=value)})})
         if(d.feePosition==TransferFeePosition.SEPARATE)YToggle(word("手续费已经实际扣收","手数料は引落済み"),d.feeConfirmed,{change(d.copy(feeConfirmed=it))})
         YField(word("名称 / 说明","名称 / 内容"),d.merchant,{change(d.copy(merchant=it))})
         EntryNotes(d.id,d.note,{change(d.copy(note=it))}){MediaPreserveToggle(d,vm)}

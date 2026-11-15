@@ -27,8 +27,7 @@ fun BookSnapshot.withRememberedCardPayment(d:EntryDraft):EntryDraft {
     return d.clearCardPayment().copy(cardPaymentChoice=last?.cardPaymentChoice,cardPaymentPeriods=last?.takeIf{it.cardPaymentChoice=="INSTALLMENT"}?.cardPaymentPeriods?.toString().orEmpty())
 }
 fun EntryDraft.hasManualInput(baseline:EntryDraft?):Boolean {
-    if(kind!=EntryKind.TRANSFER&&categoryId==null)return false
-    if(baseline==null)return true
+    if(baseline==null)return kind==EntryKind.TRANSFER||categoryId!=null||note.isNotBlank()||attachmentIds.isNotEmpty()||receiptFileIds.isNotEmpty()||amount.isNotBlank()||accountAmount.isNotBlank()||merchantManuallyEdited
     fun EntryDraft.comparable()=copy(merchantBaseline=null,merchantSyncVersion=0,capturedPlace=null,categoryId=null,merchant=if(merchantManuallyEdited)merchant else "",merchantId=if(merchantManuallyEdited)merchantId else null,merchantLocated=false)
     return comparable()!=baseline.comparable()
 }

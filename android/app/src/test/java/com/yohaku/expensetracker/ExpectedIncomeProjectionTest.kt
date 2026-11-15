@@ -8,6 +8,21 @@ import org.junit.Test
 import java.time.LocalDate
 
 class ExpectedIncomeProjectionTest {
+    @Test fun pendingAllocationNeedsWholePaymentEvidenceInTimelineAndAccountSummary() {
+        val x=CashProjectionFixture();val pending=x.pending(x.snapshot(),300)
+        val incomplete=pending.copy(repaymentAllocations=pending.repaymentAllocations.map{it.copy(interestMinor=null)})
+        val overAllocated=pending.copy(repaymentAllocations=pending.repaymentAllocations+pending.repaymentAllocations.single().copy(id="other",billId="other-bill"))
+        for(s in listOf(incomplete,overAllocated)) {
+            val bill=s.cashTimeline(x.graph,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-10-31")).steps.single().item
+            assertEquals("PENDING_CLEARING_AMOUNT",bill.issue);assertNull(bill.amountMinor);assertNull(bill.accountDeltaMinor)
+            val row=s.financialAccountSummary(x.graph,x.card.id,"2026-10-15").rows.single()
+            assertNull(row.pendingTotalMinor);assertNull(row.cashRequiredMinor)
+        }
+        // A pending clearing usually lacks the platform receipt; the same-currency actual payment bounds it.
+        val awaitingReceipt=pending.copy(repayments=pending.repayments.map{it.copy(receivedMinor=null,principalMinor=null)})
+        val row=awaitingReceipt.financialAccountSummary(x.graph,x.card.id,"2026-10-15").rows.single()
+        assertEquals(300L,row.pendingTotalMinor)
+    }
     @Test fun cashTimelineDeduplicatesFuturePostingsBillsReservesAndPendingClearing() {
         val fixture=CashProjectionFixture();val bank=fixture.bank.id;val bill=fixture.bill
         val recurrence=RecurrenceEntity("b","recurrence","固定費",bank,"cat","JPY",400,400,false,"MONTHLY","2026-10-18",null)

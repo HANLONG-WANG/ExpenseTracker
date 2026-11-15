@@ -24,9 +24,9 @@ private data class ScanFlowState(
     val ended: Boolean = false,
 )
 
-/** Complete scan flow. The caller imports the output into its saved draft/record target.
- * Output is a JPEG in scan cache, owned by onDone; delete it (and its parent) after import.
- * Original scan photos are removed BEFORE onDone/onCancel. Existing-image input is borrowed.
+/** Complete scan flow. onDone synchronously records the selected path and takes ownership of
+ * the entire scan session. Keep its photos until import succeeds or the user abandons it.
+ * No files move during this handoff, so saved review paths survive recreation. Existing input is borrowed.
  */
 @Composable fun ScanFlow(request: ScanFlowRequest, preferences: AppPreferences,
                          onDone: (ScanFlowResult) -> Unit, onCancel: () -> Unit) {
@@ -67,15 +67,11 @@ private data class ScanFlowState(
     fun complete(selected: File, processed: Boolean) {
         if (leaving || state.ended) return
         leaving = true
-        scope.launch {
-            try {
-                val output = withContext(Dispatchers.IO) { ScanTemporaryFiles.export(context.cacheDir, selected.parentFile!!, selected) }
-                state = state.copy(ended = true)
-                latestDone(ScanFlowResult(output, processed, request.target))
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { android.util.Log.e("ScanReview", "Export failed", e); importError = true; leaving = false }
-        }
+        // No suspending export: the caller saves this path in the same main-thread turn.
+        latestDone(ScanFlowResult(selected, processed, request.target))
+        state = state.copy(ended = true)
     }
+
     LaunchedEffect(state.importingTo, importAttempt) {
         val path = state.importingTo ?: return@LaunchedEffect
         val directory = File(path)
@@ -104,8 +100,7 @@ private data class ScanFlowState(
             }, sourceFactory, permissionOverride, motionFactory)
         } else Dialog(onDismissRequest = { if (!leaving) exit(false) }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             if (review == null || state.bypass || leaving || importError) ScanReviewWaiting(importError,
-                { importError = false; if (state.importingTo != null) importAttempt++
-                    else complete(if (state.bypass) requireNotNull(state.review).photo else requireNotNull(state.review).result, !state.bypass) }, { exit(false) }, cancellable = !leaving)
+                { importError = false; importAttempt++ }, { exit(false) }, cancellable = !leaving)
             else ScanReviewScreen(review, { state = state.copy(review = it) }, request.source,
                 onUse = { complete(it, true) }, onLeave = { exit(request.source == ScanPhotoSource.CAMERA) }, onCancel = { exit(false) })
         }

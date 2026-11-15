@@ -26,6 +26,7 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class ReferenceRateFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
@@ -38,8 +39,8 @@ class ReferenceRateFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        rates=ReferenceRates(TestReferenceRateStore(),ReferenceRateTransport{base,quote,date->requests+=Triple(base,quote,date);if(offline)throw java.io.IOException("offline");val value=if(base==Currency.JPY&&quote==Currency.CNY||base==Currency.USD&&quote==Currency.JPY)quoted else "25";val observed=if(date<="2026-10-11")"2026-10-09"else"2026-10-14";"""{"base":"${base.name}","quote":"${quote.name}","date":"$observed","rate":$value}"""},repo.clock)
-        vm=AppViewModel(repo,AppPreferences(context),rates)
+        rates=ReferenceRates(testPreferences.preferences,ReferenceRateTransport{base,quote,date->requests+=Triple(base,quote,date);if(offline)throw java.io.IOException("offline");val value=if(base==Currency.JPY&&quote==Currency.CNY||base==Currency.USD&&quote==Currency.JPY)quoted else "25";val observed=if(date<="2026-10-11")"2026-10-09"else"2026-10-14";"""{"base":"${base.name}","quote":"${quote.name}","date":"$observed","rate":$value}"""},repo.clock)
+        vm=AppViewModel(repo,testPreferences.preferences,rates)
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -152,6 +153,9 @@ class ReferenceRateFlowTest {
             ui.runOnIdle{vm.startEntry(snapshot);vm.changeEntry(book,vm.entry.value!!.copy(categoryId=category));vm.navigate("entry")}
             val currencyLabel=text("消费 / 收付原币","取引の原通貨")
             tapTag("select-trigger-$currencyLabel");tapTag("select-option-$currencyLabel-2")
+            assertTrue(vm.entry.value!!.settlementConfirmed)
+            val pendingStatus=text("入账金额状态","計上額の状態")
+            tapTag("select-trigger-$pendingStatus");tapTag("select-option-$pendingStatus-1")
             val originalLabel=text("原币金额","原通貨額")+" · USD"
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")tapTag("field-$originalLabel")
             textField(originalLabel).performScrollTo().performTextReplacement("100")
@@ -168,6 +172,9 @@ class ReferenceRateFlowTest {
             val status=text("入账金额状态","計上額の状態")
             tapTag("select-trigger-$status");tapTag("select-option-$status-0")
             ui.onNodeWithTag("rate-use-USD-JPY").assertIsNotEnabled()
+            val confirmedDraft=vm.entry.value!!
+            tapTag("select-trigger-$currencyLabel");tapTag("select-option-$currencyLabel-2")
+            assertEquals(confirmedDraft,vm.entry.value)
             shot("$theme-$language-rate-entry-confirmed")
             ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
@@ -175,7 +182,60 @@ class ReferenceRateFlowTest {
             assertEquals(7600L,saved.balance(saved.accounts.first{it.id==bank}));assertEquals(2400L,saved.monthExpense("2026-10"));assertEquals(1,saved.events.size)
             assertEquals(2500L,saved.settlements.single().expectedAccountMinor)
             assertEquals("25",repo.json.decodeFromString<List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot>>(saved.settlements.single().referenceRatesJson!!).single().rate)
+            ui.runOnIdle{vm.editEntry(saved,saved.events.single())}
+            tapTag("select-trigger-$status");tapTag("select-option-$status-1")
+            tapTag("date-field-1")
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
+            tapTag("select-trigger-$currencyLabel");tapTag("select-option-$currencyLabel-0")
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(0)
+            assertFalse(vm.entry.value!!.settlementConfirmed)
+            tapTag("select-trigger-$status");shot("$theme-$language-same-currency-pending")
+            tapTag("select-option-$status-0");assertTrue(vm.entry.value!!.settlementConfirmed)
             assertNull(vm.error.value)
+        }
+    }
+
+    @Test fun unfinishedTransferFeesPauseEstimationAndCurrencyChangeClosesRateCalendar() {
+        for((theme,language) in testLooks(this@ReferenceRateFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val ids=runBlocking {
+                rates.store.setAutomaticReferenceRates(true)
+                rates.store.saveReferenceRateCache(ReferenceRateCache());quoted="0.04";offline=false
+                val b=repo.createBook("转账输入 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
+                repo.updateBook(repo.dao.book(b)!!.copy(initialized=true))
+                val bank=repo.saveAccount(b,"JPY source",AccountType.BANK,Currency.JPY,Money(Currency.JPY,100000),"2026-10-01")
+                val cny=repo.saveAccount(b,"CNY target",AccountType.BANK,Currency.CNY,Money(Currency.CNY,0),"2026-10-01")
+                val jpy=repo.saveAccount(b,"JPY target",AccountType.BANK,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                vm.preferences.select(b);listOf(b,bank,cny,jpy)
+            }
+            val book=ids[0]
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            val snapshot=(vm.state.value as AppState.Ready).snapshot!!
+            ui.runOnIdle{
+                vm.startTransfer(snapshot,ids[1],ids[2])
+                vm.changeEntry(book,vm.entry.value!!.copy(feeAmount="100",feeCurrency=Currency.JPY))
+            }
+            val amount=textField(text("实际扣款总额","実際の出金総額")+" · JPY")
+            amount.performScrollTo().performTextReplacement("1")
+            ui.waitUntil(10000){ui.onAllNodesWithTag("transfer-estimate-error").fetchSemanticsNodes().isNotEmpty()}
+            assertEquals("1",vm.entry.value!!.amount);assertEquals("",vm.entry.value!!.toAmount)
+            assertEquals("",vm.entry.value!!.manualRate);assertTrue(vm.entry.value!!.referenceRates.isEmpty())
+            tapTag("rate-use-JPY-CNY")
+            ui.onNodeWithTag("transfer-estimate-error").performScrollTo();shot("$theme-$language-transfer-incomplete-fee")
+            assertEquals("",vm.entry.value!!.toAmount)
+            // Changing only the fee conversion must also retry automatic estimation.
+            ui.runOnIdle{vm.changeEntry(book,vm.entry.value!!.copy(amount="10000",feeCurrency=Currency.USD,feeAmount="1",feeAccountAmount=""))}
+            ui.waitUntil(10000){ui.onAllNodesWithTag("transfer-estimate-error").fetchSemanticsNodes().isNotEmpty()}
+            textField(text("费用在账户中的金额","口座通貨での手数料額")+" · JPY").performScrollTo().performTextReplacement("100")
+            ui.waitUntil(10000){vm.entry.value?.toAmount=="396.00"}
+            ui.onNodeWithTag("transfer-estimate-error").assertDoesNotExist()
+            tapTag("date-field-2")
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
+            tapTag("select-trigger-"+text("转入账户","入金口座"))
+            ui.onNode(hasText("JPY target") and hasAnyAncestor(hasTestTag("select-menu-frame"))).performScrollTo().performClick()
+            ui.onAllNodesWithTag("shared-calendar").assertCountEquals(0)
+            ui.onNodeWithTag("date-field-2").assertDoesNotExist()
+            assertEquals(ids[3],vm.entry.value!!.toAccountId);assertNull(vm.error.value)
         }
     }
 

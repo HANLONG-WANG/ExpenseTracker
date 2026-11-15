@@ -146,7 +146,7 @@ import java.io.File
         ScanCaption(word("小票 · 准备照片", "レシート・写真を準備"), Modifier.fillMaxWidth())
         ScanFrame(Modifier.weight(1f).fillMaxWidth()) {
             ScanStatus(if (failed) word("照片读取或保存失败，请重试", "写真を読み込み・保存できませんでした。再試行してください") else word("正在准备照片…", "写真を準備中…"), processing = !failed,
-                action = if (failed) { { YButton(word("重试", "再試行"), retry) } } else null)
+                action = if (failed) { { YButton(word("重试", "再試行"), retry, Modifier.testTag("scan-waiting-retry")) } } else null)
         }
         YButton(word("取消", "キャンセル"), cancel, Modifier.fillMaxWidth().testTag("scan-waiting-cancel"), enabled = cancellable)
     }

@@ -260,8 +260,8 @@ import java.time.LocalDate
 }
 
 @Composable private fun ActivityDate(label:String,date:String,onDate:(String)->Unit) {
-    var owner by remember{mutableStateOf<Int?>(null)}
-    YDateFields(listOf(label to date),owner,{owner=it},{_,value->onDate(value)})
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
+    YDateFields(listOf(YDateField("date",label,date)),owner,{owner=it},{_,value->onDate(value)})
 }
 
 @Composable internal fun TreatSplitFields(s:BookSnapshot,activityId:String,selected:List<String>,mode:TreatSplitMode,weights:Map<String,String>,onFriends:(List<String>)->Unit,onMode:(TreatSplitMode)->Unit,onWeights:(Map<String,String>)->Unit) {

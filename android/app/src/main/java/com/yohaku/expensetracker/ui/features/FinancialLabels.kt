@@ -45,6 +45,7 @@ import com.yohaku.expensetracker.ui.theme.word
 }
 
 @Composable internal fun financialIssueName(key:String):String=when(key) {
+    "plan.accrualBeforeAgreement"->word("计费开始不能早于合同 / 当前办理生效日，请重新生成并核对逐期日期","計算開始日は契約日・現在の適用日以降にしてください。各回の日付を再生成して確認してください")
     "rule.effectiveFrom"->word("规则生效日","条件の適用日")
     "rule.deadlines"->word("具体账期、变更类型及有效截止时间","対象請求・変更方式・有効な締切時刻")
     "rule.zoneId"->word("金融时区","金融取引のタイムゾーン")

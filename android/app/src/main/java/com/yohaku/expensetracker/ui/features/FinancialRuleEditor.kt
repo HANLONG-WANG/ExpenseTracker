@@ -41,9 +41,9 @@ import java.time.LocalDate
     val draft=vm.repository.json.decodeFromString<FinancialRuleDraft>(encoded)
     fun change(key:String,value:String){encoded=vm.repository.json.encodeToString(draft.with(key,value))}
     var advanced by financialField("advanced"){false}
-    var calendar by remember{mutableStateOf<Int?>(null)}
-    var trialCalendar by remember{mutableStateOf<Int?>(null)}
-    var deadlineCalendar by remember{mutableStateOf<Int?>(null)}
+    var calendar by remember{mutableStateOf<YDateSelection?>(null)}
+    var trialCalendar by remember{mutableStateOf<YDateSelection?>(null)}
+    var deadlineCalendar by remember{mutableStateOf<YDateSelection?>(null)}
     var deadlineBill by financialField<String?>("deadlineBill"){null}
     var deadlineAt by financialField("deadlineAt"){LocalDate.now(vm.repository.clock).toString()+"T09:00"}
     val financialGraph by vm.financialState.collectAsStateWithLifecycle()
@@ -72,7 +72,7 @@ import java.time.LocalDate
         }
         FinancialDraftNotice()
         FinanceFormSection(word("生效日期与时区","適用日とタイムゾーン")) {
-            YDateFields(listOf(word("规则生效日","条件の適用日") to draft["effective"]),calendar,{calendar=it;trialCalendar=null;deadlineCalendar=null},{_,v->change("effective",v);trial=null})
+            YDateFields(listOf(YDateField("effective",word("规则生效日","条件の適用日"),draft["effective"])),calendar,{calendar=it;trialCalendar=null;deadlineCalendar=null},{_,v->change("effective",v);trial=null})
             YField(word("金融时区","金融取引のタイムゾーン"),draft["zone"],{change("zone",it);trial=null},Modifier.testTag("finance-zone"))
         }
         if(mode in listOf(FinanceMode.SINGLE,FinanceMode.INSTALLMENT,FinanceMode.REVOLVING))FinanceFormSection(word("账期与扣款","締日と引落し")) {
@@ -152,7 +152,7 @@ import java.time.LocalDate
                 if(accountBills.isEmpty())YText(word("先保存已知账单，再为具体账期填写日期与时间。","既知の請求を保存してから、対象請求の締切日時を入力してください。"),11,color=LocalYohaku.current.muted)
                 else {
                     YSelect(word("变更对应的具体账期","変更対象の請求"),deadlineBill,listOf(null to word("请选择","選択してください"))+accountBills.sortedBy{it.date}.map{b->b.id as String? to (accountPlans.first{it.id==b.planId}.name+" · "+word("第${b.number}期","第${b.number}回")+" · "+b.date)},{deadlineBill=it},Modifier.testTag("finance-deadline-bill"))
-                    YDateFields(listOf(word("变更截止日期与时间","変更締切の日時") to deadlineAt),deadlineCalendar,{deadlineCalendar=it;calendar=null;trialCalendar=null},{_,v->deadlineAt=v},
+                    YDateFields(listOf(YDateField("deadlineAt",word("变更截止日期与时间","変更締切の日時"),deadlineAt)),deadlineCalendar,{deadlineCalendar=it;calendar=null;trialCalendar=null},{_,v->deadlineAt=v},
                         displayValues=listOf(FinancialDisplayFacts.localTime(java.time.LocalDateTime.parse(deadlineAt),draft["zone"].ifBlank{word("时区未填写","時間帯未入力")},LocalLanguage.current)))
                     YText(word("截止时间使用金融时区：","締切のタイムゾーン：")+draft["zone"],11)
                     YButton(word("采用这期截止时间","この回の締切を採用"),{
@@ -169,7 +169,7 @@ import java.time.LocalDate
             if(mode in listOf(FinanceMode.INSTALLMENT,FinanceMode.FIXED_LOAN))RuleText(draft,"trialCount",word("期数","回数"),{k,v->change(k,v);trial=null},numeric=true)
             val today=LocalDate.now(vm.repository.clock).toString()
             val dateKeys=when(mode){FinanceMode.SINGLE->listOf("trialStart");FinanceMode.INSTALLMENT->listOf("trialPayment");FinanceMode.FIXED_LOAN->listOf("trialStart","trialPayment");else->listOf("trialStart","trialEnd","trialPayment")}
-            YDateFields(dateKeys.map{key->(if(key=="trialStart")word("消费 / 计息起始日","利用日・計算開始日")else if(key=="trialEnd")word("计息截止日","計算終了日")else word("首次付款日","初回支払日")) to draft[key].ifBlank{today}},trialCalendar,{trialCalendar=it;calendar=null;deadlineCalendar=null},{i,v->change(dateKeys[i],v);trial=null})
+            YDateFields(dateKeys.map{key->YDateField(key,if(key=="trialStart")word("消费 / 计息起始日","利用日・計算開始日")else if(key=="trialEnd")word("计息截止日","計算終了日")else word("首次付款日","初回支払日"),draft[key].ifBlank{today})},trialCalendar,{trialCalendar=it;calendar=null;deadlineCalendar=null},{i,v->change(i,v);trial=null})
             YButton(word("计算预览","計算プレビュー"),{val captured=draft;val capturedEncoded=encoded;var computed:Calculation<List<PaymentPeriod>>?=null;vm.execute(onSuccess={if(encoded==capturedEncoded)trial=computed}) {
                 val r=captured.build(s.book.id,account.id,currency)
                 val start=LocalDate.parse(captured["trialStart"].ifBlank{today})

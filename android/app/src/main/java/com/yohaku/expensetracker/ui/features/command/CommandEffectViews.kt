@@ -176,6 +176,8 @@ import kotlinx.serialization.json.*
 @Composable internal fun CommandEffectsSheet(effects:List<ObjectEffect>,s:BookSnapshot,model:ConfirmationModel,onClose:()->Unit) {
     var page by remember{mutableIntStateOf(0)}
     val pages=(effects.size+11)/12
+    val beforeMoney=CommandMoneyFacts(s,effects,after=false)
+    val afterMoney=CommandMoneyFacts(s,effects,after=true)
     YSheet(word("逐项核对","項目ごとの確認"),onClose) {
         YText(word("显示绝对值；左侧为操作前，右侧为操作后。未变化的相关值也参与确认。","絶対値で表示します。左は変更前、右は変更後。変わらない関連値も確定時に照合します。"),11)
         effects.drop(page*12).take(12).forEach{effect->Panel {
@@ -193,14 +195,12 @@ import kotlinx.serialization.json.*
                 val row=(effect.after as? JsonObject)?:effect.before as? JsonObject
                 FinancialLimitRelationship(FinancialDisplayFacts.limitRelationship(row?.get("config") as? JsonObject),Currency.valueOf(row?.get("currency")?.jsonPrimitive?.contentOrNull?:s.book.currency))
             }
-            val before=flattenFacts(workflowDisplayFacts(effect.type,effect.before));val after=flattenFacts(workflowDisplayFacts(effect.type,effect.after))
+            val before=flattenCommandFacts(workflowDisplayFacts(effect.type,effect.before),beforeMoney,beforeMoney.rootCurrency(effect.type,effect.key))
+            val after=flattenCommandFacts(workflowDisplayFacts(effect.type,effect.after),afterMoney,afterMoney.rootCurrency(effect.type,effect.key))
             val fields=(before.keys+after.keys).toList()
             if(fields.isEmpty())YText(word("没有明细","明細なし"),12)
             for(path in fields) {
                 val old=before[path];val new=after[path]
-                val baseCurrency=(effect.after as? JsonObject)?.get("currency")?.jsonPrimitive?.contentOrNull
-                    ?:(effect.before as? JsonObject)?.get("currency")?.jsonPrimitive?.contentOrNull
-                    ?:s.accounts.firstOrNull{it.id==effect.key}?.currency?:s.book.currency
                 val leaf=path.substringAfterLast('.')
                 val key=if(effect.type=="saveOrder")"eventId"else if(leaf.toIntOrNull()!=null)path.substringBeforeLast('.').substringAfterLast('.')else leaf
                 val label=path.split('.').map{part->when {
@@ -208,8 +208,8 @@ import kotlinx.serialization.json.*
                     part.startsWith("@")||part.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}"))->resolveName(part,s,model)
                     else->fieldName(if(part=="position"&&effect.type in setOf("activityParticipant","receipt_images"))"sortOrder"else part)
                 }}.joinToString(" / ")
-                val a=fieldValue(old,key,baseCurrency,s,model,(effect.before as? JsonObject)?.takeIf{key=="appliedAt"}?.let{commandFieldZone(it,path,effects,after=false)})
-                val b=fieldValue(new,key,baseCurrency,s,model,(effect.after as? JsonObject)?.takeIf{key=="appliedAt"}?.let{commandFieldZone(it,path,effects,after=true)})
+                val a=fieldValue(old,key,beforeMoney.rootCurrency(effect.type,effect.key),s,model,(effect.before as? JsonObject)?.takeIf{key=="appliedAt"}?.let{commandFieldZone(it,path,effects,after=false)})
+                val b=fieldValue(new,key,afterMoney.rootCurrency(effect.type,effect.key),s,model,(effect.after as? JsonObject)?.takeIf{key=="appliedAt"}?.let{commandFieldZone(it,path,effects,after=true)})
                 val displayLabel=if(effect.type=="creditLimit"&&path in setOf("installment.capacityMinor","revolving.capacityMinor"))label+word("（计算容量，受总额度约束）","（計算上の容量・総枠で制限）")else label
                 RecordFacts(listOf(displayLabel to "$a → $b"),audit=true)
             }
@@ -223,17 +223,6 @@ import kotlinx.serialization.json.*
     }
 }
 
-private fun flattenFacts(value:JsonElement,prefix:String="",currency:String?=null):Map<String,Pair<JsonElement,String?>> = buildMap {
-    if(prefix.isEmpty()&&value==JsonNull)return@buildMap
-    when(value) {
-        is JsonObject->{
-            val unit=value["currency"]?.jsonPrimitive?.contentOrNull?:value["accountCurrency"]?.jsonPrimitive?.contentOrNull?:currency
-            value.filterKeys{it !in setOf("id","bookId","createdAt","explanation","deletionGroupId","slot","basis","item_id","record_id","receipt_id","row_id","bundleId","checksum","sha256","mediaSession","path","undoGroupId")}.forEach{(key,v)->putAll(flattenFacts(v,if(prefix.isEmpty())key else "$prefix.$key",when(key){"accountMinor","expectedAccountMinor","accountDeltaMinor"->value["accountCurrency"]?.jsonPrimitive?.contentOrNull?:unit;"toMinor","expectedToMinor"->value["toCurrency"]?.jsonPrimitive?.contentOrNull?:unit;"originalMinor"->value["originalCurrency"]?.jsonPrimitive?.contentOrNull?:unit;else->unit}))}
-        }
-        is JsonArray->if(value.isEmpty())put(prefix,JsonPrimitive("EMPTY") to currency)else value.forEachIndexed{i,v->putAll(flattenFacts(v,if(prefix.isEmpty())"${i+1}"else"$prefix.${i+1}",currency))}
-        else->put(prefix.ifEmpty{"value"},value to currency)
-    }
-}
 internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):String {
     fun label(zh:String,ja:String)=if(s.book.language=="ja")ja else zh
     val current=s.book.takeIf{it.id==id}?.name?:s.merchants.firstOrNull{it.id==id}?.name?:s.merchantLocations.firstOrNull{it.id==id}?.name?:s.friends.firstOrNull{it.id==id}?.name?:s.templates.firstOrNull{it.id==id}?.name?:s.accounts.firstOrNull{it.id==id}?.name?:s.categories.firstOrNull{it.id==id}?.let{s.path(it.id)}
@@ -294,14 +283,18 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     if(value==null)return word("无此项","項目なし")
     val raw=value.first
     if(raw is JsonArray&&raw.isEmpty())return word("无","なし")
-    if(raw !is JsonPrimitive&&raw!=JsonNull)return readableCommandJson(raw,key,currency,s,model,zone)
+    if(raw !is JsonPrimitive&&raw!=JsonNull)return readableCommandJson(raw,key,value.second?:currency,s,model,zone)
     if(raw==JsonNull)return word("未知 / 未设定","不明・未設定")
     val text=(raw as? JsonPrimitive)?.content?:raw.toString()
-    if((key.endsWith("Json")||key in setOf("json","encoded","sourceProof"))&&raw is JsonPrimitive&&raw.isString&&text.trimStart().let{it.startsWith("{")||it.startsWith("[")})return readableCommandJson(commandJson.parseToJsonElement(text),key,currency,s,model,zone)
+    if((key.endsWith("Json")||key in setOf("json","encoded","sourceProof"))&&raw is JsonPrimitive&&raw.isString&&text.trimStart().let{it.startsWith("{")||it.startsWith("[")})return readableCommandJson(commandJson.parseToJsonElement(text),key,value.second?:currency,s,model,zone)
     if(key in setOf("active","archived","initialized","favorite","historicalIncluded","budgetExcluded","confirmed","fromConfirmed","toConfirmed","complete")&&raw.jsonPrimitive.longOrNull!=null)return if(raw.jsonPrimitive.long==0L)word("否","いいえ")else word("是","はい")
     if(key.endsWith("At")&&raw.jsonPrimitive.longOrNull!=null)return word("记录时间：","記録日時：")+FinancialDisplayFacts.time(java.time.Instant.ofEpochMilli(raw.jsonPrimitive.long),java.time.ZoneId.systemDefault(),s.book.language)
     if(key in setOf("appliedAt","observedAt","recordedAt")&&raw.jsonPrimitive.isString)return (if(key=="recordedAt")word("记录时间：","記録日時：")else "")+FinancialDisplayFacts.time(java.time.Instant.parse(text),if(key=="observedAt")java.time.OffsetDateTime.parse(text).offset else zone?:java.time.OffsetDateTime.parse(text).offset,s.book.language)
-    if((key.endsWith("Minor")||key=="minor")&&raw.jsonPrimitive.longOrNull!=null)return Money(Currency.valueOf(if(key in setOf("baseMinor","expectedBaseMinor"))s.book.currency else value.second?:currency),raw.jsonPrimitive.long).display()
+    if(isCommandMoneyField(key)&&raw.jsonPrimitive.longOrNull!=null) {
+        // Older saved reviews may lack both explicit units and their now-deleted source record.
+        if(value.second==null)return word("币种缺失，最小单位：","通貨不明、最小単位：")+text
+        return commandMoneyDisplay(value)
+    }
     if(key in setOf("automaticRates","location","haptics","scanAutoCapture","scanAutoProcess","enabled"))return if(text=="true"||text=="1")word("开","オン")else word("关","オフ")
     if(key=="photoOriginal")return if(text=="true")word("原样保存","そのまま保存")else word("节省空间","省容量")
     if(key=="activeBook")return resolveName(text,s,model)
@@ -333,14 +326,18 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
 }
 @Composable private fun readableCommandJson(value:JsonElement,key:String,currency:String,s:BookSnapshot,model:ConfirmationModel,zone:java.time.ZoneId?=null):String {
     val parts=mutableListOf<String>()
+    val currencies=CommandMoneyFacts(s,model.net,after=true)
     when(value) {
         is JsonObject->for((field,v) in value) {
             if(field in setOf("id","bookId","createdAt","deletionGroupId"))continue
             val label=if(field=="ME")word("本人","自分")else if(field.startsWith("@")||field.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}")))resolveName(field,s,model)else fieldName(field)
-            parts+=label+"："+readableCommandJson(v,field,currency,s,model,zone)
+            val unit=currencies.fieldCurrency(value,field,currencies.objectCurrency(value,currency))
+            val rendered=if(isCommandMoneyField(field)&&v is JsonPrimitive&&v.longOrNull!=null)fieldValue(v to unit,field,currency,s,model,zone)
+                else readableCommandJson(v,field,unit?:currency,s,model,zone)
+            parts+=label+"："+rendered
         }
         is JsonArray->for(v in value)parts+=readableCommandJson(v,key,currency,s,model,zone)
-        else->return fieldValue(value to null,key,currency,s,model,zone)
+        else->return fieldValue(value to currency,key,currency,s,model,zone)
     }
     return parts.joinToString(" · ")
 }

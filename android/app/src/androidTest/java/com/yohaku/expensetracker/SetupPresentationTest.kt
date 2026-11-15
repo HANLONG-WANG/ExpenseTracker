@@ -508,6 +508,7 @@ class SetupPresentationTest {
         for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithTag("category-cover").performScrollTo()
+            ui.onNodeWithTag("category-cover-title").assertBalancedHeading()
             val cover=ui.onNodeWithTag("category-cover").getUnclippedBoundsInRoot()
             val tabs=ui.onNodeWithTag("category-kind-tabs").getUnclippedBoundsInRoot()
             val caption=ui.onNodeWithTag("category-section-caption").getUnclippedBoundsInRoot()

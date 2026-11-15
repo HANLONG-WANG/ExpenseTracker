@@ -24,13 +24,14 @@ import kotlinx.coroutines.CompletableDeferred
 
 @RunWith(AndroidJUnit4::class)
 class EntryFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
     private val haptics=RecordingHapticOutput()
-    @Before fun setup(){val context=InstrumentationRegistry.getInstrumentation().targetContext;db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db);vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=haptics)}}
+    @Before fun setup(){val context=InstrumentationRegistry.getInstrumentation().targetContext;db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db);vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock));runBlocking{vm.preferences.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=haptics)}}
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun waitFor(text:String){ui.waitUntil(10000){ui.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}}
     private fun tap(text:String){waitFor(text);ui.onNodeWithText(text).performScrollTo().performClick()}

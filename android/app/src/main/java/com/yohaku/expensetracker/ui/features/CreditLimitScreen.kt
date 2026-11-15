@@ -217,7 +217,7 @@ import kotlinx.serialization.json.*
     var basisDate by financialField("basisDate"){today};var effective by financialField("effective"){today};var zone by financialField("zone"){old?.zoneId?:if(a.currency=="CNY")"Asia/Shanghai"else"Asia/Tokyo"}
     var delay by financialField("recoveryDelayDays"){(old?.recoveryDelayDays?:0).toString()}
     var sharing by financialField("sharing"){old?.sharing};var recovery by financialField("recovery"){old?.recovery};var usage by financialField("usage"){old?.usageBasis};var start by financialField("start"){old?.usageStart}
-    var owner by remember{mutableStateOf<Int?>(null)};var review by remember{mutableStateOf<CreditLimitReview?>(null)};var stale by remember{mutableStateOf(false)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)};var review by remember{mutableStateOf<CreditLimitReview?>(null)};var stale by remember{mutableStateOf(false)}
     val busy by vm.busy.collectAsStateWithLifecycle();val formScroll=rememberScrollState();val reviewScroll=rememberScrollState()
     LaunchedEffect(review){if(review!=null)reviewScroll.scrollTo(0)}
     FinancialFlow(word("额度与占用基准","利用枠の設定"),step=if(review!=null)1 else 0,onClose=onClose,onBack={review=null},scrollState=if(review!=null)reviewScroll else formScroll,actions={
@@ -244,7 +244,7 @@ import kotlinx.serialization.json.*
             YSelect(word("开始占用的时间","使用開始日"),start,listOf(null to word("未确定","未設定"))+CreditLimitUsageStart.entries.map{it.name as String? to limitLabel(it.name)},{start=it})
             YSelect(word("本金归还后的额度恢复","元金返済後の枠回復"),recovery,listOf(null to word("未确定","未設定"))+LimitRecovery.entries.map{it.name as String? to limitLabel(it.name,delay.toIntOrNull()?:0)},{recovery=it})
             if(recovery=="PAYMENT_DATE")YField(word("付款后第几天恢复（自然日，0 为当天）","支払後何日目に回復（暦日、0は当日）"),delay,{delay=it},numeric=true)
-            YDateFields(listOf(word("占用基准日","使用額基準日") to basisDate,word("配置生效日","設定適用日") to effective),owner,{owner=it},{i,v->if(i==0)basisDate=v else effective=v})
+            YDateFields(listOf(YDateField("basisDate",word("占用基准日","使用額基準日"),basisDate),YDateField("effective",word("配置生效日","設定適用日"),effective)),owner,{owner=it},{i,v->if(i=="basisDate")basisDate=v else effective=v})
             YField(word("时区","タイムゾーン"),zone,{zone=it})
             YText(word("贷款只预计循环额度本金；固定贷款不占用此循环额度。费用占用等特殊规则请选仅记录平台值。","ローンは循環枠の元金のみ予測し、固定ローンはこの枠を使用しません。手数料も枠を使用する等の条件は確認値のみを選択してください。"),11)
 
@@ -260,7 +260,7 @@ import kotlinx.serialization.json.*
     val c=Currency.valueOf(a.currency)
     var name by financialField("name"){old?.name.orEmpty()};var total by financialField("total"){old?.totalMinor?.let{Money(c,it).decimal.toPlainString()}.orEmpty()};var used by financialField("used"){""}
     var members by financialField("members"){old?.let{g->l.members.filter{it.groupId==g.id}.map{it.accountId}}?:listOf(a.id)}
-    var date by financialField("date"){LocalDate.now(vm.repository.clock).toString()};var owner by remember{mutableStateOf<Int?>(null)}
+    var date by financialField("date"){LocalDate.now(vm.repository.clock).toString()};var owner by remember{mutableStateOf<YDateSelection?>(null)}
     var review by remember{mutableStateOf<CreditLimitReview?>(null)};var stale by remember{mutableStateOf(false)}
     val busy by vm.busy.collectAsStateWithLifecycle();val form=rememberScrollState();val preview=rememberScrollState()
     LaunchedEffect(review){if(review!=null)preview.scrollTo(0)}
@@ -280,7 +280,7 @@ import kotlinx.serialization.json.*
             YText(word("基准包含目前已记、截至基准日的记录；此后新增同日记录视为基准之后。","基準は記帳済みの基準日以前の記録を含み、以後に追加する同日記録は基準後として扱います。"),11)
             s.accounts.filter{it.currency==a.currency&&AccountType.valueOf(it.type).debt&&(it.active||it.id in members)&&l.members.none{m->m.accountId==it.id&&m.groupId!=old?.id}}.forEach{account->YToggle(account.name,account.id in members,{selected->members=if(selected)members+account.id else members-account.id})}
             YText(word("成员配置或恢复方式改变后需重新核对共享基准。","所属口座の設定・回復方法を変更した場合、共通枠の基準を再確認してください。"),11)
-            YDateFields(listOf(word("共享额度组基准日","共通枠の基準日") to date),owner,{owner=it},{_,v->date=v})
+            YDateFields(listOf(YDateField("date",word("共享额度组基准日","共通枠の基準日"),date)),owner,{owner=it},{_,v->date=v})
 
         }
     }
@@ -295,7 +295,7 @@ import kotlinx.serialization.json.*
     var amount by financialField("amount"){""};var split by financialField("split"){""};var revo by financialField("revo"){""}
     var scope by financialField("scope"){"TOTAL"}
     var date by financialField("date"){if(recovery)LocalDate.now(vm.repository.clock).toString()else LocalDateTime.now(vm.repository.clock).toString()}
-    var owner by remember{mutableStateOf<Int?>(null)};var review by remember{mutableStateOf<CreditLimitReview?>(null)};var stale by remember{mutableStateOf(false)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)};var review by remember{mutableStateOf<CreditLimitReview?>(null)};var stale by remember{mutableStateOf(false)}
     val busy by vm.busy.collectAsStateWithLifecycle();val form=rememberScrollState();val preview=rememberScrollState()
     LaunchedEffect(review){if(review!=null)preview.scrollTo(0)}
     YSheet(if(recovery)word("确认实际额度恢复","枠回復の確認")else word("记录平台可用值","返済先の確認値を記録"),{if(review!=null)review=null else onClose()},scrollState=if(review!=null)preview else form) {
@@ -306,7 +306,7 @@ import kotlinx.serialization.json.*
             if(!recovery&&groupId==null&&a.type==AccountType.CREDIT.name)YSelect(word("观测范围","確認対象"),scope,listOf("TOTAL","INSTALLMENT","REVOLVING").map{it to limitLabel(it)},{scope=it})
             YField(if(recovery)word("已实际恢复本金","実際に回復した元金")else word("平台显示可用金额","返済先の利用可能額"),amount,{amount=it},Modifier.testTag("limit-fact-amount"),numeric=true)
             if(recovery&&a.type==AccountType.CREDIT.name){YField(word("其中分期恢复 / 未知留空","うち分割の回復額・不明は空欄"),split,{split=it},numeric=true);YField(word("其中循环还款恢复 / 未知留空","うちリボの回復額・不明は空欄"),revo,{revo=it},numeric=true)}
-            YDateFields(listOf((if(recovery)word("实际恢复日","実回復日")else word("平台观测时间","返済先の確認時刻")) to date),owner,{owner=it},{_,v->date=v},
+            YDateFields(listOf(YDateField("date",if(recovery)word("实际恢复日","実回復日")else word("平台观测时间","返済先の確認時刻"),date)),owner,{owner=it},{_,v->date=v},
                 displayValues=if(recovery)null else listOf(FinancialDisplayFacts.time(LocalDateTime.parse(date).atZone(vm.repository.clock.zone).toInstant(),LocalDateTime.parse(date).atZone(vm.repository.clock.zone).offset,LocalLanguage.current)))
             if(!recovery)YText(word("时间按设备时区记录：","端末の時間帯で記録：")+vm.repository.clock.zone.id,11)
             YButton(word("预览确认","確認内容を見る"),{vm.execute{review=if(recovery)vm.repository.previewCreditLimitRecovery(s.book.id,CreditLimitRecoveryInput(a.id,target!!,date,Money.parse(amount,c).minor,split.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},revo.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor}))else vm.repository.previewCreditLimitObservation(s.book.id,a.id.takeIf{groupId==null},groupId,scope,Money.parse(amount,c).minor,LocalDateTime.parse(date).atZone(vm.repository.clock.zone).format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME))}},Modifier.testTag("limit-fact-preview"),primary=true,enabled=!busy)

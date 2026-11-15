@@ -20,7 +20,7 @@ import java.time.LocalDate
 
 @Serializable private data class PoolAdoptedFeeDraft(val arrangementId:String,val date:String,val included:Boolean=false,val waived:String="0")
 
-@Serializable private data class PoolPeriodDraft(val date:String,val start:String,val end:String)
+@Serializable private data class PoolPeriodDraft(val date:String,val start:String,val end:String,val calendarId:String=java.util.UUID.randomUUID().toString())
 
 @Composable internal fun FinancialPoolEditor(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,old:FinancialPlanEntity?,vm:AppViewModel,onClose:()->Unit,onBill:((String)->Unit)?=null) {
     FinancialDraftHost(s,FinancialDraftContext("POOL",a.id,targetId=old?.id),vm,onClose){FinancialPoolEditorContent(s,a,f,old,vm,onClose,onBill)}
@@ -50,11 +50,11 @@ import java.time.LocalDate
     })}
     val feeDrafts=vm.repository.json.decodeFromString<List<PoolAdoptedFeeDraft>>(adoptedFeeJson)
     fun fee(value:PoolAdoptedFeeDraft){adoptedFeeJson=vm.repository.json.encodeToString(feeDrafts.filter{it.arrangementId!=value.arrangementId}+value)}
-    var editingPeriod by rememberSaveable{mutableStateOf<Int?>(null)}
-    var calendar by remember{mutableStateOf<Int?>(null)}
+    var editingPeriod by rememberSaveable{mutableStateOf<String?>(null)}
+    var calendar by remember{mutableStateOf<YDateSelection?>(null)}
     var review by remember{mutableStateOf<FinancialPredictionReview?>(null)}
     var stale by remember{mutableStateOf(false)}
-    val rows=vm.repository.json.decodeFromString<List<PoolPeriodDraft>>(encoded)
+    val rows=remember(encoded){vm.repository.json.decodeFromString<List<PoolPeriodDraft>>(encoded)}
     val shares=vm.repository.json.decodeFromString<Map<String,String>>(shareJson)
     val busy by vm.busy.collectAsStateWithLifecycle();val form=rememberScrollState();val preview=rememberScrollState()
     val memberPlans=f.plans.filter{it.active&&it.accountId==a.id&&it.mode==mode.name&&it.id!=old?.id}
@@ -131,7 +131,7 @@ import java.time.LocalDate
             YSelect(word("付款账户 / 可留空","引落口座・未定は空欄"),bank,listOf(null to word("未确定 / 按规则","未定・条件から取得"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{bank=it},columns=2)
             YField(word("预测期数","予測回数"),count,{count=it},numeric=true)
             YField(word("起始账期序号","開始請求回数"),firstNumber,{firstNumber=it},numeric=true)
-            YDateFields(listOf(word("首期计费开始","初回計算開始") to firstStart,word("首期计费结束","初回計算終了") to firstEnd,word("首期付款日","初回支払日") to firstPay),calendar?.takeIf{it<3},{calendar=it},{i,v->when(i){0->firstStart=v;1->firstEnd=v;else->firstPay=v}})
+            YDateFields(listOf(YDateField("firstStart",word("首期计费开始","初回計算開始"),firstStart),YDateField("firstEnd",word("首期计费结束","初回計算終了"),firstEnd),YDateField("firstPay",word("首期付款日","初回支払日"),firstPay)),calendar,{calendar=it},{i,v->when(i){"firstStart"->firstStart=v;"firstEnd"->firstEnd=v;"firstPay"->firstPay=v}})
             YButton(word("生成按月候选","月ごとの候補を作成"),{vm.execute {
                 val n=count.toIntOrNull()?:error("请输入期数 / 回数を入力してください");require(n in 1..1200)
                 val end=LocalDate.parse(firstEnd);val payment=LocalDate.parse(firstPay)
@@ -140,12 +140,12 @@ import java.time.LocalDate
                     val start=if(i==0)LocalDate.parse(firstStart)else if(rule?.frequency==ChargeFrequency.MONTHLY||rule?.includeStart==true&&rule.includeEnd==true)previous.plusDays(1)else if(rule?.includeStart==false&&rule.includeEnd==false)previous.minusDays(1)else previous
                     PoolPeriodDraft(payment.plusMonths(i.toLong()).toString(),start.toString(),end.plusMonths(i.toLong()).toString())})
             }},Modifier.testTag("pool-generate"),enabled=!busy,haptic=Haptic.Step)
-            rows.forEachIndexed{i,row->Panel {
+            rows.forEachIndexed{i,row->key(row.calendarId){Panel {
                 YText(word("第${i+1}期","第${i+1}回"),14)
                 YText(row.date+" · "+row.start+" → "+row.end,11)
-                YButton(word("调整本期日期","当期の日付を調整"),{editingPeriod=if(editingPeriod==i)null else i;calendar=null})
-                if(editingPeriod==i)YDateFields(listOf(word("付款日","支払日") to row.date,word("计费开始","計算開始") to row.start,word("计费结束","計算終了") to row.end),calendar?.minus(3+i*3)?.takeIf{it in 0..2},{calendar=it?.let{n->3+i*3+n}},{field,v->encoded=vm.repository.json.encodeToString(rows.mapIndexed{index,p->if(index!=i)p else when(field){0->p.copy(date=v);1->p.copy(start=v);else->p.copy(end=v)}})})
-            }}
+                YButton(word("调整本期日期","当期の日付を調整"),{editingPeriod=if(editingPeriod==row.calendarId)null else row.calendarId;calendar=null})
+                if(editingPeriod==row.calendarId)YDateFields(listOf(YDateField("date",word("付款日","支払日"),row.date),YDateField("start",word("计费开始","計算開始"),row.start),YDateField("end",word("计费结束","計算終了"),row.end)),calendar,{calendar=it},{field,v->encoded=vm.repository.json.encodeToString(rows.mapIndexed{index,p->if(index!=i)p else when(field){"date"->p.copy(date=v);"start"->p.copy(start=v);else->p.copy(end=v)}})},group="period-${row.calendarId}")
+            }}}
             if(memberPlans.isNotEmpty()) {
                 memberPlans.forEach{YText(it.name+" · "+financeLabel(it.mode),12)}
                 YToggle(word("归并以上循环计划，保留已确认与付款历史","上記の循環予定を統合し、確定・支払履歴を保持"),adopt,{adopt=it},Modifier.testTag("pool-adopt"))

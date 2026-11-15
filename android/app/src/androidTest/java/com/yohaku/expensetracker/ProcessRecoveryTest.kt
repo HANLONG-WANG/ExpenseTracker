@@ -23,13 +23,14 @@ import java.io.File
 /** Run each step in a separate instrumentation process, with host force-stop between steps. */
 @RunWith(AndroidJUnit4::class)
 class ProcessRecoveryTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule("phase-a-process")
     @get:Rule val ui=createComposeRule()
     private val context=InstrumentationRegistry.getInstrumentation().targetContext
     private val marker get()=File(context.filesDir,"verification/process-recovery.json")
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
-    private val prefs get()=AppPreferences(context)
+    private val prefs get()=testPreferences.preferences
     @Before fun open(){
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("processRecovery")=="true")
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"phase-a-process-check.db").build()
@@ -41,11 +42,10 @@ class ProcessRecoveryTest {
     @Test fun seedSetup(){
         assertFalse("Do not overwrite an unfinished recovery check",marker.exists())
         val data=runBlocking{
-            val previous=prefs.activeBook.first()
             val book=repo.createBook("进程恢复验证",Currency.JPY,"journal","ja")
             repo.setupStep(book,3)
             prefs.select(book)
-            JSONObject().put("book",book).put("previous",previous?:"").put("pid",Process.myPid())
+            JSONObject().put("book",book).put("pid",Process.myPid())
         }
         marker.parentFile!!.mkdirs();marker.writeText(data.toString())
     }
@@ -83,10 +83,10 @@ class ProcessRecoveryTest {
             assertEquals("餐饮 / 咖啡",snapshot.path(snapshot.draft!!.categoryId))
             assertEquals(10000L,snapshot.balance(snapshot.accounts.single()))
             assertEquals(0,snapshot.events.size)
-            prefs.select(data.getString("previous"))
         }
         vm.viewModelScope.cancel();db.close()
         context.deleteDatabase("phase-a-process-check.db")
         marker.delete()
+        testPreferences.deleteAfterTest=true
     }
 }

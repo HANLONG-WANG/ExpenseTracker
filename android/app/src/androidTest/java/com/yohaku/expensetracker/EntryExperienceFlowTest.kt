@@ -17,6 +17,7 @@ import org.junit.Assert.*
 import java.io.File
 
 class EntryExperienceFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
@@ -28,7 +29,7 @@ class EntryExperienceFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         root=File(context.cacheDir,"entry-experience-${java.util.UUID.randomUUID()}").apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db,mediaRoot=root)
-        val prefs=AppPreferences(context);vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock));runBlocking{prefs.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=haptics)}
+        val prefs=testPreferences.preferences;vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock));runBlocking{prefs.setHapticsEnabled(true)};ui.setContent{NativeApp(vm,haptics=haptics)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
     private fun snapshot()=(vm.state.value as AppState.Ready).snapshot!!
@@ -82,21 +83,44 @@ class EntryExperienceFlowTest {
                 repo.commitEntryReview(book,repo.previewEntry(book,EntryDraft(kind=EntryKind.TRANSFER,accountId=card,toAccountId=bank,amount="20",toAmount="20",cardPaymentChoice="SINGLE")))
             }
             ui.waitUntil(10000){snapshot().events.size==2};s=snapshot()
-            ui.runOnIdle{vm.navigate("accounts");vm.startEntry(s);vm.changeEntry(book,vm.entry.value!!.copy(date="2026-10-01",note="旅行"))}
+            ui.runOnIdle{vm.navigate("accounts");vm.startEntry(s);vm.changeEntry(book,vm.entry.value!!.copy(note="旅行"))}
             ui.waitUntil(10000){!vm.busy.value}
+            val entryDate=vm.entry.value!!.date
             val session=vm.entry.value!!.mediaSession
             val file=runBlocking{repo.importMedia(book,session,"note.txt","text/plain"){"receipt note".byteInputStream()}}
-            ui.runOnIdle{vm.changeEntry(book,vm.entry.value!!.copy(attachmentIds=listOf(file.id)))}
+            val png=java.io.ByteArrayOutputStream().use{out->
+                val bitmap=android.graphics.Bitmap.createBitmap(4,4,android.graphics.Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.WHITE);bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);bitmap.recycle();out.toByteArray()
+            }
+            val receipt=runBlocking{repo.importMedia(book,session,"receipt.png","image/png",receipt=true){png.inputStream()}}
+            ui.runOnIdle{vm.changeEntry(book,vm.entry.value!!.copy(attachmentIds=listOf(file.id),receiptFileIds=listOf(receipt.id)))}
             ui.onNodeWithTag("category-kind-TRANSFER").performScrollTo().performClick()
             ui.waitUntil(10000){vm.route.value=="entry"&&vm.entry.value?.kind==EntryKind.TRANSFER&&!vm.busy.value}
             val transfer=vm.entry.value!!;assertEquals(card,transfer.accountId);assertEquals(bank,transfer.toAccountId);assertEquals("SINGLE",transfer.cardPaymentChoice)
-            assertEquals("2026-10-01",transfer.date);assertEquals("旅行",transfer.note);assertEquals(session,transfer.mediaSession);assertEquals(listOf(file.id),transfer.attachmentIds)
-            assertEquals("accounts",vm.entryReturnRoute.value);assertFalse(vm.entryHasManualInput())
+            assertEquals(entryDate,transfer.date);assertEquals("旅行",transfer.note);assertEquals(session,transfer.mediaSession);assertEquals(listOf(file.id),transfer.attachmentIds)
+            assertEquals(listOf(receipt.id),transfer.receiptFileIds)
+            assertEquals("accounts",vm.entryReturnRoute.value);assertTrue(vm.entryHasManualInput())
+            ui.onNodeWithTag("sheet-close").performClick()
+            ui.onNodeWithText(if(language=="zh")"保留草稿并返回"else"下書きを残して戻る").assertIsDisplayed()
+            ui.onNodeWithText(if(language=="zh")"放弃修改"else"変更を破棄").assertIsDisplayed()
+            shot("$theme-$language-transfer-leave")
+            ui.onNodeWithText(if(language=="zh")"继续编辑"else"編集を続ける").performClick()
             shot("$theme-$language-transfer-tabs")
             ui.onNodeWithTag("category-kind-EXPENSE").performScrollTo().performClick()
             assertEquals(bank,vm.entry.value!!.accountId);assertEquals("category-picker",vm.route.value);assertEquals(listOf(file.id),vm.entry.value!!.attachmentIds)
             ui.onNodeWithTag("category-kind-INCOME").performClick();assertEquals(EntryKind.INCOME,vm.entry.value!!.kind)
-            ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="accounts"&&!vm.busy.value}
+            assertTrue(vm.entryHasManualInput())
+            ui.onNodeWithTag("sheet-close").performClick()
+            ui.onNodeWithText(if(language=="zh")"放弃修改"else"変更を破棄").assertIsDisplayed()
+            shot("$theme-$language-category-leave")
+            ui.onNodeWithText(if(language=="zh")"保留草稿并返回"else"下書きを残して戻る").performClick()
+            ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="accounts"&&!vm.busy.value&&snapshot().draft!=null}
+            val kept=snapshot().draft!!;assertEquals("旅行",kept.note);assertEquals(listOf(file.id),kept.attachmentIds);assertEquals(listOf(receipt.id),kept.receiptFileIds)
+            assertTrue(repo.mediaFile(file).exists());assertTrue(repo.mediaFile(receipt).exists())
+            ui.runOnIdle{vm.resumeEntry(snapshot())}
+            ui.onNodeWithTag("sheet-close").performClick()
+            ui.onNodeWithText(if(language=="zh")"放弃修改"else"変更を破棄").performClick()
+            ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="accounts"&&!vm.busy.value&&!repo.mediaFile(file).exists()&&!repo.mediaFile(receipt).exists()}
             assertNull(runBlocking{repo.dao.storedDraft(book)})
         }
     }

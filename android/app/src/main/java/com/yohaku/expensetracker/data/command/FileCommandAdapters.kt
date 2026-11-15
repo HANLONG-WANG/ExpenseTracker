@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
 @Serializable internal data class StatementCommandInput(val batch:String,val row:String,val entry:JsonElement?=null,
-    val note:String="",val kind:EntryKind=EntryKind.EXPENSE,val occurredDate:String?=null,val postedDate:String?=null,
+    val postingId:String?=null,val note:String="",val kind:EntryKind=EntryKind.EXPENSE,val occurredDate:String?=null,val postedDate:String?=null,
     val originalEvent:JsonElement?=null,val set:JsonObject=buildJsonObject{})
 @Serializable internal data class CsvUndoInput(val batch:String,val targets:List<String>?=null)
 @Serializable internal data class AnalysisInput(val modules:List<String>,val pinned:List<String> = emptyList())
@@ -19,19 +19,19 @@ import kotlinx.serialization.json.*
     val adjustments:List<ReceiptAdjustmentInput> = emptyList(),@SchemaRange(minimum=0,property="minor") val total:Money?=null,val complete:Boolean=false,val issues:List<String> = emptyList())
 
 internal class StatementAdapter(private val action:String):LedgerAdapter() {
-    private val fields=when(action){"accept"->setOf("batch","row","entry","note");"unlink"->setOf("batch","row");"supplement"->setOf("batch","row","kind","occurredDate","postedDate","originalEvent","set");else->setOf("batch","row","entry","postedDate","set")}
+    private val fields=when(action){"accept"->setOf("batch","row","entry","postingId","note");"unlink"->setOf("batch","row");"supplement"->setOf("batch","row","kind","occurredDate","postedDate","originalEvent","set");else->setOf("batch","row","entry","postingId","postedDate","set")}
     private val schema=patchSchema(withoutFields(descriptorSchema(StatementCommandInput.serializer().descriptor),descriptorSchema(StatementCommandInput.serializer().descriptor).getValue("properties").jsonObject.keys-fields),buildMap {
         if("entry" in fields)put("entry",referenceSchema("entry"))
         if("originalEvent" in fields)put("originalEvent",nullableSchema(referenceSchema("entry")))
-        if("set" in fields)put("set",if(action=="confirmActual")withoutFields(entryValueSchema,entryValueSchema.getValue("properties").jsonObject.keys-setOf("baseAmount"))else entryValueSchema)
+        if("set" in fields)put("set",if(action=="confirmActual")withoutFields(entryValueSchema,entryValueSchema.getValue("properties").jsonObject.keys-setOf("baseAmount","feeBaseAmount"))else entryValueSchema)
         for(date in listOf("occurredDate","postedDate"))if(date in fields)put(date,dateSchema())
         if("kind" in fields)put("kind",buildJsonObject{put("type","string");put("enum",encoded(listOf("EXPENSE","INCOME","TRANSFER","REFUND")))})
     }).let{base->JsonObject(base+("required" to encoded(when(action){"accept"->listOf("batch","row","entry");"supplement"->listOf("batch","row","occurredDate","postedDate");"confirmActual"->listOf("batch","row","entry","postedDate");else->listOf("batch","row")})))}
     override val capability=ledgerCapability("statement.$action",schema,
         if(action=="supplement")mapOf("entry" to "entry")else emptyMap(),
-        when(action){"accept"->"batch/row/entry required; note defaults empty.";"unlink"->"batch/row required; no default association is inferred.";"supplement"->"batch/row/occurredDate/postedDate required; kind=EXPENSE, set={}; originalEvent required for REFUND. Supply missing category/foreign amounts; source-side amount/direction cannot be overridden.";else->"batch/row/entry/postedDate required; set={} may only supply baseAmount. Actual account amount comes from the statement row."},
+        when(action){"accept"->"batch/row/entry required; postingId selects the exact posting when ambiguous; note defaults empty.";"unlink"->"batch/row required; no default association is inferred.";"supplement"->"batch/row/occurredDate/postedDate required; kind=EXPENSE, set={}; originalEvent required for REFUND. Supply missing category/foreign amounts; source-side amount/direction cannot be overridden.";else->"batch/row/entry/postedDate required; postingId identifies the exact posting (required if account/direction are ambiguous); set={} may supply baseAmount or, for a separate transfer fee, feeBaseAmount. Actual account amount comes from the statement row."},
         when(action){"accept"->"Existing statement row and live entry in this book with matching account/currency/direction; reviewed posting must be unoccupied.";"unlink"->"Existing reviewed association for this statement batch/row in this book; preserves source and entry.";"supplement"->"Existing statement row without exact/manual association; shared record validation. Financial borrowing/repayment use their dedicated commands.";else->"Existing statement row and live entry in this book with matching account/currency/direction; shared actual-amount preparation and phone USER_FACT."},
-        when(action){"accept"->"Accept a reviewed difference linking this statement row to the specified existing entry; does not change ledger amounts.";"unlink"->"Remove only this row's existing reviewed association; retain the statement source and all ledger records.";"supplement"->"Create the missing entry from this statement row, preserving its source amount/direction; phone USER_FACT covers the posted date and amount.";else->"Confirm the specified entry's actual account amount from this statement row, with explicit postedDate; only missing baseAmount may be supplied in set. Phone USER_FACT is required."},
+        when(action){"accept"->"Accept a reviewed difference linking this statement row to the specified existing entry; does not change ledger amounts.";"unlink"->"Remove only this row's existing reviewed association; retain the statement source and all ledger records.";"supplement"->"Create the missing entry from this statement row, preserving its known source amount/currency/dates/direction and confirmed settlement; phone USER_FACT covers the posted date and amount.";else->"Confirm the specified entry's actual account amount from this statement row, with explicit postedDate; only missing baseAmount (or feeBaseAmount for a separate transfer fee) may be supplied in set. Phone USER_FACT is required."},
         when(action){"accept"->"""{"batch":"batch-id","row":"row-id","entry":"entry-id","note":"日期差异已核对"}""";"unlink"->"""{"batch":"batch-id","row":"row-id"}""";"supplement"->"""{"batch":"batch-id","row":"row-id","occurredDate":"2026-11-01","postedDate":"2026-11-02","set":{"category":"category-id"}}""";else->"""{"batch":"batch-id","row":"row-id","entry":"entry-id","postedDate":"2026-11-02"}"""})
         .let{if(action in setOf("supplement","confirmActual"))it.copy(confirmationTypes=it.confirmationTypes+ConfirmationKind.USER_FACT)else it}
     override fun validate(input:JsonObject) {
@@ -40,7 +40,7 @@ internal class StatementAdapter(private val action:String):LedgerAdapter() {
         if(action in setOf("supplement","confirmActual"))java.time.LocalDate.parse(requireNotNull(v.postedDate))
         if(action=="supplement")java.time.LocalDate.parse(requireNotNull(v.occurredDate))
         if(v.set.isNotEmpty())validateEntryValues(v.set)
-        if(action=="confirmActual")require(v.set.keys.all{it=="baseAmount"}){"实际金额来自流水，只可补充本位币金额 / 実額は明細から取得し、基準通貨額のみ補足できます"}
+        if(action=="confirmActual")require(v.set.keys.all{it in setOf("baseAmount","feeBaseAmount")}){"实际金额来自流水，只可补充本位币金额 / 実額は明細から取得し、基準通貨額のみ補足できます"}
     }
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val v=commandJson.decodeFromJsonElement<StatementCommandInput>(step.input);val r=run.ledger
@@ -52,8 +52,8 @@ internal class StatementAdapter(private val action:String):LedgerAdapter() {
         when(action) {
             "accept"->{
                 val entry=run.resolve(requireNotNull(v.entry));ids=setOf(entry)
-                val posting=s.reconciliationPostings().single{it.eventId==entry&&it.accountId==file.account_id}
-                r.acceptStatementDifference(r.previewStatementDifference(run.bookId,v.batch,v.row,posting.postingId,v.note))
+                val posting=s.statementPosting(entry,file.account_id,row,v.postingId)
+                r.acceptStatementDifference(r.previewStatementDifference(run.bookId,v.batch,v.row,posting.id,v.note))
             }
             "unlink"->{
                 val decision=r.db.fileWorkflowDao().decisions(run.bookId).first().single{it.batchId==v.batch&&it.rowId==v.row}
@@ -69,11 +69,12 @@ internal class StatementAdapter(private val action:String):LedgerAdapter() {
                     // Source account/date/money remain explicit; set supplies missing editor fields.
                     val sourceFields=if(d.kind==EntryKind.TRANSFER) {
                         if(row.direction=="out")setOf("kind","account","amount","date","fromConfirmed")else setOf("kind","toAccount","toAmount","toDate","toConfirmed")
-                    }else setOf("kind","account","date","settlementDate","accountAmount","settlementConfirmed","originalEvent")
+                    }else setOf("kind","account","date","settlementDate","accountAmount","settlementConfirmed","originalEvent","historicalIncluded")
                     require(v.set.keys.none{it in sourceFields}){"不能改写流水来源端，请只补充缺少资料 / 明細の元の側は変更せず、不足情報のみ補足してください"}
-                    entryDraft(v.set,run,s,d)
+                    entryDraft(v.set,run,s,d,preserveSettlementFact=true).also{s.requireStatementSupplementFacts(seed,it)}
                 }else {
-                    val d=s.statementActualDraft(StatementActualSeed(run.resolve(requireNotNull(v.entry)),file.account_id,row,requireNotNull(v.postedDate)))
+                    val d=s.statementActualDraft(StatementActualSeed(run.resolve(requireNotNull(v.entry)),file.account_id,row,requireNotNull(v.postedDate),v.postingId))
+                    require("feeBaseAmount" !in v.set||d.kind==EntryKind.TRANSFER&&s.statementPosting(d.id!!,file.account_id,row,v.postingId).id==d.id+":fee")
                     entryDraft(v.set,run,s,d)
                 }
                 val change=r.writeEntryBatchInTransaction(s,listOf(draft)).single();ids=setOf(change.event.id)

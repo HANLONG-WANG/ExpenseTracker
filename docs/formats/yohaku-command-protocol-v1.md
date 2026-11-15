@@ -108,7 +108,7 @@
 - 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。付款选择及指定月、费用、分期期数与普通表单同规则。
 - 普通记录字段 `budgetExcluded`：新建默认 false，编辑省略保留、false 取消，不能为 null；只有 EXPENSE 可以设 true。排除月/分类预算（含待确认数、节奏、提醒及原支出的退款/费用），仍计入分析、账户余额、日历实际金额和活动自身预算。记录导出包含该字段。`template.save` 完整替换时默认 false，支出模板可保存并通过 `template.createEntry` 带入；周期规则、实例及固定预留不加字段。
 - `entry.update` 批量字段补丁；`entry.confirmActual` 采用相同 targets/set，但必须明确至少一个实际确认标志为 true。账户负余额加重在预览中单独要求勾选，列明具体账户、币种和金额。记录缺必填项则整批失败；待用户补完用 entry.prepareDraft（interactive，不代用户提交）。
-- `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；恢复会重查30天期限、原消费、退款上限及预留可用性。PURGE/EMPTY 禁止。
+- `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；恢复会重查30天期限、原消费、退款上限及预留可用性；还款恢复还要校验恢复后账单、合同和循环池的剩余本金，冲突时先调整关联。PURGE/EMPTY 禁止。
 - `template.save`：完整保存 name/kind/category/account/currency，以及可选固定金额、商户/备注、付款选择、活动；省略可选项恢复其默认空值，已有排序保留。`template.move`：template 和 direction=-1/+1，相邻移动，边缘保持。`template.createEntry`：template 与可选 set，调用普通记账准备，预览显示 `entry.create`；无金额或外币换算资料时需要在 set 补齐，不能生成待填草稿。模板内容也是确认依据。
 
 分类替代合并不是隐藏删除：entry.update 批量改记录分类、template.save 改模板，budget.save 明确目标各生效月额度并把原分类每个生效月设为 amount:null，activity.save 全量替换 categoryBudgets，recurrence.save 改规则，再 occurrence.update 改完成/取消等历史实例的分类，最后 category.lifecycle ARCHIVE。金额如何合并需明确给出，不能自行相加。原分类预算的空值历史行仍保留，不能宣称物理移除了所有引用。金融草稿分类用 financialDraft.reclassify；普通草稿分类用 entryDraft.reclassify；其余补完用本机草稿编辑，不替用户提交。
@@ -139,7 +139,7 @@
 - `occurrence.resolve` 用 recurrence 引用和 date 选择确定实例；必要时物化该规则所在月份，输出 occurrence。新规则后的实例操作先用它，不能推测实例UUID。
 - `occurrence.update` 指定 occurrences 列表及 category 批量调整历史/待付实例分类；不代替实际记录分类更新。`occurrence.lifecycle` CANCEL/RESTORE；恢复要求规则启用且仍安排该日。`occurrence.link` 的 links 为 occurrence/entry 对，一次准备后关联已有支出，不能重复完成另一实例；`occurrence.unlink` 保留原记录并解除关联。
 - `occurrence.pay` 给 occurrence 和可选 set 记录补丁。有匹配的已存支付草稿时复用其输入与本地附件，否则采用手机同一支付表单默认值；再应用 set，走普通记账确认与支付草稿协调。只消费匹配草稿，其前后内容及附件关系参与确认/撤销，不新增云端文件操作。草稿已选择关联已有记录时，应明确使用 occurrence.link。金额/换算资料不足则整批失败。不能改 kind 或 occurrence；关联已有付款请用 occurrence.link。
-- `expectedIncome.save`：name/amount/date/account，income 省略新建；外币 accountAmount 省略/null 为未知，useReferenceRates=true 才选本次冻结的本机参考报价。`expectedIncome.cancel` 仅取消未到账安排。`expectedIncome.arrive` 的 income 必填，entry（已有实际收入）与 set（新建实际收入字段）二选一；新增必须给实际 amount/category，不从预计金额猜实际金额。入账记录须同账户、已确认、非期初、非未来且未关联其他预计项；不重复增加余额，原预计金额保留。金融草稿放弃已下沉到业务层；这些命令不消费未明确提交的金融表单草稿，草稿分类可用 financialDraft.reclassify 迁移。
+- `expectedIncome.save`：name/amount/date/account，income 省略新建；外币 accountAmount 省略/null 为未知，useReferenceRates=true 才选本次冻结的本机参考报价。`expectedIncome.cancel` 仅取消未到账安排。`expectedIncome.arrive` 的 income 必填，entry（已有实际收入）与 set（新建实际收入字段）二选一；新增必须给实际 amount/category，不从预计金额猜实际金额；外币须补齐实际 accountAmount，保留到账草稿的已确认状态，不套用普通外币新建的待确认默认值。入账记录须同账户、已确认、非期初、非未来且未关联其他预计项；不重复增加余额，原预计金额保留。金融草稿放弃已下沉到业务层；这些命令不消费未明确提交的金融表单草稿，草稿分类可用 financialDraft.reclassify 迁移。
 
 例如新建规则后记录支付，steps 可用（替换已有账户/分类ID）：
 
@@ -155,8 +155,8 @@
 
 - account.save：名称、类型、币种、期初欠款与日期；编辑时 account 指向已有账户。类型不能改，有历史时币种不能改。type 即使在编辑时也默认 CREDIT，因此编辑银行/现金/贷款/IC账户必须显式传入其原类型。account 省略或 null 都表示新建；名称、币种、期初金额和日期每次必须给出。可附 creditLimit 设置总/分期/循环/共用子额度、占用基准、恢复方式和延迟天数、占用口径与起点、时区。省略保留已有额度配置。creditLimit 不含 accountId，继承本步骤账户。共享额度组的创建/完整成员管理用 creditLimitGroup.save。
 - financialRule.addVersion：追加版本，不覆盖已确认账单。rule 是能力清单里的规则结构，不含 id/bookId/accountId。信用卡模式 SINGLE、INSTALLMENT、REVOLVING；覆盖账期、扣款账户、奖金月窗口、分期费表/尾差、循环利息/余额阶梯/自动循环/付款分配/办理期限。paymentAccount 可用有类型引用并覆盖 billing.paymentAccountId；省略或 null 时保留本次 rule 中的扣款设置。rule.billing.paymentAccountId 和 rule.deadlines[].billId 也支持 schema 标明的有类型引用；其他字符串字段不能塞入引用对象。保存不完整规则允许，但不表示已核验或可计算。
-- financialPrediction.save：按规则建立或重算预测。account、name、mode；给 terms（agreementDate、逐期 paymentDates、循环的 accrualWindows、可选逐期平台本金/费用 overrides、firstPeriodNumber、remainingFeeMinor 等），或者 candidates（基准日、明确的期数、首次付款日、首次计息截止日，由手机按同一界面逻辑生成候选月度日期）。除 SINGLE 外，terms 或 candidates 必须明确填写 firstPeriodNumber；不得猜测从合同第1期开始。重算时 plan 指向旧计划；保留债务来源、模式及已确认账期。
-- 期初债务用 openingPrincipalMinor，并给合同/期初基准日。该预测不增加欠款；金额不得超过账户未分配的期初债务。已有消费用 sourceEvent；不要伪造一笔消费来表示期初债务。奖金月和指定月付款采用记录及规则的现有选择。
+- financialPrediction.save：按规则建立或重算预测。account、name、mode；给 terms（agreementDate、逐期 paymentDates、循环的 accrualWindows、可选逐期平台本金/费用 overrides、firstPeriodNumber、remainingFeeMinor 等），或者 candidates（基准日、明确的期数、首次付款日、首次计息截止日，由手机按同一界面逻辑生成候选月度日期）。除 SINGLE 外，terms 或 candidates 必须明确填写 firstPeriodNumber；不得猜测从合同第1期开始。重算时 plan 指向旧计划；保留债务来源、模式及已确认账期。已办理计划还须保留当前办理生效日和已保存的 additionalFees（金额及所属期号）；直接给 terms 时不得删除、修改或转移办理费，费用变更需走明确的已办理调整流程。使用 candidates 重算会由手机沿用已保存的 additionalFees 和 paymentSettings；其 agreementDate 仍须填写当前办理生效日，不能回退到原消费日。REVOLVING / CREDIT_LINE 的每个 accrualWindows.start 不得早于 agreementDate，否则返回 plan.accrualBeforeAgreement 并阻止整批执行，请核对日期后重新预览。保留账单的本金拆分未知（包括末期）会返回缺项并阻止整批执行，不能用预测本金或账单总额假定全部清偿。可补齐实际拆分；已有全额确认清偿的实际拆分可用于计算，原账单未知字段仍保留。
+- 期初债务用 openingPrincipalMinor，并给合同/期初基准日。该预测不增加欠款；金额不得超过账户未分配的期初债务；手填与预测共用占用检查，计算独立期初计划、余额池及已转换后停用的原计划，采纳进池的同一本金不重复计算。已归属计划或余额池的消费不能另建独立计划。已有消费用 sourceEvent；不要伪造一笔消费来表示期初债务。奖金月和指定月付款采用记录及规则的现有选择。
 
 ## 资料不足
 
@@ -266,7 +266,7 @@ CSV 来源判重键 `sourceMatchKey` 保留解析后的日期、收支类型、�
 - `financialBatchRevolving.apply` 使用 `{input:{accountId,paymentDate,planIds,principalMinor,poolId,effectiveDate,feeMinor,...},appliedAt}`。planIds 是固定目标集合，输出 `batch`（revolvingBatch）；`financialBatchRevolving.undo` 输入 undoGroupId，可引用前步 batch，恢复一次既有批量转循环操作。
 - **上述已办理/重核/观测的事实只能在手机勾选。** 输入禁止 `platformConfirmed`、`currentArrangementConfirmed`、`exceptionAccepted`、`user_fact` 等代替用户声明的布尔值。若实际办理时刻超过规则期限，手机另要求“平台已接受期限外办理”的事实声明。referenceRates、内部 facts/projections/undoGroupId（安排内部字段）不由云端填写。
 - `financialBorrowing.save` 创建/编辑真实借入或期初合同，输出 contract；真实借入另输出 entry，期初合同没有 entry，不能引用该不存在的输出。借入本金、到账资金和手续费使用专用语义，**不能伪装为普通转账**。`financialContract.linkPlan` 关联同来源、同方式的合同与计划，余额池不绑定单一合同。
-- `financialRepayment.save` 记录实际支付和待平台确认的清偿；`financialRepayment.confirm` 记录经手机用户核对的清偿事实，必须明确实收、本金、利息、费用和清偿日期。二者输出 entry，完整支持账期/合同 allocations、PARTIAL/EARLY/SETTLEMENT 和 linkedTransferEventId；`financialRepaymentAllocation.resolve` 用 eventId 和 billId/contractId 唯一选择分配，输出 allocation，可供后步 clearingMoves 引用；已知为零必须写0，未知不能当零。结构附件不是全部还款记录；所选 records 的可选 financial 字段提供本金/费用/清偿状态及分配 ID，缺少所需记录时先要求补充。
+- `financialRepayment.save` 记录实际支付和待平台确认的清偿，待确认也禁止分配合计超过已知的本金/利息/费用、实收及同币实扣减付款端费用的上限；依据不完整的分配在现金预测和账单汇总中标记待核对，不作确定金额抵扣；`financialRepayment.confirm` 记录经手机用户核对的清偿事实，必须明确实收、本金、利息、费用和清偿日期。二者输出 entry，完整支持账期/合同 allocations、PARTIAL/EARLY/SETTLEMENT 和 linkedTransferEventId；`financialRepaymentAllocation.resolve` 用 eventId 和 billId/contractId 唯一选择分配，输出 allocation，可供后步 clearingMoves 引用；已知为零必须写0，未知不能当零。结构附件不是全部还款记录；所选 records 的可选 financial 字段提供本金/费用/清偿状态及分配 ID，缺少所需记录时先要求补充。
 - `creditLimit.save` 追加额度配置版本（输出 config）；`creditLimitGroup.save` 完整保存组与成员（输出 group）；省略 id 新建，null 额度/占用仍未知。已知占用基准需要用户核对具体金额和日期，account.save 内嵌额度配置使用相同事实声明。
 - `creditLimitRecovery.confirm` 记录用户核对的平台实际恢复额度（输出 recovery）；不重复产生还款；`creditLimitRecovery.void` 作废误记恢复并保留历史。`creditLimitObservation.record` 记录平台显示的可用额度（输出 observation），只能指定一个账户或组，时刻不得未来，共享组仅 TOTAL，必须手机 USER_FACT。
 - `financialDraft.reclassify` 用 sourceCategoryId/categoryId 迁移金融表单草稿分类；首次预览固定匹配 slots，确认不扩大。只改 EXPECTED 表单的收入分类，其他输入和原依据保留。金融草稿内容不自动上传；普通记账草稿分类用 entryDraft.reclassify，其他金融表单没有分类字段。
@@ -353,7 +353,7 @@ CSV 来源判重键 `sourceMatchKey` 保留解析后的日期、收支类型、�
 以下均 command_version=1；完整字段与例子必须读取本机能力附件，不推测隐藏字段。CSV **导入**本身用 entry.create 序列表达，不调用 CSV 文件解析器。
 
 - `statement.accept`：batch/row/entry，note 默认空；调用已有差异核对，只保留手动差异关联，不伪装完全匹配。账户、方向、币种必须一致且资金端不能重复占用。`statement.unlink`：batch/row，解除已有差异关联，保留原文件和正式记录。
-- `statement.supplement`：batch/row、occurredDate/postedDate 明确给出；kind 默认 EXPENSE，set 默认空，补分类、外币换算或转账另一端，不能改写已确定的流水来源端；退款用 originalEvent。已有完全匹配/手动关联时禁止重复补记。`statement.confirmActual`：batch/row/entry/postedDate，只允许 set 补 baseAmount，实际账户金额来自流水。两者都要求手机用户勾选具体流水日期和金额事实；借入、还款、金融账单仍走已有金融专用命令，不伪装为消费/转账。
+- `statement.supplement`：batch/row、occurredDate/postedDate 明确给出；kind 默认 EXPENSE，set 默认空，补分类、外币换算或转账另一端，不能改写已确定的流水来源端；适配完成后再次检查金额、币种、日期、方向及已确认状态，同币种 set.amount 也不能间接改写入账金额，流水已有 original 时须保留该原币事实。退款用 originalEvent。已有完全匹配/手动关联时禁止重复补记。`statement.confirmActual`：batch/row/entry/postedDate，可附 postingId 精确指定转出、转入或独立手续费分录；同一账户和方向有多个分录时必须指定，不能用手续费金额覆盖转账本金。set 仅可补 baseAmount，独立手续费则补 feeBaseAmount；实际账户金额来自流水。`statement.accept` 同样可用 postingId 消除多分录歧义。两者都要求手机用户勾选具体流水日期和金额事实；借入、还款、金融账单仍走已有金融专用命令，不伪装为消费/转账。
 - `receipt.items.save`：receipt/items，完整替换商品文档，既可首次回填也可编辑。adjustments=[]、total=null、complete=false、issues=[]；未知名/数量/价格/行金额保持未知。金额字段是 `{currency,minor}`；数量是十进制字符串。单价可用 unitPrice 金额对象，或互斥的 unitPriceDecimal（原回填协议支持小于最小货币单位的精确单价，例如0.5日元）；行金额、调整额、合计仍是最小单位整数。首次回填须明确 imageIds，编辑省略时保留原文档覆盖图片，不把新增图片擅自认定已整理；单行 imageIds 省略沿用文档覆盖。手机核对图片属于当前小票，并填当前修订，不能用任意路径或伪造导出包；与现有回填共用校验，不改变整单金额或分类。
 - `csvBatch.undo`：batch，首次预览固定剩余有效记录，移入回收站并按原规则处理关联退款；**不物理删除**，后来编辑的内容和导入历史保留，可整批撤销恢复。
 - `entryDraft.reclassify`：sourceCategory/category，只改现有收支草稿分类，其余字段、附件会话保留；不提交或放弃草稿。

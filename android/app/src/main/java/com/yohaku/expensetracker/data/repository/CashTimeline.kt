@@ -57,7 +57,7 @@ fun BookSnapshot.cashTimeline(finance:FinancialGraph?,asOf:LocalDate,through:Loc
         val plan=finance.plans.first{it.id==b.planId}
         val waiting=repayments.filter{!it.platformConfirmed&&it.eventId in live}.map{it.eventId}.toSet()
         val allocations=repaymentAllocations.filter{it.billId==b.id&&it.eventId in waiting}
-        val unknown=allocations.any{it.principalMinor==null||it.interestMinor==null||it.feeMinor==null}
+        val unknown=allocations.any{!pendingRepaymentAmountKnown(it.eventId)}
         val paidWaiting=if(unknown)0 else allocations.fold(0L){sum,a->addExact(sum,addExact(a.principalMinor!!,addExact(a.interestMinor!!,a.feeMinor!!)))}
         val remaining=(subtractExact(outstanding.totalMinor,paidWaiting)).coerceAtLeast(0)
         val account=accounts.firstOrNull{it.id==b.paymentAccountId}

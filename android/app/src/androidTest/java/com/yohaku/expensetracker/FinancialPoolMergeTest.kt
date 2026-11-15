@@ -67,6 +67,39 @@ class FinancialPoolMergeTest {
             assertEquals(3000L,x.s().balance(x.s().accounts.first{it.id==x.card}));assertEquals(10000L,x.s().balance(x.s().accounts.first{it.id==x.bank}));assertEquals(0L,x.s().monthExpense("2026-10"))
         }finally{db.close()}
     }
+    @Test fun manualAndPredictedPlansCannotReuseOpeningOrMergedEventSources()=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        try {
+            val x=fixture(db);val r=x.r
+            fun manual(source:String?=null)=ManualFinancialPlanInput(x.card,"重复",FinanceMode.SINGLE,
+                listOf(KnownBillInput("2026-11-05",1000,1000,0,x.bank)),1000,complete=true,opening=source==null,sourceEventId=source)
+            fun predicted(source:String?=null)=FinancialPredictionInput(x.card,"重复",FinanceMode.SINGLE,
+                FinancialScheduleTerms("2026-10-25",listOf("2026-11-05")),sourceEventId=source,
+                openingPrincipalMinor=if(source==null)1000 else null,currentArrangementConfirmed=true)
+            suspend fun rejects(source:String?=null) {
+                assertTrue(runCatching{r.previewManualFinancialPlan(x.b,manual(source))}.isFailure)
+                assertTrue(runCatching{r.previewFinancialPrediction(x.b,predicted(source))}.isFailure)
+            }
+            rejects() // Standalone opening plus pool already occupy the whole opening balance.
+            r.commitFinancialArrangement(r.previewFinancialArrangement(x.b,x.change()),clock.instant().toString(),true)!!
+            rejects() // Conversion does not release the original opening allocation.
+            r.commitFinancialRule(r.previewFinancialRule(x.b,x.card,FinancialRuleVersion("",x.b,x.card,FinanceMode.SINGLE,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,5,x.bank))))
+            val category=r.saveCategory(x.b,"消费",EntryKind.EXPENSE,null)
+            val event=r.saveEntry(x.b,EntryDraft(kind=EntryKind.EXPENSE,accountId=x.card,categoryId=category,
+                amount="1000",accountAmount="1000",baseAmount="1000",date="2026-10-25",settlementDate="2026-10-25",cardPaymentChoice="SINGLE"))
+            val source=x.f().plans.single{it.sourceEventId==event&&it.active}
+            val current=x.f().plans.first{it.id==x.pool}
+            r.commitFinancialPrediction(r.previewFinancialPool(x.b,r.json.decodeFromString<FinancialPredictionInput>(current.termsJson!!).copy(planId=x.pool)))
+            val merge=r.previewFinancialArrangement(x.b,x.change().copy(planId=source.id))
+            assertTrue(merge.calculation.toString(),merge.calculation is Calculation.Ready)
+            r.commitFinancialArrangement(merge,clock.instant().toString(),true)!!
+            rejects(event)
+            val currentEntry=x.s().visibleEvents.single{it.id==event}
+            r.saveEntry(x.b,x.s().editingEntryDraft(currentEntry).copy(note="更正备注"))
+            assertTrue(x.f().plans.none{it.active&&it.sourceEventId==event})
+        }finally{db.close()}
+    }
+
     @Test fun laterClearingCanMoveToANewSharedPeriodWithoutAnotherCashPosting()=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         try {

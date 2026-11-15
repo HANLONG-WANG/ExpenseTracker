@@ -37,7 +37,10 @@ class EntryDefaultsTest {
     }
     @Test fun untouchedDraftIgnoresCategoryAndAutomaticMerchantButKeepsRealEditsAndResumedDrafts() {
         val base=EntryDraft(accountId="bank",mediaInitialized=true)
-        assertFalse(base.copy(kind=EntryKind.INCOME,amount="100").hasManualInput(base))
+        assertTrue(base.copy(kind=EntryKind.INCOME,amount="100").hasManualInput(base))
+        for(draft in listOf(base.copy(note="旅行"),base.copy(attachmentIds=listOf("file")),base.copy(receiptFileIds=listOf("receipt")))) {
+            assertTrue(draft.hasManualInput(base));assertTrue(draft.hasManualInput(null))
+        }
         val selected=base.copy(categoryId="food")
         assertFalse(selected.hasManualInput(base))
         assertFalse(selected.copy(merchant="近所",merchantId="shop",merchantLocated=true).hasManualInput(base))

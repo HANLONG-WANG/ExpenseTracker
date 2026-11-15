@@ -56,14 +56,18 @@ fun BookSnapshot.refundDraft(original:EventEntity,date:String):EntryDraft {
             baseAmount=Money(Currency.valueOf(book.currency),proportion(original.baseMinor)).decimal.toPlainString(),
             date=date,merchant=original.merchant)
     }
-fun BookSnapshot.newEntryDraft(kind:EntryKind,date:String,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null):EntryDraft {
-    if(kind==EntryKind.TRANSFER)return newTransferDraft(date)
+fun BookSnapshot.newEntryDraft(kind:EntryKind,date:String,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,accountId:String?=null):EntryDraft {
+    if(kind==EntryKind.TRANSFER)return newTransferDraft(date,fromId=accountId)
+    val selectedAccount=if(accountId==null)defaultEntryAccount(kind) else {
+        require(entryAccounts(kind).any{it.id==accountId}){"指定账户已不可用于此类记账，请重新选择 / 指定口座はこの種類の記録に利用できません。選び直してください"}
+        accountId
+    }
     val sceneId=if(kind==EntryKind.EXPENSE)activityId?:features?.takeIf{it.activityMode}?.activeActivityId else null
     val scene=activities.find{it.id==sceneId}
     val day=LocalDate.parse(date)
     val actualDate=scene?.let{day.coerceIn(LocalDate.parse(it.startDate),LocalDate.parse(it.endDate))}?:day
     val merchant=merchantId?.let{id->merchants.firstOrNull{it.id==id&&it.active}}
-    return withRememberedCardPayment(EntryDraft(merchant=merchant?.name.orEmpty(),merchantId=merchant?.id,kind=kind,date=actualDate.toString(),accountId=defaultEntryAccount(kind),activityId=sceneId,treatEnabled=treatFriendId!=null,treatFriends=listOfNotNull(treatFriendId)))
+    return withRememberedCardPayment(EntryDraft(merchant=merchant?.name.orEmpty(),merchantId=merchant?.id,kind=kind,date=actualDate.toString(),accountId=selectedAccount,activityId=sceneId,treatEnabled=treatFriendId!=null,treatFriends=listOfNotNull(treatFriendId)))
 }
 
 /** A category migration preserves every other saved field and the media session. */

@@ -163,7 +163,8 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         }
         val pace=s.budgetPace(LocalDate.parse(context.asOfDate),f,context.referenceRates)
         add("budgetForecast",context.asOfDate.take(7),buildJsonObject{put("currency",s.book.currency);put("pace",encoded(pace));put("projectedMinor",pace.projectedMinor);put("projectedOverMinor",pace.projectedOverMinor);put("lowConfidence",pace.lowConfidence)})
-        return result
+        val currencies=CommandMoneyCurrencies(s)
+        return result.mapValues{(_,value)->currencies.annotate(value)}
     }
     fun effect(step:CommandStep,before:FinancialReviewState,after:FinancialReviewState,accounts:Set<String>,entries:Set<String> = emptySet(),categories:Set<String> = emptySet(),months:Set<String> = emptySet(),unknown:List<String> = emptyList()):StepEffect {
         registerFinanceIdentities(step.id,before,after)

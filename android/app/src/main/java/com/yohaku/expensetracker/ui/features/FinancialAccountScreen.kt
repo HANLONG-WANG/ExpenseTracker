@@ -271,8 +271,8 @@ import kotlinx.serialization.encodeToString
     val draftSession=requireNotNull(LocalFinancialDraft.current)
     fun amount(value:Long?)=value?.let{Money(currency,it).decimal.toPlainString()}.orEmpty()
     var encoded by financialField("encoded"){vm.repository.json.encodeToString(initial?:KnownBillDraft(bill.date,amount(bill.totalMinor),amount(bill.principalMinor),amount(bill.feeMinor),bill.paymentAccountId))}
-    val draft=vm.repository.json.decodeFromString<KnownBillDraft>(encoded)
-    var date by remember{mutableStateOf<Int?>(null)}
+    val draft=remember(encoded){vm.repository.json.decodeFromString<KnownBillDraft>(encoded)}
+    var date by remember{mutableStateOf<YDateSelection?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     val review by vm.financialBillReview.collectAsStateWithLifecycle()
     if(review?.bill?.id==bill.id&&review?.bill?.bookId==s.book.id) {

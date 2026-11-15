@@ -98,9 +98,11 @@ internal class PredictionCommandAdapter:CommandAdapter {
         }
         if(missing.isNotEmpty())return StepEffect(step.id,step.command,listOf(run.semantic(JsonPrimitive(account)).jsonPrimitive.content),emptyList(),missing=missing,risks=missing.map{CommandRisk("PREDICTION_INCOMPLETE",run.semantic(JsonPrimitive(account)).jsonPrimitive.content,detail=it)})
         val terms=v.terms?:v.candidates?.let{c->
+            val saved=before.finance.plans.firstOrNull{it.id==plan}?.termsJson?.let{commandJson.decodeFromString<FinancialPredictionInput>(it)}
             val rule=run.ledger.effectiveFinancialRule(run.bookId,account,v.mode,LocalDate.parse(c.agreementDate))
             val rows=predictionCandidates(v.mode,c.count,LocalDate.parse(c.agreementDate),LocalDate.parse(c.firstDate),LocalDate.parse(c.firstEnd),rule,before.ledger.events.firstOrNull{it.id==event})
-            FinancialScheduleTerms(c.agreementDate,rows.map{it.first},if(v.mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE))rows.map{it.second}else emptyList(),firstPeriodNumber=c.firstPeriodNumber?:1,remainingFeeMinor=c.remainingFeeMinor)
+            FinancialScheduleTerms(c.agreementDate,rows.map{it.first},if(v.mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE))rows.map{it.second}else emptyList(),firstPeriodNumber=c.firstPeriodNumber?:1,remainingFeeMinor=c.remainingFeeMinor,
+                additionalFees=saved?.terms?.additionalFees.orEmpty(),paymentSettings=saved?.terms?.paymentSettings.orEmpty())
         }
         // Trial execution is hypothetical. The required USER_FACT is always generated below; the
         // protocol cannot set it. Confirm validates the user's bound checks before committing.

@@ -37,6 +37,7 @@ fun predictedSchedule(
 ):Calculation<List<PredictedSchedulePeriod>> {
     require(principalMinor>0&&terms.firstPeriodNumber>0&&terms.paymentDates.isNotEmpty()){"本金和起始期数须大于0，并填写付款日期 / 元金と開始回数は0より大きく、支払日を入力してください"}
     val agreement=LocalDate.parse(terms.agreementDate)
+    if(mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)&&terms.accrualWindows.any{LocalDate.parse(it.start)<agreement})return Calculation.Incomplete(listOf("plan.accrualBeforeAgreement"))
     val dates=terms.paymentDates.map(LocalDate::parse)
     require(dates.zipWithNext().all{(a,b)->a<b}){"请按付款日期顺序填写 / 支払日順に入力してください"}
     require(confirmed.map{it.number}.distinct().size==confirmed.size)
@@ -105,8 +106,8 @@ fun predictedSchedule(
             }else period.principalMinor
             period=period.copy(principalMinor=minOf(balance,scheduledPrincipal),feeMinor=fee,interestCharge=details)
         }
-        // A platform-confirmed principal is authoritative for the following projection.
-        val principal=if(known!=null)known.principalMinor?:if(index==dates.lastIndex)period.principalMinor else return Calculation.Incomplete(listOf("plan.confirmedPrincipal"))else period.principalMinor
+        // A confirmed split is required even at the end of the projection horizon.
+        val principal=if(known!=null)known.principalMinor?:return Calculation.Incomplete(listOf("plan.confirmedPrincipal"))else period.principalMinor
         require(principal>=0&&principal<=balance){"已确认本金超过剩余欠款，请明确调整平台计划 / 確定元金が残債を超えています。返済先の予定を明示的に修正してください"}
         balance=Math.subtractExact(balance,principal)
         val segments=period.interestCharge?.segments.orEmpty().map{InterestSegmentSnapshot(it.start.toString(),it.endInclusive.toString(),it.balanceMinor,it.days,it.annualRate!!,it.yearDays!!,it.ruleId)}
@@ -165,7 +166,7 @@ private fun predictedRevolvingSchedule(
             is Calculation.Unsupported->return result
             is Calculation.CannotSettle->return result
         }
-        val applied=if(known!=null)known.principalMinor?:if(index==terms.paymentDates.lastIndex)period.principalMinor else return Calculation.Incomplete(listOf("plan.confirmedPrincipal"))else period.principalMinor
+        val applied=if(known!=null)known.principalMinor?:return Calculation.Incomplete(listOf("plan.confirmedPrincipal"))else period.principalMinor
         require(applied in 0..available){"已确认本金超过剩余欠款 / 確定元金が残債を超えています"}
         planned+=PrincipalChange(date,-applied)
         val remaining=available-applied

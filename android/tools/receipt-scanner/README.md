@@ -85,7 +85,7 @@
 - `ScanCameraSource.kt`：CameraX Preview + RGBA_8888 ImageAnalysis（KEEP_ONLY_LATEST、4:3、请求 960×720）+ ImageCapture（MAXIMIZE_QUALITY、4:3、最高可用分辨率，允许高分辨率模式），共享 PreviewView ViewPort。实际流尺寸由 CameraX 根据设备组合能力协商。裁剪 RGBA、转正 BGR、`ImageProxyTransformFactory` + `CoordinateTransform` + FILL_CENTER 映射和像素中心 +0.5 沿用真机验证方法。
 - `ScanCapturePolicy.kt`：纯 JVM 的平滑、提示、自动拍摄判定。`ScanFrameProcessor` 在一个专属分析线程创建、使用和关闭原有 `ReceiptScanner`。
 - `ScanMotionMonitor.kt`：加速度计去重力后与陀螺仪共同判断手机静止；有哪个用哪个，都没有时只看画面。后台暂停传感器并清空进度，返回后不沿用旧帧。
-- `ScanCaptureSession.kt`：原始 JPEG 写入 `cache/receipt-capture/<uuid>/original.jpg`。采用 **CameraX 写入 EXIF 方向**，不额外重新编码；`targetRotation` 在快门时刷新，引擎解码应用 EXIF。成功时先释放相机，再调用 `onCaptured(File, autoProcess)`；此后文件所有权交给确认流程，确认/放弃后删除文件及其父目录。返回、拍照失败、晚到的拍照回调会清理本次未交接目录。`ScanFlow` 接续确认/调整状态恢复，`ScanTemporaryFiles` 统一目录生成、写入、输出交接、删除及启动时的过期清理。
+- `ScanCaptureSession.kt`：原始 JPEG 写入 `cache/receipt-capture/<uuid>/original.jpg`。采用 **CameraX 写入 EXIF 方向**，不额外重新编码；`targetRotation` 在快门时刷新，引擎解码应用 EXIF。成功时先释放相机，再调用 `onCaptured(File, autoProcess)`；此后文件所有权交给确认流程，入库成功/放弃后删除文件及其父目录。返回、拍照失败、晚到的拍照回调会清理本次未交接目录。`ScanFlow` 接续确认/调整状态恢复，`ScanTemporaryFiles` 统一目录生成、写入、删除及启动时的过期清理。
 - 两个 DataStore 偏好：`scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true；进入完整备份，旧备份缺字段采用上述默认。自动处理仅控制出口布尔值，相机页不执行 detect/render/process。通过 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 发布这两个偏好。
 - 单帧转换、推理或叠加映射的意外异常由 `ScanFrameFailures` 丢弃，继续下一帧，不调用 `fail()` / `clearAnalyzer()`。累计失败数保留在会话内，警告日志最多每 5 秒一次；正常几何不足不计入失败帧。相机绑定失败、CameraState 报告的设备错误及补光控制故障才走相机错误页，无后置相机单独提示。
 - Debug 角落显示分析帧率、累计丢弃异常帧数与当前结果的 `actualEps`；Logcat `ScanCamera` 输出各阶段耗时、平滑耗时和到达分析器至叠加的延迟。release 不显示/输出这些调试信息；节流后的异常警告仍保留。
@@ -134,11 +134,11 @@ ScanFlowRequest(target = "draft-id", photo = existingFile, source = ScanPhotoSou
 ScanFlowRequest(target = "draft-id", photo = capturedFile, source = ScanPhotoSource.CAMERA)
 ```
 
-`ScanFlowResult(file: File, processed: Boolean, target: String)`：`processed=true` 是用户确认的处理后 JPEG；相机 `autoProcess=false` 直接移交原 JPEG 字节，`processed=false`，不进入处理或调整。调用方保持 request/target 稳定并在回调后移除 composable；`rememberReceiptCamera` 持久化 Draft/Record 目标并接入现有入库。
+`ScanFlowResult(file: File, processed: Boolean, target: String)`：`processed=true` 是用户确认的处理后 JPEG；相机 `autoProcess=false` 直接移交原 JPEG 字节，`processed=false`，不进入处理或调整。调用方保持 request/target 稳定并在回调后移除 composable；`rememberReceiptCamera` 在同一主线程回调里保存 Draft/Record 目标和选中输出路径，再接入现有入库；ViewModel 保持入库状态，Activity 重建只观察同一任务，失败显示重试。
 
 - 相机来源可重拍；已有图片来源显示取消。关闭按钮、系统 Back、取消流程都会明确调用 `onCancel`；重拍只回相机，不调用终态回调。
-- 原图、自动结果和编辑结果统一暂存在 `cache/receipt-capture/<uuid>/`。已有图片先在后台复制，借用的源文件不受影响；相机照片直接接管拍摄会话目录。确认时将选中的 JPEG 移交到同根目录下新的输出目录，再删除本次原图及其他结果；原图直出也不额外编码。取消/重拍删除整个会话目录。
-- `ScanTemporaryFiles` 统一相机和确认页的临时文件逻辑。`YohakuApplication` 启动时在后台清理超过 24 小时未更新的扫描目录（包括未消费的输出）；当前结果用临时文件写入后改名，取消后后台处理不能重新创建已删除目录。调用方应在导入后及时删除输出目录。
+- 原图、自动结果和编辑结果统一暂存在 `cache/receipt-capture/<uuid>/`。已有图片先在后台复制，借用的源文件不受影响；相机照片直接接管拍摄会话目录。确认只同步交接选中 JPEG 路径和会话所有权，不移动文件或删除恢复点；入库成功后才删除原图及所有结果，失败保留文件供重试；原图直出也不额外编码。取消/重拍删除整个会话目录。
+- `ScanTemporaryFiles` 统一相机和确认页的临时文件逻辑。`YohakuApplication` 启动时在后台清理超过 24 小时未更新的扫描目录（包括未消费的输出）；当前结果用临时文件写入后改名，取消后后台处理不能重新创建已删除目录。调用方应在入库成功后及时删除会话目录；失败时保留，用户明确取消时可以删除。
 - 处理页在专用单线程后台执行 `ReceiptScanner.process`；重新处理仅调用 `render(photo, contour)`。真正的模型/解码/文件或程序错误显示可重试状态。无候选及几何不足的 `NotDetected` 直接显示默认居中轮廓和「没找到小票，请拖动边框」；手动重新处理的几何不足保留当前草稿，显示「轮廓不足以处理，请调整左右边缘和上下端线」。
 
 ### 坐标、拖动与出画判定
@@ -160,7 +160,7 @@ ScanFlowRequest(target = "draft-id", photo = capturedFile, source = ScanPhotoSou
 ## 入库与云端偏好
 
 - `MediaPanels.rememberReceiptCamera` 由 `MainActivity` 的 `ReceiptCameraHost` 持有，表单拍照使用 `ReceiptTarget.Draft(session)`，无小票的记录详情使用 `ReceiptTarget.Record(eventId)`。请求以 JSON 保存账本、目标、来源路径、主题/语言及表单保存选项；`ScanFlow` 同时保存相机/确认状态。Activity 重建或进程恢复后，入库使用原请求，不读取当前页面来改派目标。Host 先挂载应用/表单，后挂载扫描弹窗，恢复时扫描保持在最上层。
-- 扫描输出通过 FileProvider 的 `receipt-capture/` 路径进入现有 `importFiles(receipt=true)` / `importRecordReceipts`，导入结束（含失败）清理输出目录。`processed=true` 的新照片和 `processed=false` 的原图都按保存开关入库：开时保留输出原字节，关时按现有小票优化规则保存。详情补票仍用全局保存偏好。相机权限只在扫描相机页申请。
+- 扫描输出通过 FileProvider 的 `receipt-capture/` 路径进入现有 `importFiles(receipt=true)` / `importRecordReceipts`，入库成功后才清理会话目录，失败保留输出和原图，并在扫描等待页重试。`processed=true` 的新照片和 `processed=false` 的原图都按保存开关入库：开时保留输出原字节，关时按现有小票优化规则保存。详情补票仍用全局保存偏好。相机权限只在扫描相机页申请。
 - 表单每张缩略图下增加独立一行「处理这张 / 補正する」，删除仍在右上角，前移/后移另占一行，沿用各主题现有颜色与外框。入口使用 `Draft(session, replaceFileId)` 和 `EXISTING_IMAGE`；**无论自动处理开关如何，都进入确认/调整页**。新文件暂存与草稿原位置替换在同一媒体导入事务中完成，入库失败不移除旧图；旧文件沿用暂存/引用清理，编辑已存记录保存后生成新小票修订，旧图片字节和历史修订保留。扫描状态并入 `busy`，禁用其他媒体变更和表单提交。
 - `AppPreferences` 增加两个偏好的命令读取与原子应用；`FollowupCommandAdapters` 注册 `preferences.scanAutoCapture` / `preferences.scanAutoProcess`，`enabled` 必填、全账本共享、默认分别 false / true，沿用偏好执行/撤销/冲突/中断恢复。不授予权限，不自动打开相机。名称及开关值覆盖 `CommandBusinessNames`、`CommandFollowupViews`、`CommandEffectViews`、`MonthlyScreens`。`CommandRegistry` 已通过既有 adapter 汇总导出 90 个命令，无额外硬编码注册。
 - `entry.prepareDraft(media=RECEIPT_CAMERA)` 预览与续办明确引导用户在表单点「拍照」，由同一个入口打开扫描。云端不能直接指定本机图片路径或代替用户保存表单。

@@ -20,6 +20,7 @@ import java.io.File
 import java.time.*
 
 class StatementDueFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
@@ -29,7 +30,7 @@ class StatementDueFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-11-13T03:00:00Z"),ZoneOffset.UTC))
-        val prefs=AppPreferences(context);vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock));ui.setContent{NativeApp(vm,haptics=RecordingHapticOutput())}
+        val prefs=testPreferences.preferences;vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock));ui.setContent{NativeApp(vm,haptics=RecordingHapticOutput())}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun shot(name:String) {

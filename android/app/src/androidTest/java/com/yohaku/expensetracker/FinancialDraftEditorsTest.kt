@@ -27,11 +27,12 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FinancialDraftEditorsTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     @Test fun everyFinancialEditorRestoresItsOwnUnfinishedInputAndDiscardDoesNotChangeFormalFacts() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock))
         try {
             val (s,f,l)=runBlocking {
                 val b=repo.createBook("下書きの全フォーム",Currency.JPY,"journal","ja")

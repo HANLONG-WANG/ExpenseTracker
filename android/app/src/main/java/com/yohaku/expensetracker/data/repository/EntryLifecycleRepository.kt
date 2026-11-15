@@ -43,6 +43,7 @@ suspend fun LedgerRepository.previewEntryLifecycle(bookId:String,eventId:String?
     val nextEvents=s.events.map{if(it.id in ids)it.copy(deletedAt=if(restored)null else clock.millis())else it}
     val live=nextEvents.filter{it.deletedAt==null}.map{it.id}.toSet()
     val next=s.copy(events=nextEvents,postings=s.storedPostings.filter{it.confirmed&&it.eventId in live})
+    if(restored)validateRestoredRepayments(next,state.finance,ids)
     val categoryImpacts=if(impacts.isEmpty())emptyList()else s.categories.flatMap{c->impacts.mapNotNull{impact->
         val before=s.budgetProjection(impact.month,c.id);val after=next.budgetProjection(impact.month,c.id)
         if(before.limitMinor!=null&&before!=after)CategoryProjectionChange(c.id,impact.month,before,after)else null
@@ -67,6 +68,11 @@ private fun LedgerRepository.validateEntryRestoration(s:BookSnapshot,event:Event
         require(!reserve.active||s.reserveUses.filter{it.reserveId==reserve.id&&it.eventId in restoring}.sumOf{it.amountMinor}<=s.reserveRemaining(reserve)){"原预留已被使用或释放，请先调整预留再恢复 / 元の確保は使用・解放済みです。確保を調整してから復元してください"}
     }
 }
+private fun LedgerRepository.validateRestoredRepayments(restored:BookSnapshot,finance:FinancialGraph,ids:Set<String>) {
+    restored.repayments.filter{it.eventId in ids&&it.platformConfirmed}.forEach{payment->
+        restored.validateRepaymentAllocationCapacity(finance,payment.eventId,restored.repaymentAllocations.filter{it.eventId==payment.eventId},json)
+    }
+}
 suspend fun LedgerRepository.commitEntryLifecycle(review:EntryLifecycleReview):Boolean=db.withTransaction {
     val b=review.before.ledger.book.id
     if(financialReviewState(b)!=review.before||db.fileWorkflowDao().decisions(b).first()!=review.decisions||db.fileWorkflowDao().statements(b).first()!=review.statementBatches||dao.storedDraft(b)!=review.draft||db.financialDao().bookDrafts(b)!=review.financialDrafts)return@withTransaction false
@@ -77,6 +83,8 @@ suspend fun LedgerRepository.commitEntryLifecycle(review:EntryLifecycleReview):B
         }
         EntryLifecycleOperation.RESTORE->{
             review.events.forEach{validateEntryRestoration(review.before.ledger,it,ids)}
+            val restored=review.before.ledger.copy(events=review.before.ledger.events.map{if(it.id in ids)it.copy(deletedAt=null)else it})
+            validateRestoredRepayments(restored,review.before.finance,ids)
             review.events.forEach{e->dao.putEvent(e.copy(deletedAt=null,deletionGroupId=null));recheckOccurrences(b,e.id)}
         }
         EntryLifecycleOperation.PURGE,EntryLifecycleOperation.EMPTY->{

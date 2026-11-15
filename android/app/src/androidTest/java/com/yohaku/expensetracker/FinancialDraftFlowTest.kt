@@ -2,6 +2,7 @@ package com.yohaku.expensetracker
 
 import androidx.compose.runtime.*
 import android.graphics.Bitmap
+import androidx.datastore.preferences.core.edit
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -27,24 +28,24 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class FinancialDraftFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule(if (InstrumentationRegistry.getArguments().getString("processPhase") in listOf("write", "read")) "financial-draft-process" else null)
     @get:Rule val ui=createComposeRule()
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
     private val haptics=RecordingHapticOutput()
-    private var hapticsPreviouslyEnabled=true
     private var mounted by mutableStateOf(true)
     private var epoch by mutableIntStateOf(0)
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         if(InstrumentationRegistry.getArguments().getString("processPhase")!="read")context.deleteDatabase("financial-draft-ui.db");db=Room.databaseBuilder(context,YohakuDatabase::class.java,"financial-draft-ui.db").build()
+        if(InstrumentationRegistry.getArguments().getString("processPhase")=="write")runBlocking{testPreferences.storage.edit{it.clear()}}
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
-        hapticsPreviouslyEnabled=runBlocking{vm.preferences.hapticsEnabled.first()}
+        vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock))
         runBlocking{vm.preferences.setHapticsEnabled(true)}
         ui.setContent{if(mounted)key(epoch){NativeApp(vm,haptics=haptics)}}
     }
-    @After fun close(){runBlocking{vm.preferences.setHapticsEnabled(hapticsPreviouslyEnabled)};vm.viewModelScope.cancel();db.close();if(InstrumentationRegistry.getArguments().getString("processPhase")!="write")InstrumentationRegistry.getInstrumentation().targetContext.deleteDatabase("financial-draft-ui.db")}
+    @After fun close(){testPreferences.deleteAfterTest=InstrumentationRegistry.getArguments().getString("processPhase")!="write";vm.viewModelScope.cancel();db.close();if(InstrumentationRegistry.getArguments().getString("processPhase")!="write")InstrumentationRegistry.getInstrumentation().targetContext.deleteDatabase("financial-draft-ui.db")}
     private fun tapTag(tag:String,ancestor:String?=null) {
         finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
@@ -89,7 +90,7 @@ class FinancialDraftFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"financial-draft-ui.db").build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
+        vm=AppViewModel(repo,testPreferences.preferences, testReferenceRates(testPreferences.preferences,repo.clock))
         ui.runOnIdle{epoch++;mounted=true}
     }
     @Test fun closedAndReopenedBorrowingDraftSurvivesDatabaseAndViewModelRestartAndClearsOnlyAfterSaving() {

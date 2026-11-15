@@ -51,7 +51,7 @@ internal enum class CameraPermission { GRANTED, DENIED, PERMANENTLY_DENIED }
 
 /** Full-screen flow like FinancialFlow. Remove from composition on exit/capture.
  * onCaptured receives an EXIF-oriented JPEG in cache/receipt-capture; ownership transfers to the
- * caller (ScanFlow), which must delete it after confirmation/abandonment.
+ * caller (ScanFlow), which hands it to the importer until successful import/abandonment.
  */
 @Composable fun ScanCameraFlow(request: ScanCameraRequest, preferences: AppPreferences, onBack: () -> Unit, onCaptured: (File, Boolean) -> Unit) {
     ScanCameraHost(request, preferences, onBack, onCaptured)

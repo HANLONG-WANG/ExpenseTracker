@@ -17,7 +17,7 @@ import java.io.IOException
 import java.time.LocalDate
 
 @Composable internal fun ReferenceRatePanel(service:ReferenceRates,from:Currency,to:Currency,date:String,
-    enabled:Boolean=true,autoKey:String="",onAuto:((ReferenceRateSnapshot)->Unit)?=null,onUse:((ReferenceRateSnapshot)->Unit)?=null,useLabel:String?=null) {
+    enabled:Boolean=true,autoKey:Any?=null,onAuto:((ReferenceRateSnapshot)->Unit)?=null,onUse:((ReferenceRateSnapshot)->Unit)?=null,useLabel:String?=null) {
     if(from==to)return
     val automatic by service.automatic.collectAsStateWithLifecycle(true)
     var result by remember(from,to,date){mutableStateOf<ReferenceRateResult?>(null)}
@@ -67,11 +67,11 @@ import java.time.LocalDate
     val automatic by service.automatic.collectAsStateWithLifecycle(true)
     val scope=rememberCoroutineScope()
     var from by rememberSaveable{mutableStateOf("JPY")};var to by rememberSaveable{mutableStateOf("CNY")}
-    var date by rememberSaveable{mutableStateOf(LocalDate.now(service.clock).toString())};var owner by remember{mutableStateOf<Int?>(null)}
+    var date by rememberSaveable{mutableStateOf(LocalDate.now(service.clock).toString())};var owner by remember{mutableStateOf<YDateSelection?>(null)}
     YLead(word("换算，有据可查。","換算の根拠を、残そう。"),word("固定采用 Frankfurter v2 / ECB 日参考汇率；只发送币种和日期，不发送个人账目。","Frankfurter v2 / ECBの日次参考レートを使用。送信するのは通貨と日付のみで、個人の記録は送信しません。"),"REFERENCE RATES",pageFlow=true)
     YToggle(word("自动获取参考汇率","参考レートを自動取得"),automatic,{v->scope.launch{service.store.setAutomaticReferenceRates(v)}},Modifier.testTag("rates-automatic"))
     YSelect(word("从币种","元の通貨"),from,Currency.entries.map{it.name to it.name},{from=it;if(to==it)to=Currency.entries.first{c->c.name!=it}.name})
     YSelect(word("到币种","換算先の通貨"),to,Currency.entries.filter{it.name!=from}.map{it.name to it.name},{to=it})
-    YDateFields(listOf(word("查询日期","照会日") to date),owner,{owner=it},{_,v->date=v})
+    YDateFields(listOf(YDateField("date",word("查询日期","照会日"),date)),owner,{owner=it},{_,v->date=v})
     ReferenceRatePanel(service,Currency.valueOf(from),Currency.valueOf(to),date)
 }

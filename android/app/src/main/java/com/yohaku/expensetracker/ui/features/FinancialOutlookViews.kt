@@ -182,11 +182,11 @@ import java.time.*
 @Composable internal fun FinancialForecastScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,onFinancial:(String)->Unit,onRisk:(String)->Unit,onAttention:(FinancialAttention)->Unit,onItem:(CashTimelineItem)->Unit) {
     val today by vm.today.collectAsStateWithLifecycle()
     var through by rememberSaveable(s.book.id){mutableStateOf(today.plusDays(90).toString())}
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     var attempt by remember{mutableIntStateOf(0)}
     val read by rememberFinancialOutlook(s,vm,LocalDate.parse(through),attempt)
     AnalysisFutureView(s,AnalysisFilter(today.toString(),through),vm,{vm.navigate("recurring")},{vm.openActivity.value=it;vm.navigate("life")},onRecord,onFinancial,read,onItem,{attempt++}) {
-        YDateFields(listOf(word("预测截至日期","予測終了日") to through),owner,{owner=it},{_,v->through=maxOf(v,today.toString())})
+        YDateFields(listOf(YDateField("through",word("预测截至日期","予測終了日"),through)),owner,{owner=it},{_,v->through=maxOf(v,today.toString())})
         if(read is FinancialOutlookRead.Ready) {
             val value=read as FinancialOutlookRead.Ready
             ThemeSection(word("当前与未来账户风险","現在・将来の口座リスク"),"CASH RISKS")

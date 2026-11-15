@@ -53,7 +53,7 @@ import java.time.format.DateTimeFormatter
     var through by rememberSaveable(s.book.id){mutableStateOf(LocalDate.now(vm.repository.clock).toString())}
     var account by rememberSaveable(s.book.id){mutableStateOf(s.accounts.firstOrNull()?.id)}
     var files by remember{mutableStateOf<List<Uri>>(emptyList())}
-    var dateOwner by remember{mutableStateOf<Int?>(null)}
+    var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     var bundle by remember{mutableStateOf<CommandExportBundle?>(null)}
     var exportedScope by remember{mutableStateOf<RecordScope?>(null)}
     var exportError by remember{mutableStateOf<String?>(null)}
@@ -76,7 +76,7 @@ import java.time.format.DateTimeFormatter
     Panel {
         YText(word("具体记录的上传范围","送信する記録の範囲"),16)
         YSelect(word("记录范围","記録の範囲"),mode,listOf("none" to word("不上传记录","記録を送らない"),"dates" to word("按日期范围","日付で指定"),"account" to word("按账户","口座で指定")),{mode=it},Modifier.testTag("command-record-scope"))
-        if(mode=="dates")YDateFields(listOf(word("从","開始") to from,word("至","終了") to through),dateOwner,{dateOwner=it},{i,v->if(i==0)from=v else through=v})
+        if(mode=="dates")YDateFields(listOf(YDateField("from",word("从","開始"),from),YDateField("through",word("至","終了"),through)),dateOwner,{dateOwner=it},{i,v->if(i=="from")from=v else through=v})
         if(mode=="account")YSelect(word("账户","口座"),account,s.accounts.map{it.id as String? to it.name},{account=it},Modifier.testTag("command-record-account"),columns=2)
     }
     CloudHandoffStrip(word("将上传的内容","送信する内容"),word("协议说明、能力清单和本账本结构总会附带。结构含账户余额、分类、商户与地点、朋友、模板、预算、周期、金融规则和计划、额度及活动资料、可办理偏好、CSV 批次摘要和月计划。","プロトコル、対応機能一覧、帳簿の構成を必ず添付します。構成には口座残高・カテゴリ・お店と場所・友人・テンプレート・予算・定期予定・金融条件とプラン・利用枠・シーン・対応する設定・CSVバッチの概要・月の計画が含まれます。"),"command-upload-summary") {
@@ -291,7 +291,9 @@ import java.time.format.DateTimeFormatter
     if(value==JsonNull)return word("不存在 / 无值","存在しない／値なし")
     if(value !is JsonPrimitive)return word("关联内容已变化","関連する内容が変わりました")
     val currency=s.accounts.firstOrNull{it.id==conflict.key}?.currency?:s.events.firstOrNull{it.id==conflict.key}?.currency?:(model.net.firstOrNull{it.key==conflict.key}?.let{(it.before as? JsonObject)?:it.after as? JsonObject})?.get("currency")?.jsonPrimitive?.contentOrNull?:s.book.currency
-    return fieldValue(value to null,if(conflict.type=="preference")conflict.key else conflict.field.substringAfterLast('.'),currency,s,model)
+    val key=if(conflict.type=="preference")conflict.key else conflict.field.substringAfterLast('.')
+    val unit=if(key=="baseMinor"||key.endsWith("BaseMinor"))s.book.currency else currency
+    return fieldValue(value to unit,key,currency,s,model)
 }
 @Composable private fun commandConflictField(field:String)=field.split('.').map{fieldName(it)}.joinToString(" / ")
 

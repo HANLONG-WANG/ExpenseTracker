@@ -36,7 +36,7 @@ import kotlinx.serialization.encodeToString
     var category by financialField<String?>("category"){null}
     var existingId by financialField<String?>("existingId"){null}
     var existingMode by financialField("existingMode"){false}
-    var owner by remember{mutableStateOf<Int?>(null)}
+    var owner by remember{mutableStateOf<YDateSelection?>(null)}
     var review by remember{mutableStateOf<ExpectedIncomeReview?>(null)}
     var receipt by remember{mutableStateOf<ExpectedIncomeArrivalReview?>(null)}
     var refreshed by remember{mutableStateOf(false)}
@@ -76,7 +76,7 @@ import kotlinx.serialization.encodeToString
                 ReferenceRatePanel(vm.referenceRates,Currency.valueOf(currencyCode),Currency.valueOf(account.currency),today,autoKey=amount+"/"+accountAmount,
                     onAuto={q->if(old==null&&accountAmount.isBlank()&&runCatching{Money.parse(amount,q.base).minor>0}.getOrDefault(false))apply(q)},onUse={apply(it)})
             }
-            YDateFields(listOf(word("预计到账日","入金予定日") to date),owner,{owner=it},{_,v->date=v})
+            YDateFields(listOf(YDateField("date",word("预计到账日","入金予定日"),date)),owner,{owner=it},{_,v->date=v},group="expected")
             YText(word("只参与收入情景，未到账不更新真实余额，也不增加预算。","収入シナリオのみ。未入金は実残高・予算に加えません。"),11)
             YButton(word("预览预计收入","収入予定を確認"),{vm.execute{review=vm.repository.previewExpectedIncome(s.book.id,ExpectedIncomeInput(name,Money.parse(amount,Currency.valueOf(currencyCode)),date,accountId?:error("请选择账户 / 口座を選択してください"),account?.takeIf{it.currency!=currencyCode&&accountAmount.isNotBlank()}?.let{Money.parse(accountAmount,Currency.valueOf(it.currency))},old?.id,estimateJson?.let{vm.repository.json.decodeFromString<List<ReferenceRateSnapshot>>(it).single()}))}},Modifier.testTag("expected-preview"),primary=true,enabled=!busy)
         }else {
@@ -90,7 +90,7 @@ import kotlinx.serialization.encodeToString
                 YText(account!!.name+" · "+account.currency,14)
                 YField(word("实际到账金额","実入金額")+" · "+account.currency,actualAmount,{actualAmount=it},numeric=true)
                 if(account.currency!=s.book.currency)YField(word("实际本位币金额","実際の基準通貨額")+" · "+s.book.currency,baseAmount,{baseAmount=it},numeric=true)
-                YDateFields(listOf(word("实际到账日","実入金日") to actualDate),owner,{owner=it},{_,v->actualDate=v})
+                YDateFields(listOf(YDateField("actualDate",word("实际到账日","実入金日"),actualDate)),owner,{owner=it},{_,v->actualDate=v},group="actual")
                 YSelect(word("收入分类","収入カテゴリ"),category,listOf(null to word("请选择","選択してください"))+s.categories.filter{s.categoryEnabled(it.id)&&it.kind==EntryKind.INCOME.name}.map{it.id as String? to s.path(it.id)},{category=it})
                 YLink(word("管理收入分类","収入カテゴリを管理"),{onClose();vm.navigate("categories")})
             }

@@ -96,6 +96,8 @@ internal suspend fun LedgerRepository.refreshCardEntryPrediction(event:EventEnti
         }
     }
     if(event.historicalIncluded||account.type!=AccountType.CREDIT.name||event.cardPaymentMode !in listOf("SINGLE","INSTALLMENT"))return
+    // Inactive applied members still own the source; editing it must not recreate a standalone plan.
+    if(state.financialSourceOwned(event.id,old?.id))return
     val mode=FinanceMode.valueOf(event.cardPaymentMode!!)
     val schedule=cardEntrySchedule(event,state.ledger.accounts,state.finance.rules)
     val terms=schedule.terms?:return

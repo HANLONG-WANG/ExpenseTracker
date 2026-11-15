@@ -8,6 +8,15 @@ import org.junit.Test
 class PredictedScheduleTest {
     private val interest=InterestRule("0.18",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL)
     private fun rule(id:String="r1",effective:String="2026-04-01",annual:String="0.18")=FinancialRuleVersion(id,"book","card",FinanceMode.REVOLVING,effective,"Asia/Tokyo",billing=BillingRule(31,true,1,27,"bank"),revolving=RevolvingRule(interest.copy(annualRate=annual),PaymentMethod.FIXED_PRINCIPAL,10000,allocation=AllocationOrder.FEES_FIRST,automatic=false))
+    @Test fun lastConfirmedBillWithUnknownPrincipalBlocksFixedAndRevolvingPredictions() {
+        val terms=FinancialScheduleTerms("2026-04-01",listOf("2026-05-27"),listOf(AccrualWindow("2026-04-01","2026-04-30")))
+        val known=listOf(ConfirmedSchedulePeriod(1,null,null,5000,LocalDate.parse("2026-05-27")))
+        for(mode in listOf(FinanceMode.SINGLE,FinanceMode.REVOLVING)) {
+            val result=predictedSchedule(10000,mode,terms,listOf(EffectiveFinancialRule(1,rule().copy(mode=mode))),known)
+            assertEquals(mode.name,Calculation.Incomplete(listOf("plan.confirmedPrincipal")),result)
+        }
+    }
+
     @Test fun rateChangesAndRepaymentsShareOnePeriodRoundingBoundary() {
         val start=LocalDate.of(2026,4,1);val end=LocalDate.of(2026,4,30)
         val rates=listOf(InterestRateVersion(start,interest,"r1"),InterestRateVersion(start.plusDays(15),interest.copy(annualRate="0.12"),"r2"))

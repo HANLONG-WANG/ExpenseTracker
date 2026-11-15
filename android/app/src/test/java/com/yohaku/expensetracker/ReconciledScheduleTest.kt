@@ -9,6 +9,30 @@ class ReconciledScheduleTest {
     private val daily=InterestRule("0.18",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL)
     private val revolving=FinancialRuleVersion("r","b","a",FinanceMode.REVOLVING,"2026-04-01","Asia/Tokyo",billing=BillingRule(31,true,1,27,"bank"),revolving=RevolvingRule(daily,PaymentMethod.FIXED_PRINCIPAL,10000,allocation=AllocationOrder.FEES_FIRST,automatic=false))
     private val terms=FinancialScheduleTerms("2026-04-01",listOf("2026-05-27","2026-06-27","2026-07-27"),listOf(AccrualWindow("2026-04-01","2026-04-30"),AccrualWindow("2026-05-01","2026-05-31"),AccrualWindow("2026-06-01","2026-06-30")))
+    @Test fun revolvingInterestCannotStartBeforeTheCurrentAgreement() {
+        val valid=FinancialScheduleTerms("2026-11-01",listOf("2026-12-27"),listOf(AccrualWindow("2026-11-01","2026-11-30")))
+        val early=valid.copy(accrualWindows=listOf(AccrualWindow("2026-10-01","2026-11-30")))
+        for(mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)) {
+            val versions=listOf(EffectiveFinancialRule(1,revolving.copy(mode=mode)))
+            assertEquals(Calculation.Incomplete(listOf("plan.accrualBeforeAgreement")),reconciledSchedule(100000,mode,early,versions,emptyList(),emptyList(),LocalDate.parse("2026-11-01")))
+            assertEquals(Calculation.Incomplete(listOf("plan.accrualBeforeAgreement")),predictedSchedule(100000,mode,early,versions))
+            val result=reconciledSchedule(100000,mode,valid,versions,emptyList(),emptyList(),LocalDate.parse("2026-11-01")) as Calculation.Ready
+            assertEquals(1479L,result.value.single().period.feeMinor)
+            assertEquals("2026-11-01",result.value.single().basis.start)
+        }
+    }
+
+    @Test fun lastRetainedBillWithUnknownPrincipalCannotAssumeFullRepayment() {
+        val one=terms.copy(paymentDates=terms.paymentDates.take(1),accrualWindows=terms.accrualWindows.take(1))
+        val known=listOf(ConfirmedSchedulePeriod(1,null,null,5000,LocalDate.parse("2026-05-27")))
+        for(mode in listOf(FinanceMode.SINGLE,FinanceMode.REVOLVING)) {
+            for(asOf in listOf("2026-05-01","2026-06-01")) {
+                val result=reconciledSchedule(10000,mode,one,listOf(EffectiveFinancialRule(1,revolving.copy(mode=mode))),known,emptyList(),LocalDate.parse(asOf))
+                assertEquals("$mode as of $asOf",Calculation.Incomplete(listOf("plan.confirmedPrincipal")),result)
+            }
+        }
+    }
+
     @Test fun aLatePartialClearingChangesInterestOnItsRealDateAndDoesNotPayTheOverdueRemainder() {
         val known=listOf(ConfirmedSchedulePeriod(1,20000,1479,21479,LocalDate.parse("2026-05-27")))
         val facts=listOf(SchedulePrincipalFact("paid","2026-06-05",5000,1))

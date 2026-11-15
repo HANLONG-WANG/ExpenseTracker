@@ -102,7 +102,7 @@ import java.time.YearMonth
     var period by rememberSaveable(s.book.id){mutableStateOf("ALL")}
     var from by rememberSaveable(s.book.id){mutableStateOf(YearMonth.now().atDay(1).toString())}
     var to by rememberSaveable(s.book.id){mutableStateOf(LocalDate.now().toString())}
-    var dateOwner by remember{mutableStateOf<Int?>(null)}
+    var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     val categories=category?.let{id->setOf(id)+s.categories.filter{it.parentId==id}.map{it.id}}
     // The calendar keeps account and category filters; it only counts spending, so type, date range and search do not apply.
     val scoped=remember(s,calendar,account,categories){if(!calendar)emptyList() else s.visibleEvents.filter{e->(account==null||e.accountId==account||s.storedPostingsByEvent[e.id].orEmpty().any{it.accountId==account})&&(categories==null||e.categoryId in categories)}}
@@ -137,7 +137,7 @@ import java.time.YearMonth
                 YSelect(word("分类","カテゴリ"),category,listOf(null to word("全部分类","すべてのカテゴリ"))+s.categories.map{it.id as String? to s.path(it.id)},{category=it})
                 YSelect(word("日期范围","日付範囲"),period,listOf("ALL" to word("全部日期","すべての日付"),"MONTH" to word("本月","今月"),"CUSTOM" to word("自定义区间","期間を指定")),{period=it;dateOwner=null})
                 if(period=="CUSTOM"){
-                    YDateFields(listOf(word("开始日期","開始日") to from,word("结束日期","終了日") to to),dateOwner,{dateOwner=it},{i,value->if(i==0)from=value else to=value})
+                    YDateFields(listOf(YDateField("from",word("开始日期","開始日"),from),YDateField("to",word("结束日期","終了日"),to)),dateOwner,{dateOwner=it},{i,value->if(i=="from")from=value else to=value})
                     if(from>to)YText(word("结束日期不能早于开始日期。","終了日は開始日以降にしてください。"),11,color=t.warm)
                 }
                 LedgerClearFilters{type="ALL";query="";account=null;category=null;period="ALL";from=YearMonth.now().atDay(1).toString();to=LocalDate.now().toString();dateOwner=null}

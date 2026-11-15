@@ -162,16 +162,16 @@ import kotlinx.serialization.json.*
         Modifier.testTag("finance-time-$semanticId"))
 }
 
-@Composable internal fun FinancialTimeField(value:String,zone:java.time.ZoneId,owner:Int?,onOwner:(Int?)->Unit,onChange:(String)->Unit) {
+@Composable internal fun FinancialTimeField(value:String,zone:java.time.ZoneId,owner:YDateSelection?,onOwner:(YDateSelection?)->Unit,onChange:(String)->Unit) {
     val instant=java.time.Instant.parse(value)
     val local=instant.atZone(zone).toLocalDateTime()
     androidx.compose.foundation.layout.Column(Modifier.testTag("finance-time-applied")) {
-        YDateFields(listOf(word("实际办理时间","実際の手続き時刻") to local.toString()),owner,onOwner,{_,raw->
+        YDateFields(listOf(YDateField("appliedAt",word("实际办理时间","実際の手続き時刻"),local.toString())),owner,onOwner,{_,raw->
             val edited=java.time.LocalDateTime.parse(raw)
             // Opening/closing a calendar, or selecting the existing minute, never rewrites seconds/nanos.
             val next=financialEditedTime(value,edited,zone)
             if(next!=value)onChange(next)
-        },displayValues=listOf(FinancialDisplayFacts.time(instant,zone,com.yohaku.expensetracker.ui.theme.LocalLanguage.current)))
+        },displayValues=listOf(FinancialDisplayFacts.time(instant,zone,com.yohaku.expensetracker.ui.theme.LocalLanguage.current)),group="application-time")
     }
 }
 

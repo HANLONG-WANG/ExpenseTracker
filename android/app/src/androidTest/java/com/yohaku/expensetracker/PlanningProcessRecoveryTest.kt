@@ -25,13 +25,14 @@ import java.time.*
 /** Run the three steps separately, with host force-stop between them. */
 @RunWith(AndroidJUnit4::class)
 class PlanningProcessRecoveryTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule("phase-b-planning-process")
     @get:Rule val ui=createComposeRule()
     private val context=InstrumentationRegistry.getInstrumentation().targetContext
     private val marker get()=File(context.filesDir,"verification/phase-b-planning-process.json")
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
-    private val prefs get()=AppPreferences(context)
+    private val prefs get()=testPreferences.preferences
     @Before fun open(){
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("planningRecovery")=="true")
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"phase-b-planning-process.db").build()
@@ -57,7 +58,7 @@ class PlanningProcessRecoveryTest {
     }
     @Test fun seedStoppedRulesAndBudget()=runBlocking {
         assertFalse("Keep an unfinished recovery check",marker.exists())
-        val data=JSONObject().put("previous",prefs.activeBook.first()?:"").put("seedPid",Process.myPid()).put("pid",Process.myPid())
+        val data=JSONObject().put("seedPid",Process.myPid()).put("pid",Process.myPid())
         val all=JSONArray()
         for((theme,language) in testLooks(this@PlanningProcessRecoveryTest)){
             val book=repo.createBook("进程恢复 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
@@ -117,7 +118,6 @@ class PlanningProcessRecoveryTest {
         }
         data.put("verifiedPid",Process.myPid()).put("verifiedCases",6)
         File(context.getExternalFilesDir(null),"phase-b-planning-process-result.json").writeText(data.toString())
-        runBlocking{prefs.select(data.getString("previous"))}
-        vm.viewModelScope.cancel();db.close();context.deleteDatabase("phase-b-planning-process.db");marker.delete()
+        vm.viewModelScope.cancel();db.close();context.deleteDatabase("phase-b-planning-process.db");marker.delete();testPreferences.deleteAfterTest=true
     }
 }

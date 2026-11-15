@@ -5,7 +5,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,10 +19,10 @@ import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
 import java.io.File
-import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class HapticsFlowTest {
+    @get:Rule(order=-2) val testPreferences=TestAppPreferencesRule()
     @get:Rule val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -31,16 +30,12 @@ class HapticsFlowTest {
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
-    private lateinit var scope:CoroutineScope
-    private lateinit var path:File
     @Before fun setup() {
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db)
-        scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
-        path=File(context.cacheDir,"haptics-${UUID.randomUUID()}.preferences_pb")
-        val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
+        val prefs=testPreferences.preferences
         vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))
     }
-    @After fun close(){vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
+    @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(tag:String){ui.onNodeWithTag(tag).performScrollTo().performClick();ui.waitForIdle()}
     private fun openSettings(theme:String,language:String="zh")=runBlocking {
         val book=repo.createBook("Haptics",Currency.JPY,theme,language)
