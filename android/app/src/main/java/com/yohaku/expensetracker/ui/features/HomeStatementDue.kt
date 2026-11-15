@@ -59,6 +59,7 @@ import java.time.YearMonth
         byAccount.forEach{(id,periods)->
             ThemeAuditPanel(name(id),Modifier.testTag("statement-due-$id")) {
                 RecordFacts(periods.map{label(it) to "${it.start} — ${it.end}"},audit=true)
+                Spacer(Modifier.height(16.dp))
                 YActionRow {
                     YButton(word("去核对","照合する"),{
                         vm.statementImportSeed.value=StatementImportSeed(s.book.id,id,notePrefix+"${periods.first().start} — ${periods.last().end}")
