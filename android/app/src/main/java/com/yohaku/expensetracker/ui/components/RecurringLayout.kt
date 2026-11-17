@@ -92,14 +92,14 @@ import java.time.LocalDate
 }
 
 /** Folded list of settled, cancelled and withdrawn bills: one header line, its own look per theme. */
-@Composable internal fun RecurringProcessedHeader(label:String,detail:String,open:Boolean,onToggle:()->Unit) {
+@Composable internal fun RecurringProcessedHeader(label:String,detail:String,open:Boolean,tag:String="recurring-processed-toggle",onToggle:()->Unit) {
     val t=LocalYohaku.current
     val frame=when(t.id) {
         "objects"->Modifier.background(t.soft,RoundedCornerShape(18.dp)).padding(horizontal=16.dp,vertical=14.dp)
         "journal"->Modifier.background(t.soft.copy(alpha=.6f)).drawBehind{drawRect(t.line,style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))))}.padding(horizontal=12.dp,vertical=12.dp)
         else->Modifier.drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx());drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}.padding(vertical=14.dp)
     }
-    Row(Modifier.fillMaxWidth().padding(top=10.dp).testTag("recurring-processed-toggle").clickable(role=androidx.compose.ui.semantics.Role.Button,onClick=onToggle).then(frame),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().padding(top=10.dp).testTag(tag).clickable(role=androidx.compose.ui.semantics.Role.Button,onClick=onToggle).then(frame),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
         YText((if(t.id=="journal")"✓ " else "")+label,if(t.id=="journal")17 else 15)
         YText(detail,11,Modifier.weight(1f),color=t.muted)
         YText(if(open)word("收起","閉じる")else word("展开","開く"),11,color=if(t.id=="journal")t.warm else t.accent)

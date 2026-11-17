@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -40,11 +41,11 @@ import java.time.LocalDate
             row.note?.let{YText(it,11,color=LocalYohaku.current.muted)}
             row.event_hint?.let{hint->
                 val label=when(hint){"expense"->word("消费","支出");"income"->word("收入","収入");"transfer"->word("转账","振替");"repayment"->word("还款","返済");"refund"->word("退款","返金");else->word("借入","借入")}
-                YText(word("转换辅助类型：","変換の補助種別：")+label+word("，不自动绑定或记账。","。自動関連付け・記録はしません。"),11,color=LocalYohaku.current.muted)
+                YText(word("转换辅助类型：","変換の補助種別：")+label,11,color=LocalYohaku.current.muted)
             }
         }
         if(manual!=null) {
-            YText(if(manual.active)word("已确认差异，非完全一致。保留原流水和实际记账各自的金额、日期。","差異確認済みで、完全一致ではありません。明細と記録それぞれの金額・日付を保持します。")else word("原记账已变更或删除，旧决定不再占用当前资金端，需重新核对。","元記録が変更・削除され、旧判断は現在の資金側を使用しません。再照合が必要です。"),12,color=LocalYohaku.current.warm)
+            YText(if(manual.active)word("已确认差异。","差異確認済み。")else word("记账已改动或删除，需重新核对。","記録が変更・削除されたため再照合が必要です。"),12,color=LocalYohaku.current.warm)
             RecordFacts(listOf(word("原决定依据","旧判断の根拠") to "${manual.original.postedDate} · ${manual.original.currency} ${manual.original.amount}",
                 word("当前依据","現在の根拠") to (manual.current?.let{"${it.postedDate} · ${it.currency} ${it.amount}"}?:word("已不存在","存在しません"))))
             if(manual.saved.note.isNotBlank())YText(manual.saved.note,12)
@@ -56,7 +57,7 @@ import java.time.LocalDate
                 val posting=currentReview.posting
                 RecordFacts(listOf(word("记账实际金额","記録の実金額") to receiptCurrencyText(posting.amount,posting.currency),
                     word("记账入账日","記録の計上日") to posting.postedDate,word("记账发生日","記録の利用日") to posting.occurredDate))
-                YText(word("只保存人工核对决定，此行仍显示差异，不改金额、日期、余额或预算。","手動照合の判断だけを保存し、差異表示を維持。金額・日付・残高・予算は変更しません。"),12)
+                Spacer(Modifier.height(16.dp))
                 YActionRow {
                     YButton(word("确认保留差异","差異を保持して確定"),{vm.execute(onSuccess=onClose){vm.repository.acceptStatementDifference(currentReview);vm.haptic(Haptic.Done)}},Modifier.testTag("statement-confirm-difference"),primary=true,enabled=!busy)
                     YButton(word("返回选择","候補に戻る"),{review=null},enabled=!busy)
@@ -65,7 +66,6 @@ import java.time.LocalDate
         }else {
             YSelect(word("实际资金端候选","実際の資金側の候補"),selected,listOf(null to word("请选择","選択してください"))+candidates.map{post->post.postingId as String? to
                 (post.postedDate+" · "+receiptCurrencyText(post.amount.toPlainString(),post.currency)+" · "+s.visibleEvents.first{it.id==post.eventId}.merchant)},{selected=it},Modifier.testTag("statement-posting-candidate"))
-            YText(word("候选只供检查。日期或实际金额不同不能自动完全匹配；另一条流水已占用的资金端不能重复使用。","候補は確認用です。日付・実金額が異なる場合は自動一致にせず、別明細で使用中の資金側は再使用しません。"),11,color=LocalYohaku.current.muted)
             YField(word("差异说明","差異のメモ"),note,{note=it},multiline=true)
             YButton(word("预览人工差异决定","手動の差異判断を確認"),{var r:StatementDifferenceReview?=null;vm.execute(onSuccess={review=r}){r=vm.repository.previewStatementDifference(s.book.id,p.batch.id,row.row_id,selected!!,note)}},Modifier.fillMaxWidth().testTag("statement-preview-difference"),primary=true,enabled=!busy&&selected!=null)
         }
@@ -79,7 +79,7 @@ import java.time.LocalDate
         if(pending.isNotEmpty()||pendingRepayments.isNotEmpty()) {
             ThemeSection(word("预计资金端，实际入账待确认","見込みの資金側・実計上未確認"),"ACTUAL SETTLEMENT")
             if(knownPosted==null) {
-                YText(word("文件未提供明确入账日。请按原始资料选择并确认；不拿发生日替代。","明確な計上日がありません。元資料で日付を選んで確認してください。利用日で代用しません。"),12,color=LocalYohaku.current.warm)
+                YText(word("流水里没有入账日，请选择。","明細に計上日がありません。選んでください。"),12,color=LocalYohaku.current.warm)
                 YDateFields(listOf(YDateField("posted",word("实际入账日","実計上日"),posted)),dateOwner,{dateOwner=it},{_,value->posted=value})
                 YToggle(word("已确认实际入账日","実計上日を確認済み"),confirmedDate,{confirmedDate=it})
             }
@@ -90,7 +90,6 @@ import java.time.LocalDate
                 YText(post.date+" · "+event.merchant+" · "+(if(fee)word("独立手续费","別途手数料")else word("尚未确认实际","実計上未確認"))+" · "+receiptCurrencyText(Money(Currency.valueOf(post.currency),kotlin.math.abs(post.deltaMinor)).decimal.toPlainString(),post.currency),12)
                 YButton(word("进入原记录，预览实际确认","元記録で実計上を確認"),{onActual(event.id,posted,post.id)},Modifier.testTag("statement-confirm-actual-${event.id}"+if(fee)"-fee"else""),enabled=!busy&&confirmedDate)
             }
-            YText(word("进入普通记账表单，核对原币、实际入账和本位币统计值，再预览并保存。仅查看此页不会确认入账。","通常の記録フォームで元通貨・実計上・基準通貨額を確認し、プレビューして保存。このページの閲覧だけでは計上を確定しません。"),11,color=LocalYohaku.current.muted)
         }
     }
 }
@@ -123,17 +122,15 @@ import java.time.LocalDate
     }
     YSheet(word("先选补记类型","記録の種類を選択"),onClose) {
         YText(row.date+" · "+receiptCurrencyText(row.settlement.amount,row.settlement.currency)+" · "+row.summary,13)
-        YText(word("流水不直接成为记账。选择类型，补充资料，主动保存后才产生正式事实；转账、还款和退款不直接当作收支。","明細は直接記録になりません。種類を選び内容を補い、保存して初めて記録になります。振替・返済・返金を支出・収入扱いしません。"),12)
         YSelect(word("补记类型","記録の種類"),kind,options,{if(kind!=it){kind=it;original=null;debtAccount=account.id.takeIf{debt}}},Modifier.testTag("statement-supplement-kind"))
         if(kind==EntryKind.REPAYMENT.name||kind==EntryKind.BORROWING.name) {
             YSelect(word("债务账户","債務口座"),debtAccount,listOf(null to word("请选择","選択してください"))+s.accounts.filter{it.active&&AccountType.valueOf(it.type).debt&&(kind!=EntryKind.BORROWING.name||it.type==AccountType.LOAN.name)}.map{it.id as String? to it.name},{debtAccount=it},columns=2)
-            YText(word("进入正式金融表单。请按此流水核对实际付款账户、金额和日期；本金、费用与平台清偿须独立填写确认。","正式な金融フォームへ進みます。この明細で実支払口座・金額・日付を確認し、元金・手数料・返済先の確定を個別に入力してください。"),12)
             YButton(word("打开正式金融表单","正式な金融フォームを開く"),{onFinancial(kind!!,debtAccount!!)},Modifier.testTag("statement-start-supplement"),primary=true,enabled=debtAccount!=null)
         }else if(kind!=null) {
             if(kind==EntryKind.REFUND.name)YSelect(word("关联原消费","元の支出と関連付け"),original,listOf(null to word("请选择","選択してください"))+s.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name}.map{it.id as String? to (it.date+" · "+it.merchant+" · "+Money(Currency.valueOf(it.currency),it.amountMinor).display())},{original=it})
             YDateFields(listOf(YDateField("occurred",word("交易发生日","利用日"),occurred),YDateField("posted",word("实际入账日","実計上日"),posted)),owner,{owner=it},{i,date->if(i=="occurred")occurred=date else posted=date})
             if(knownOccurred==null||knownPosted==null) {
-                YText(word("文件未提供全部日期。未知日期以今天作为选择器起点，请按原始资料修改并确认，不会自动保存。","日付がすべて揃っていません。不明な日付の選択は今日から始まります。元資料で修正・確認してください。自動保存しません。"),11,color=LocalYohaku.current.warm)
+                YText(word("流水缺少部分日期，请补上。","明細に日付が欠けています。入力してください。"),11,color=LocalYohaku.current.warm)
                 YToggle(word("已核对缺少的日期","不足している日付を確認済み"),dateConfirmed,{dateConfirmed=it})
             }
             YButton(word("打开普通记账表单","通常の記録フォームを開く"),{onStart(StatementSupplementSeed(s.book.id,account.id,row,EntryKind.valueOf(kind!!),occurred,posted,original))},Modifier.testTag("statement-start-supplement"),primary=true,enabled=dateConfirmed&&(kind!=EntryKind.REFUND.name||original!=null))
@@ -149,10 +146,9 @@ import java.time.LocalDate
     val bills=graph?.bills?.filter{it.active&&it.planId in plans}.orEmpty()
     YSheet(word("选择账单补充资料的目标","請求補足資料の対象を選択"),onClose) {
         StatementInfoFacts(info)
-        if(wrongCurrency)YText(word("补充资料币种与账户不一致，不能套用；原文件仍完整保留。","補足資料の通貨が口座と一致せず適用できません。元ファイルは保持しています。"),12,color=LocalYohaku.current.warm)
-        if(bills.isEmpty())YEmpty(word("没有可确认的正式账单。请先在金融账户中建立手动已知账单或计划。","確定できる正式な請求がありません。金融口座で既知の請求や予定を作成してください。"))
+        if(wrongCurrency)YText(word("补充资料的币种与账户不同，不能套用。","補足資料の通貨が口座と異なるため適用できません。"),12,color=LocalYohaku.current.warm)
+        if(bills.isEmpty())YEmpty(word("还没有可对应的账单，请先在金融账户中建立。","対応できる請求がありません。先に金融口座で作成してください。"))
         bills.forEach { bill->YButton(bill.date+" · "+Money(Currency.valueOf(account.currency),bill.totalMinor).display(),{onSelect(bill.id)},Modifier.testTag("statement-bill-${bill.id}"),enabled=!wrongCurrency,haptic=Haptic.Select) }
         if(AccountType.valueOf(account.type).debt)YLink(word("打开金融账户管理","金融口座の管理を開く"),onManage)
-        YText(word("选择后进入正式账单表单，检查输入并预览；确认之前不会修改计划或账单。","選択後は正式な請求フォームで入力を確認・プレビュー。確定前に予定・請求は変更しません。"),11,color=LocalYohaku.current.muted)
     }
 }

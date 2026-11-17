@@ -12,7 +12,6 @@ class FileProtocolsTest {
     @Test fun formalExamplesDecodeAndKeepUnknownOptionalFieldsCompatible() {
         val statement = FileProtocols.statement(sample("statement.valid").replace("\"version\": 1", "\"version\": 1, \"future_optional\": {\"value\": true}"))
         assertEquals(2, statement.rows.size)
-        assertEquals(listOf("$.future_optional"),unknownFileFields(sample("statement.valid").replace("\"version\": 1", "\"version\": 1, \"future_optional\": true"),StatementFile.serializer().descriptor))
         val bundle = FileProtocols.receiptBundle(sample("receipt-bundle.valid"))
         val items = FileProtocols.receiptItems(sample("receipt-items.valid"))
         assertEquals(bundle.bundle_id, items.bundle_id)

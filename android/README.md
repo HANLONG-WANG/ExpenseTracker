@@ -888,3 +888,9 @@ adb shell settings put system font_scale 1.0
 ### 2026-11-15 高严重度问题修复验收
 
 范围为 `docs/bug-reports-high.md` 全部代码问题与视觉高严重度三项。JVM 全量单元测试通过；交接包 `node contract-test.mjs` 17 项通过。仪器测试在默认参数、390dp 标准配置下运行上述各节列出的 35 个相关类，共 219 项通过（假设跳过的真实键盘/系统专项除外）；`CommandLedgerExecutionTest#batchFiveHundredNotesOnLargeLedgerLogsPerformance` 在大批量单进程中仍会出现既有 OOM，单独运行通过。UI 相关 12 个类/方法以 S24 Ultra（1080×2340/density 450）`looks=all visual=true` 运行 35 项通过并已查看截图。`SetupPresentationTest#ledgerPageMatchesSourceThroughFilteredList` 为原稿几何对照，只在 390dp 标准配置有效，在该配置通过。`CommandWorkflowExecutionTest#allPreferencesSwitchAfterCommitAndRestoreWithConflict` 与 `CommandPlanningExecutionTest#recurrencePaymentCancellationAndBatchLinkConsumeOnlyMatchingDraft` 的旧断言未跟进 2026-11-10 撤销时草稿同步代次加一的设计，已改为由 `assertCommandRowsRestored` 精确验证该递增。
+
+### 小票与流水提示精简（2026-11-17）
+
+小票明细只在有可比金额且差额不为零时提示（优先票面合计），不确定字段仅在领取后的保存前预览中以「?」标出；流水核对页只展开待处理行，已匹配收进「已匹配 N 笔」；任务卡片和领取预览不再显示服务端校验警告。云端流水/小票任务说明附带自由文本约定（`CloudRepository` 的 `STATEMENT_TASK_RULES`、`RECEIPT_TASK_RULES`），办理协议约束 message 只写预览看不出的结果与假设。
+
+验证：JVM `ReceiptArchivesTest`（差额口径）；仪器 `FileWorkflowStorageTest`，以及 S24 尺寸下 `looks=all visual=true` 的 `ReceiptItemsReviewUiTest`（截图 external-files `receipt-items-review/`）与 `StatementFileWorkflowTest`（`phase-d-statements-standard/`）。

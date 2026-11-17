@@ -24,8 +24,8 @@ JSON Schema检查结构/类型；应用还检查唯一性、日期区间、语�
 ## 银行/信用卡转换
 
 1. 从任务附带的标识说明中，将 `book_id`、`account_id`、`account_currency` 原样填入。不要按账户名称猜ID，不需要完整卡号。
-2. 填写 `file_id`、`from`/`to`（包含首尾）、`source`、`complete`、`issues`。缺页/筛选/缺行时 `complete:false`；转换疑点逐项写入 `issues`。即使complete为true，有疑点也不能把未匹配账目判为疑似多记。
-3. 明确 `date_basis`：`posted_date` 表示实际入账日，`occurred_date` 表示交易发生日。每行 `date` 必须采用该语义；若对应可选日期也提供，两者必须相同。不能缺入账日就自动拿购买日替代；无法确定时向用户核对。
+2. 填写 `file_id`、`from`/`to`（包含首尾）、`source`、`complete`、`issues`。缺页/筛选/缺行时 `complete:false`。`issues` 只写看了页面也看不出、需要用户处理的具体问题（某行看不清、缺页等），每条一句并指明哪一行，没有就留空；不写规则说明、免责声明或“无法核对”类的话，匹配和差额由应用计算。
+3. 明确 `date_basis`：`posted_date` 表示实际入账日，`occurred_date` 表示交易发生日。每行 `date` 必须采用该语义；若对应可选日期也提供，两者必须相同。银行账户通常用入账日，信用卡通常用明细列出的利用日；按资料格式判断，只有资料本身确实看不出时才向用户核对。收支方向按金额栏或正负号判断。
 4. 每行填写唯一 `row_id`、`date`、`direction`、`settlement`、`summary`；银行原流水号/页行号放 `source_ref`。同日同额真实多笔必须保留各行。摘要原文保留，转换辅助解释另放 `note`。
 5. `settlement` 是此账户的实际入账金额（币种必须与账户一致），流入in、流出out。信用卡消费out、还款退款in。银行付款out、收款in。可选 `original`、`occurred_date`、`posted_date`、`fees`、`exchange_rate` 只填已知事实；`event_hint` 可为expense/income/transfer/repayment/refund/borrowing，仅辅助查找。
 6. `statement_info` 可补principal/fees/total货币对象及payment_date，只作独立资料，不能因导入覆盖已确认账单或计划。
@@ -46,11 +46,11 @@ ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票�
 
 助手读取清单和小票图片，返回 `yohaku.receipt-items` JSON，原样复制bundle_id/book_id及每张小票的record_id/receipt_id/两个修订号。每条 `currency` 取原交易币种，`image_ids` 列出本次识别的小票图片ID。不得把信用卡换算金额当商品原币总额。
 
-每个item包含稳定item_id、image_ids、uncertain_fields；name/quantity/unit/unit_price/line_amount/note可未知。数量如 `"0.5"`；行金额按原币精度。商品图必须属于本条image_ids。`uncertain_fields` 用字段名说明不确定信息，`note` 保留具体问题。无法看清时不要猜名称、数量或金额。
+每个item包含稳定item_id、image_ids、uncertain_fields；name/quantity/unit/unit_price/line_amount/note可未知。数量如 `"0.5"`；行金额按原币精度。商品图必须属于本条image_ids。`uncertain_fields` 只列填了值但不确定的字段名（应用在保存前的预览中标出），留空的字段不列；`note` 保留具体问题。无法看清时不要猜名称、数量或金额，留空即可。
 
-`adjustments` 列税费tax、折扣discount、运费shipping及其他增加other，金额为正；折扣从小计扣除。`included_in_items:true` 表示已含商品行，不再次加减；false时另计。其他减少请用discount并说明。receipt_total为票面总额，未知null；complete表示明细是否齐全，issues记录疑点。已知商品小计只累加有line_amount的行，不用quantity×unit_price臆造缺失行金额；再计未包含的调整得到已知合计。即使complete为true，只要有行金额未知，仍呈现不完整。
+`adjustments` 列税费tax、折扣discount、运费shipping及其他增加other，金额为正；折扣从小计扣除。`included_in_items:true` 表示已含商品行，不再次加减；false时另计。其他减少请用discount并说明。receipt_total为票面总额，未知null；complete只表示票面商品是否都已列出，与日期、店名无关。issues只写看了页面也看不出、需要用户处理的问题（某行可能读错、票面数字互相对不上、图片缺失可能漏商品），每条一句并指明哪一行；不核对日期和店名，不写与原记录的金额差（应用自行计算），不解释字段为何未知。已知商品小计只累加有line_amount的行，不用quantity×unit_price臆造缺失行金额；再计未包含的调整得到已知合计。即使complete为true，只要有行金额未知，仍呈现不完整。
 
-合计与原消费比较，差额可以保存但须提示检查；绝不自动改交易金额。目标/账本/来源图片不符拒绝；记录或小票旧修订、已有商品重复替换需明确预览确认。替换原商品而非追加；新增未识别图片仍待整理，不能删除已有图片或偷偷覆盖新手工编辑。
+应用用票面合计（未知时用所有行金额都已知的已知合计）与原消费比较，有差额时提示检查；所有行金额已知时还比较已知合计与票面合计。差额可以保存，绝不自动改交易金额。目标/账本/来源图片不符拒绝；记录或小票旧修订、已有商品重复替换需明确预览确认。替换原商品而非追加；新增未识别图片仍待整理，不能删除已有图片或偷偷覆盖新手工编辑。
 
 ## 错误样例
 

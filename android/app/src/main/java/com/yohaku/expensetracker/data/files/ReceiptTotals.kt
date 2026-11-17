@@ -2,7 +2,12 @@ package com.yohaku.expensetracker.data.files
 
 import java.math.BigDecimal
 
-/** Known amounts only. Missing line amounts remain missing, even if quantity and price are known. */
+/**
+ * Known amounts only. Missing line amounts remain missing, even if quantity and price are known.
+ * [differenceFromOriginal] compares the printed receipt total with the recorded amount, or the computed total when no
+ * printed total is known but every line amount is; otherwise nothing comparable exists and it is null.
+ * [differenceFromDeclared] exists only when every line amount is known, so a gap points at a misread line.
+ */
 data class ReceiptTotals(val knownItems: BigDecimal, val additionalAdjustments: BigDecimal,
     val knownTotal: BigDecimal, val declaredTotal: BigDecimal?, val complete: Boolean,
     val differenceFromOriginal: BigDecimal?, val differenceFromDeclared: BigDecimal?)
@@ -17,7 +22,10 @@ fun receiptTotals(record: ReceiptItemsRecord, original: FileMoney): ReceiptTotal
     }
     val total = knownItems + adjustment
     val declared = record.receipt_total?.toBigDecimal()
+    val allLinesKnown = record.items.isNotEmpty() && record.items.all { it.line_amount != null }
+    val comparable = declared ?: total.takeIf { allLinesKnown }
     return ReceiptTotals(knownItems, adjustment, total, declared,
         record.detailsComplete,
-        if(record.currency==original.currency)total - original.amount.toBigDecimal()else null, declared?.let { total - it })
+        comparable?.takeIf { record.currency == original.currency }?.let { it - original.amount.toBigDecimal() },
+        declared?.takeIf { allLinesKnown }?.let { total - it })
 }

@@ -14,6 +14,8 @@
 
 必填：`format="yohaku.command-plan"`、`version=1`、`plan_id`（新的 UUID）、`book_id`（原样复制）、`catalog_digest`（复制能力清单 catalogDigest）、`context_digest`（复制结构附件 contextDigest）。`message` 是给用户的中文或日文说明，可用 Markdown；`questions` 是待补充问题数组；`steps` 是有序步骤数组。
 
+`message` 写法：手机会逐步展示预览，所以 message 只写预览里看不出、用户又需要知道的内容：一句话说做了什么，再逐条列出不显然的假设（每条一句）。不要复述本协议的规则或系统边界（例如“手机会校验/预览”“不会自动执行”“不代表银行已核实”“请在手机核对”），不要把用户自己说过的或预览里能直接看到的日期、名称、金额当作假设再写一遍。没有需要说明的假设时，只写那一句结果。`questions` 同理，只问真正缺少的关键事实。
+
 每步：`id` 为唯一的字母开头标识（字母/数字/下划线/短横线，最长64），`command`、`command_version=1`、`input`。最多500步；每个目标集合最多5000笔。能力清单的 example 是 input 片段，不是完整方案；例子中的占位ID、日期、金额和前序步骤名必须按本任务替换。未知命令/版本、未知输入字段、digest 不符、无效引用、越界或违反永久边界会拒绝整份方案，不会跳过错误步骤。
 
 ### 只看附件时的填写顺序
@@ -108,7 +110,7 @@
 - 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。付款选择及指定月、费用、分期期数与普通表单同规则。
 - 普通记录字段 `budgetExcluded`：新建默认 false，编辑省略保留、false 取消，不能为 null；只有 EXPENSE 可以设 true。排除月/分类预算（含待确认数、节奏、提醒及原支出的退款/费用），仍计入分析、账户余额、日历实际金额和活动自身预算。记录导出包含该字段。`template.save` 完整替换时默认 false，支出模板可保存并通过 `template.createEntry` 带入；周期规则、实例及固定预留不加字段。
 - `entry.update` 批量字段补丁；`entry.confirmActual` 采用相同 targets/set，但必须明确至少一个实际确认标志为 true。账户负余额加重在预览中单独要求勾选，列明具体账户、币种和金额。记录缺必填项则整批失败；待用户补完用 entry.prepareDraft（interactive，不代用户提交）。
-- `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；恢复会重查30天期限、原消费、退款上限及预留可用性。PURGE/EMPTY 禁止。
+- `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；恢复会重查30天期限、原消费、退款上限及预留可用性；还款恢复还要校验恢复后账单、合同和循环池的剩余本金，冲突时先调整关联。PURGE/EMPTY 禁止。
 - `template.save`：完整保存 name/kind/category/account/currency，以及可选固定金额、商户/备注、付款选择、活动；省略可选项恢复其默认空值，已有排序保留。`template.move`：template 和 direction=-1/+1，相邻移动，边缘保持。`template.createEntry`：template 与可选 set，调用普通记账准备，预览显示 `entry.create`；无金额或外币换算资料时需要在 set 补齐，不能生成待填草稿。模板内容也是确认依据。
 
 分类替代合并不是隐藏删除：entry.update 批量改记录分类、template.save 改模板，budget.save 明确目标各生效月额度并把原分类每个生效月设为 amount:null，activity.save 全量替换 categoryBudgets，recurrence.save 改规则，再 occurrence.update 改完成/取消等历史实例的分类，最后 category.lifecycle ARCHIVE。金额如何合并需明确给出，不能自行相加。原分类预算的空值历史行仍保留，不能宣称物理移除了所有引用。金融草稿分类用 financialDraft.reclassify；普通草稿分类用 entryDraft.reclassify；其余补完用本机草稿编辑，不替用户提交。
@@ -266,7 +268,7 @@ CSV 来源判重键 `sourceMatchKey` 保留解析后的日期、收支类型、�
 - `financialBatchRevolving.apply` 使用 `{input:{accountId,paymentDate,planIds,principalMinor,poolId,effectiveDate,feeMinor,...},appliedAt}`。planIds 是固定目标集合，输出 `batch`（revolvingBatch）；`financialBatchRevolving.undo` 输入 undoGroupId，可引用前步 batch，恢复一次既有批量转循环操作。
 - **上述已办理/重核/观测的事实只能在手机勾选。** 输入禁止 `platformConfirmed`、`currentArrangementConfirmed`、`exceptionAccepted`、`user_fact` 等代替用户声明的布尔值。若实际办理时刻超过规则期限，手机另要求“平台已接受期限外办理”的事实声明。referenceRates、内部 facts/projections/undoGroupId（安排内部字段）不由云端填写。
 - `financialBorrowing.save` 创建/编辑真实借入或期初合同，输出 contract；真实借入另输出 entry，期初合同没有 entry，不能引用该不存在的输出。借入本金、到账资金和手续费使用专用语义，**不能伪装为普通转账**。`financialContract.linkPlan` 关联同来源、同方式的合同与计划，余额池不绑定单一合同。
-- `financialRepayment.save` 记录实际支付和待平台确认的清偿；`financialRepayment.confirm` 记录经手机用户核对的清偿事实，必须明确实收、本金、利息、费用和清偿日期。二者输出 entry，完整支持账期/合同 allocations、PARTIAL/EARLY/SETTLEMENT 和 linkedTransferEventId；`financialRepaymentAllocation.resolve` 用 eventId 和 billId/contractId 唯一选择分配，输出 allocation，可供后步 clearingMoves 引用；已知为零必须写0，未知不能当零。结构附件不是全部还款记录；所选 records 的可选 financial 字段提供本金/费用/清偿状态及分配 ID，缺少所需记录时先要求补充。
+- `financialRepayment.save` 记录实际支付和待平台确认的清偿，待确认也禁止分配合计超过已知的本金/利息/费用、实收及同币实扣减付款端费用的上限；依据不完整的分配在现金预测和账单汇总中标记待核对，不作确定金额抵扣；`financialRepayment.confirm` 记录经手机用户核对的清偿事实，必须明确实收、本金、利息、费用和清偿日期。二者输出 entry，完整支持账期/合同 allocations、PARTIAL/EARLY/SETTLEMENT 和 linkedTransferEventId；`financialRepaymentAllocation.resolve` 用 eventId 和 billId/contractId 唯一选择分配，输出 allocation，可供后步 clearingMoves 引用；已知为零必须写0，未知不能当零。结构附件不是全部还款记录；所选 records 的可选 financial 字段提供本金/费用/清偿状态及分配 ID，缺少所需记录时先要求补充。
 - `creditLimit.save` 追加额度配置版本（输出 config）；`creditLimitGroup.save` 完整保存组与成员（输出 group）；省略 id 新建，null 额度/占用仍未知。已知占用基准需要用户核对具体金额和日期，account.save 内嵌额度配置使用相同事实声明。
 - `creditLimitRecovery.confirm` 记录用户核对的平台实际恢复额度（输出 recovery）；不重复产生还款；`creditLimitRecovery.void` 作废误记恢复并保留历史。`creditLimitObservation.record` 记录平台显示的可用额度（输出 observation），只能指定一个账户或组，时刻不得未来，共享组仅 TOTAL，必须手机 USER_FACT。
 - `financialDraft.reclassify` 用 sourceCategoryId/categoryId 迁移金融表单草稿分类；首次预览固定匹配 slots，确认不扩大。只改 EXPECTED 表单的收入分类，其他输入和原依据保留。金融草稿内容不自动上传；普通记账草稿分类用 entryDraft.reclassify，其他金融表单没有分类字段。
@@ -285,7 +287,7 @@ CSV 来源判重键 `sourceMatchKey` 保留解析后的日期、收支类型、�
   "plan_id":"44444444-4444-4444-8444-444444444444","book_id":"book-1",
   "catalog_digest":"0000000000000000000000000000000000000000000000000000000000000000",
   "context_digest":"0000000000000000000000000000000000000000000000000000000000000000",
-  "message":"拟建立信用卡、额度与账期规则，请在手机预览核对。假设：1. 当前状态均以任务基准日2026-11-02、Asia/Tokyo登记，作为期初日期、额度生效日、占用基准日和规则生效日，不表示实际开卡日。2. 目前无欠款解释为期初欠款及总/分期/循环占用均为0，额度占用请在手机亲自勾选核对。3. 未指定方式，按日本信用卡一次付清SINGLE提案。4. 月底结账按31日（短月月末），当天消费计入本期，次月27日扣款。5. 未说明的分项额度、共用及恢复/占用政策保存为未知，自动可用额度估计暂不完整，但不妨碍建卡。当前无欠款，不生成消费或零本金预测。",
+  "message":"建立信用卡、额度和账期规则。假设：1. 期初、额度和规则都从今天（2026-11-02）开始。2. 当前无欠款，额度占用记为0。3. 未说明还款方式，按一次付清。4. 未说明的分项额度保持未知。",
   "questions":[],
   "steps":[
     {"id":"card","command":"account.save","command_version":1,"input":{
@@ -310,7 +312,7 @@ CSV 来源判重键 `sourceMatchKey` 保留解析后的日期、收支类型、�
   "plan_id":"11111111-1111-4111-8111-111111111111","book_id":"book-1",
   "catalog_digest":"0000000000000000000000000000000000000000000000000000000000000000",
   "context_digest":"0000000000000000000000000000000000000000000000000000000000000000",
-  "message":"按截图建立信用卡与一次付规则，并为期初已有欠款生成一期预测。不会再增加消费。请核对截图的基准日，并在手机确认这是平台当前采用的安排。",
+  "message":"按截图建立信用卡和一次付规则，并为现有欠款生成一期还款预测。假设截图的欠款是今天的状态。",
   "questions":[],
   "steps":[
     {"id":"card","command":"account.save","command_version":1,"input":{"name":"生活信用卡","type":"CREDIT","currency":"JPY","openingMinor":30000,"openingDate":"2026-11-01"}},
@@ -332,7 +334,7 @@ CSV 来源判重键 `sourceMatchKey` 保留解析后的日期、收支类型、�
   "plan_id":"22222222-2222-4222-8222-222222222222","book_id":"book-1",
   "catalog_digest":"0000000000000000000000000000000000000000000000000000000000000000",
   "context_digest":"0000000000000000000000000000000000000000000000000000000000000000",
-  "message":"只调整选定范围内的分类，金额、结算和附件保持原样。请核对手机列出的匹配记录及预算归属变化。",
+  "message":"把选定范围内的记录改到新分类。",
   "questions":[],
   "steps":[{"id":"recat","command":"entry.update","command_version":1,"input":{"targets":{"select":{"from":"2026-10-01","through":"2026-10-31","category":"food-old","merchant_contains":"星巴克","kind":"EXPENSE"}},"set":{"category":"coffee"}}}]
 }

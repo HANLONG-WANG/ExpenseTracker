@@ -131,7 +131,10 @@ class StatementFileWorkflowTest {
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.fileWorkflowDao().decisions(book).first().size==1}}
             ui.waitUntil(10000){recorder.calls.isNotEmpty()}
             assertEquals(listOf(Triple(theme,Haptic.Done,1f)),recorder.calls.toList())
-            ui.onNodeWithTag("statement-status-${diff.row_id}").assertTextEquals(text("已确认差异，非完全一致","差異確認済・完全一致ではない"))
+            // Settled rows fold into the matched group until it is opened.
+            ui.waitUntil(10000){ui.onAllNodesWithTag("statement-status-${diff.row_id}").fetchSemanticsNodes().isEmpty()}
+            click("statement-matched-toggle")
+            ui.onNodeWithTag("statement-status-${diff.row_id}").assertTextEquals(text("已确认差异","差異確認済み"))
             val missing=source.rows[3]
             click("statement-supplement-${missing.row_id}");click("statement-supplement-kind")
             click("select-option-"+text("补记类型","記録の種類")+"-1");click("statement-start-supplement")
@@ -155,7 +158,7 @@ class StatementFileWorkflowTest {
                 val original=after.events.first{e->after.storedPostings.any{it.id==decision.postingId&&it.eventId==e.id}}
                 runBlocking{repo.saveEntry(book,EntryDraft(id=original.id,accountId=account.account_id,categoryId=original.categoryId,amount="1300",date=original.date,merchant=original.merchant))}
                 ui.waitUntil(10000){ui.onAllNodesWithTag("statement-status-${diff.row_id}").fetchSemanticsNodes().isNotEmpty()}
-                ui.onNodeWithTag("statement-status-${diff.row_id}").assertTextEquals("元記録が変わり、再照合待ち")
+                ui.onNodeWithTag("statement-status-${diff.row_id}").assertTextEquals("記録が変わったため再照合")
                 click("statement-candidates-${diff.row_id}");shot("objects-ja-changed-decision")
                 click("statement-unlink-difference")
                 runBlocking{repo.saveEntry(book,EntryDraft(id=original.id,accountId=account.account_id,categoryId=original.categoryId,amount="1200",date=original.date,merchant=original.merchant))}

@@ -37,6 +37,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
     var supplement by rememberSaveable(active?.batch?.id){mutableStateOf<String?>(null)}
     var deleting by rememberSaveable(active?.batch?.id){mutableStateOf(false)}
     var showSides by rememberSaveable(s.book.id){mutableStateOf(false)}
+    var matchedOpen by rememberSaveable(active?.batch?.id){mutableStateOf(false)}
     var billChooser by rememberSaveable(active?.batch?.id){mutableStateOf(false)}
     var billId by rememberSaveable(active?.batch?.id){mutableStateOf<String?>(null)}
     var financialKind by rememberSaveable(active?.batch?.id){mutableStateOf<String?>(null)}
@@ -50,7 +51,6 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         }
     }
     YTitle(word("核对，心里更有数。","照合して、確かめる。"),"CHECK, DON’T DUPLICATE",word("流水独立保存，手动账目始终为准。","明細は別に保存。手動記録が基準です。"),pageFlow=true)
-    YText(word("导入不会新增、修改或删除正式记账。日期、实际金额与方向一致，笔数逐一核对。","取込で記録を追加・変更・削除しません。日付・実金額・方向を1件ずつ照合。"),12,color=LocalYohaku.current.muted)
     Box(Modifier.heightIn(min=44.dp).testTag("statement-import-entry").clickable(enabled=!busy){vm.navigate("statement-import")},contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
         YText(word("＋ 交给云端转换流水","＋ クラウドで明細を変換"),10,Modifier.border(1.dp,LocalYohaku.current.line,RoundedCornerShape(20.dp)).padding(horizontal=12.dp,vertical=8.dp),color=LocalYohaku.current.muted)
     }
@@ -64,11 +64,13 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
             RecordFacts(listOf(word("文件区间","明細期間") to "${file.from} — ${file.to}",
                 word("完全匹配 / 待确认 / 仅流水","完全一致・要確認・明細のみ") to "${p.result.exact.size} / ${p.result.differences.size+p.decisions.size} / ${p.result.statementOnly.size}",
                 word("匹配日期语义","照合する日付") to if(file.date_basis=="posted_date")word("实际入账日","実計上日")else word("发生日","利用日")))
-            YText(if(file.complete&&file.issues.isEmpty())word("标记完整区间，逐笔按账户币种核对。","完全期間と指定。口座通貨で1件ずつ照合。")else word("部分或有疑点资料，未匹配不直接等于漏记或多记。","部分資料・不明点があります。不一致は記録漏れや重複とは限りません。"),12)
+            if(!file.complete)YText(word("这份流水不完整。","この明細は一部のみです。"),12,color=LocalYohaku.current.warm)
             file.issues.forEach{YText(it,11,color=LocalYohaku.current.warm)}
-            if(overlaps.isNotEmpty())YText(word("与 ${overlaps.size} 个批次区间重叠。已占用资金端不会在其他批次再次匹配。","${overlaps.size} バッチと期間が重複。使用済みの資金側は他のバッチで再使用しません。"),12,color=LocalYohaku.current.warm)
+            if(overlaps.isNotEmpty())YText(word("与 ${overlaps.size} 份已导入流水的区间重叠。","取込済みの明細 ${overlaps.size} 件と期間が重なっています。"),12,color=LocalYohaku.current.warm)
         }
-        file.rows.forEach { row->
+        // Matched rows need nothing; keep them folded so the rows still to handle stand out.
+        val settled=file.rows.filter{row->p.result.exact.any{it.rowId==row.row_id}||p.decisions.any{it.active&&it.saved.rowId==row.row_id}}.toSet()
+        @Composable fun StatementRowView(row:StatementRow) {
             val exact=p.result.exact.firstOrNull{it.rowId==row.row_id}
             val manual=p.decisions.firstOrNull{it.saved.rowId==row.row_id}
             val line=LocalYohaku.current.line
@@ -76,11 +78,11 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
                 YText(row.date+" · "+(if(row.direction=="in")"+"else "−")+receiptCurrencyText(row.settlement.amount,row.settlement.currency),13,bold=true)
                 YText(row.summary,12)
                 val status=when {
-                    exact!=null->word("日期、实际金额与方向一致","日付・実金額・方向一致")
-                    manual?.active==true->word("已确认差异，非完全一致","差異確認済・完全一致ではない")
-                    manual!=null->word("原记账已变化，待重新核对","元記録が変わり、再照合待ち")
+                    exact!=null->word("已匹配","一致")
+                    manual?.active==true->word("已确认差异","差異確認済み")
+                    manual!=null->word("记账已改动，需重新核对","記録が変わったため再照合")
                     p.result.differences.any{it.rowId==row.row_id}->word("待确认差异","差異の確認待ち")
-                    else->word("仅流水存在，待核对","明細のみ・照合待ち")
+                    else->word("没有对应的记账","対応する記録なし")
                 }
                 YText(status,if(LocalYohaku.current.id=="journal")12 else 10,color=if(exact!=null)LocalYohaku.current.accent else LocalYohaku.current.warm,modifier=Modifier.fillMaxWidth().background(LocalYohaku.current.soft,RoundedCornerShape(4.dp)).padding(horizontal=7.dp,vertical=4.dp).testTag("statement-status-${row.row_id}"))
                 val postingId=exact?.postingId?:manual?.saved?.postingId
@@ -96,10 +98,14 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
                 row.source_ref?.let{YText(word("来源行：","元の行：")+it,10,color=LocalYohaku.current.muted)}
             }
         }
+        file.rows.filterNot{it in settled}.forEach{StatementRowView(it)}
+        if(settled.isNotEmpty()) {
+            RecurringProcessedHeader(word("已匹配","一致済み"),word("${settled.size} 笔","${settled.size} 件"),matchedOpen,"statement-matched-toggle"){matchedOpen=!matchedOpen}
+            if(matchedOpen)file.rows.filter{it in settled}.forEach{StatementRowView(it)}
+        }
         if(p.result.ledgerOnly.isNotEmpty()) {
-            ThemeSection(word("仅记账存在，先检查","記録のみ、まず確認"),"REVIEW")
+            ThemeSection(word("流水里没有的记账","明細にない記録"),"REVIEW")
             p.result.ledgerOnly.forEach{id->StatementPostingLink(s,id,onRecord)}
-            YText(word("可能是日期差异、多记或资料尚未覆盖，不自动删除。","日付違い・重複・資料未到着の可能性。自動削除しません。"),11,color=LocalYohaku.current.muted)
         }
         if(p.result.uncovered.isNotEmpty()) {
             ThemeSection(word("未覆盖 / 待核对","未確認・照合待ち"),"NOT COVERED")
@@ -126,7 +132,6 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
         } }
     }
     ThemeAuditPanel(word("转账，两端各核对一次","振替は両側を照合")) {
-        YText(word("仅导入一侧，另一侧保持未核对，不直接认定漏记。信用卡还款也不再次计入消费。","片側だけ取込なら、反対側は未照合のまま。記録漏れとは判定せず、カード返済も支出に重複計上しません。"),12)
         YLink(word("查看转账 / 还款两端关联","振替・返済の両側の関連を見る"),{showSides=true},Modifier.testTag("statement-sides"))
     }
     if(showSides)YSheet(word("同一交易，两端各核对","同じ取引の両側を照合"),{showSides=false}) {
@@ -150,10 +155,10 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
     val manual=projections.flatMap{it.decisions}.filter{it.active}.map{it.saved.postingId}.toSet()
     RecordFacts(postings.map { posting->
         val account=s.accounts.first{it.id==posting.accountId}
-        account.name to when {posting.id in exact->word("此侧已完全匹配","この側は完全一致");posting.id in manual->word("此侧已确认差异","この側は差異確認済み");else->word("此侧未核对，不直接认定漏记","この側は未照合・漏れとは判定しない")}
+        account.name to when {posting.id in exact->word("已匹配","一致");posting.id in manual->word("已确认差异","差異確認済み");else->word("未核对","未照合")}
     })
     s.repayments.find{it.eventId==event.id&&postings.none{p->p.accountId==it.debtAccountId}}?.let { r->
-        YText((s.accounts.find{it.id==r.debtAccountId}?.name.orEmpty())+" · "+word("清偿侧待确认，不推定已核对或漏记。","返済先側は未確定。照合済み・記録漏れとは判定しません。"),11,color=LocalYohaku.current.muted)
+        YText((s.accounts.find{it.id==r.debtAccountId}?.name.orEmpty())+" · "+word("未核对","未照合"),11,color=LocalYohaku.current.muted)
     }
 }
 

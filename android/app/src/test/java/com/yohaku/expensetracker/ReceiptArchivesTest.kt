@@ -62,10 +62,16 @@ class ReceiptArchivesTest {
         val adjustments = listOf(ReceiptAdjustment("tax", "120", true), ReceiptAdjustment("discount", "100", false), ReceiptAdjustment("shipping", "50", false))
         val totals = receiptTotals(record.copy(adjustments = adjustments), FileMoney("JPY", "1200"))
         assertEquals("1150", totals.knownTotal.toPlainString())
-        assertEquals("-50", totals.differenceFromOriginal!!.toPlainString())
+        // The printed total is what was paid; a computed total that misses it points at a misread line instead.
+        assertEquals(0, totals.differenceFromOriginal!!.signum())
+        assertEquals("-50", totals.differenceFromDeclared!!.toPlainString())
+        assertEquals("-50", receiptTotals(record.copy(adjustments = adjustments, receipt_total = null), FileMoney("JPY", "1200")).differenceFromOriginal!!.toPlainString())
         val unknown = receiptTotals(record.copy(items = record.items.map { it.copy(line_amount = null) }), FileMoney("JPY", "1200"))
         assertFalse(unknown.complete)
         assertEquals(0, unknown.knownItems.signum())
+        assertEquals(0, unknown.differenceFromOriginal!!.signum())
+        assertNull(unknown.differenceFromDeclared)
+        assertNull(receiptTotals(record.copy(items = record.items.map { it.copy(line_amount = null) }, receipt_total = null), FileMoney("JPY", "1200")).differenceFromOriginal)
         assertNull(receiptTotals(record, FileMoney("CNY", "12.00")).differenceFromOriginal)
     }
 }

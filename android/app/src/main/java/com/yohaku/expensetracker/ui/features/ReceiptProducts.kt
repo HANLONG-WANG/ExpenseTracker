@@ -31,7 +31,8 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
     val fraction=unsigned.substringAfter('.',"").padEnd(c.scale,'0')
     return (if(value.startsWith("-"))"−"else "")+c.symbol+whole+(if(fraction.isNotEmpty())".$fraction"else "")
 }
-@Composable internal fun ReceiptItemRows(record:ReceiptItemsRecord,knownSubtotal:java.math.BigDecimal) {
+/** [markUncertain] flags values the analysis was unsure of; only the review before saving shows it. */
+@Composable internal fun ReceiptItemRows(record:ReceiptItemsRecord,knownSubtotal:java.math.BigDecimal,markUncertain:Boolean=false) {
     val t=LocalYohaku.current
     val narrow=androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp<=360
     val quantityWidth=if(narrow)23.dp else 28.dp
@@ -49,16 +50,18 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
             YText(word("金额","金額"),if(t.id=="journal")10 else 8,Modifier.width(amountWidth),color=t.muted,textAlign=TextAlign.End)
         }
         record.items.forEach { item ->
+            fun unsure(field:String)=markUncertain&&field in item.uncertain_fields
+            fun shown(field:String,value:String)=if(unsure(field))"$value?"else value
+            fun tone(field:String)=if(unsure(field))t.warm else t.ink
             Row(Modifier.fillMaxWidth().drawBehind{drawLine(rowColor,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(t.id=="objects")PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)}.padding(vertical=13.dp),horizontalArrangement=Arrangement.spacedBy(gap),verticalAlignment=androidx.compose.ui.Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    YText(item.name?:word("名称待补","名称未入力"),if(t.id=="journal")if(narrow)12 else 13 else if(t.id=="objects")10 else 11,weight=if(t.id=="journal")FontWeight.Normal else FontWeight.Medium,lineHeightMultiplier=1.7f)
-                    item.unit?.let{YText(word("单位：","単位：")+it,if(t.id=="journal")10 else 8,color=t.muted)}
-                    if(item.uncertain_fields.isNotEmpty())YText(word("不确定：","不確か：")+item.uncertain_fields.joinToString(", "),10,color=t.warm)
+                    YText(item.name?.let{shown("name",it)}?:word("名称待补","名称未入力"),if(t.id=="journal")if(narrow)12 else 13 else if(t.id=="objects")10 else 11,color=if(item.name!=null)tone("name")else t.ink,weight=if(t.id=="journal")FontWeight.Normal else FontWeight.Medium,lineHeightMultiplier=1.7f)
+                    item.unit?.let{YText(word("单位：","単位：")+shown("unit",it),if(t.id=="journal")10 else 8,color=if(unsure("unit"))t.warm else t.muted)}
                     item.note?.let{YText(it,10,color=t.muted)}
                 }
-                YText(item.quantity?:"—",numberSize,Modifier.width(quantityWidth),number=true,textAlign=TextAlign.End,lineHeightMultiplier=1.7f)
-                YText(item.unit_price?.let{receiptCurrencyText(it,record.currency)}?:"—",numberSize,Modifier.width(priceWidth),number=true,textAlign=TextAlign.End,lineHeightMultiplier=1.7f)
-                YText(item.line_amount?.let{receiptCurrencyText(it,record.currency)}?:"—",numberSize,Modifier.width(amountWidth),number=true,textAlign=TextAlign.End,lineHeightMultiplier=1.7f)
+                YText(item.quantity?.let{shown("quantity",it)}?:"—",numberSize,Modifier.width(quantityWidth),color=if(item.quantity!=null)tone("quantity")else t.ink,number=true,textAlign=TextAlign.End,lineHeightMultiplier=1.7f)
+                YText(item.unit_price?.let{shown("unit_price",receiptCurrencyText(it,record.currency))}?:"—",numberSize,Modifier.width(priceWidth),color=if(item.unit_price!=null)tone("unit_price")else t.ink,number=true,textAlign=TextAlign.End,lineHeightMultiplier=1.7f)
+                YText(item.line_amount?.let{shown("line_amount",receiptCurrencyText(it,record.currency))}?:"—",numberSize,Modifier.width(amountWidth),color=if(item.line_amount!=null)tone("line_amount")else t.ink,number=true,textAlign=TextAlign.End,lineHeightMultiplier=1.7f)
             }
         }
         if(record.items.isEmpty())YText(word("尚无商品行","商品行はありません"),12,color=t.muted)
@@ -83,14 +86,9 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
     }
     if(record.adjustments.any{!it.included_in_items})ReceiptTotalRow(word("已知合计","既知合計"),receiptCurrencyText(totals.knownTotal.toPlainString(),record.currency))
     ReceiptTotalRow(word("票面合计","レシート合計"),totals.declaredTotal?.let{receiptCurrencyText(it.toPlainString(),record.currency)}?:word("未知","不明"))
-    if(!totals.complete)YText(word("明细不完整，未知金额未纳入小计。","明細は未完了です。不明額は小計に含みません。"),11,color=LocalYohaku.current.warm)
-    val difference=totals.differenceFromOriginal
-    YText(when {
-        difference==null->word("商品币种与当前原记账不同，不直接比较金额。","商品と現在の元記録の通貨が異なるため、金額は直接比較しません。")
-        difference.signum()==0->word("商品合计与原消费金额一致","商品合計と元の支出額が一致")
-        else->word("已知合计与原消费相差 ","既知合計と元の支出の差額 ")+receiptCurrencyText(difference.toPlainString(),record.currency)+word("。保存明细不修改记账金额。","。記録額は変更しません。")
-    },12,color=if(difference?.signum()==0)LocalYohaku.current.accent else LocalYohaku.current.warm)
-    totals.differenceFromDeclared?.takeIf{it.signum()!=0}?.let{YText(word("与票面合计差额：","レシート合計との差額：")+receiptCurrencyText(it.toPlainString(),record.currency),11,color=LocalYohaku.current.warm)}
+    // Only real gaps are worth a line; unknown amounts already read as "—" in the rows above.
+    totals.differenceFromOriginal?.takeIf{it.signum()!=0}?.let{YText(word("与记账金额相差 ","記録額との差 ")+receiptCurrencyText(it.toPlainString(),record.currency),12,color=LocalYohaku.current.warm)}
+    totals.differenceFromDeclared?.takeIf{it.signum()!=0}?.let{YText(word("商品合计与票面合计相差 ","商品合計とレシート合計の差 ")+receiptCurrencyText(it.toPlainString(),record.currency),11,color=LocalYohaku.current.warm)}
     record.issues.forEach{YText(it,11,color=LocalYohaku.current.warm)}
 }
 

@@ -65,8 +65,7 @@ import com.yohaku.expensetracker.ui.haptics.*
     LaunchedEffect(preview,confirming){if(confirming&&(needsStale||needsReplacement)||!confirming&&differs){resultHaptic(Haptic.Warning)}}
     if(confirming&&(needsStale||needsReplacement)) {
         YSheet(if(needsReplacement)word("确认替换已有商品明细","既存の商品明細を置換")else word("确认使用旧修订结果","旧リビジョンの結果を確認"),{if(!busy)confirming=false}) {
-            YText(word("只替换已预览的商品明细。原记账金额、分类和小票图片保持原样。","確認した商品明細のみ置換。記録額・カテゴリ・画像は保持。"),12,color=LocalYohaku.current.muted)
-            if(needsStale)YText(word("导出后原记录或小票已变化。确认即表示已检查旧修订；新增未覆盖图片仍待整理。","出力後に元記録・レシートが変わっています。確定は旧リビジョンを確認したことを意味し、追加された未処理画像は未整理のままです。"),12,color=LocalYohaku.current.warm)
+            if(needsStale)YText(word("上传后这笔记账或小票有改动，仍要按这份结果保存吗？","送信後に記録かレシートが変わっています。この結果で保存しますか？"),12,color=LocalYohaku.current.warm)
             YButton(if(needsReplacement)word("替换并保存","置換して保存")else word("确认保存旧修订结果","旧リビジョンの結果を保存"),{onSave(needsStale,needsReplacement)},Modifier.fillMaxWidth().testTag("receipt-confirm-replacement"),primary=true,enabled=!busy)
             YActionRow {
                 YButton(word("取消，重新选择","取消・選び直す"),onReselect,Modifier.testTag("receipt-cancel-replacement"),enabled=!busy)
@@ -76,25 +75,18 @@ import com.yohaku.expensetracker.ui.haptics.*
         return
     }
     YSheet(word("确认商品明细","商品明細を確認"),onClose) {
-        ReceiptHandoffSummary("RECEIPT ITEMS / REVIEW",word("${preview.targets.size} 笔可关联记账","${preview.targets.size} 件の対応記録"),word("预览后确认，不会生成新的消费。","確認してから保存。新しい支出は作りません。"))
-        val unknown=remember(preview.originalJson){unknownFileFields(preview.originalJson,ReceiptItemsFile.serializer().descriptor)}
-        if(unknown.isNotEmpty()) {
-            YText(word("以下扩展字段将忽略，不产生业务效果：","次の拡張項目は無視され、処理に影響しません："),11,color=LocalYohaku.current.warm)
-            unknown.forEach{YText(it,10,color=LocalYohaku.current.muted)}
-        }
+        ReceiptHandoffSummary("RECEIPT ITEMS / REVIEW",word("${preview.targets.size} 笔记账","${preview.targets.size} 件の記録"),"")
         preview.targets.forEach { target-> ReceiptPaper {
             val event=s.visibleEvents.firstOrNull{it.id==target.record.record_id}
             YText(event?.merchant?.ifBlank{null}?:target.record.record_id,when(LocalYohaku.current.id){"journal"->23;"objects"->18;else->19})
-            YText(word("已找到原记账","元の記録あり"),10,color=LocalYohaku.current.accent)
             YText(event?.let{it.date+" · "+Money(Currency.valueOf(it.currency),it.amountMinor).display()}.orEmpty(),9,color=LocalYohaku.current.muted)
-            ReceiptItemRows(target.record,target.totals.knownItems)
+            ReceiptItemRows(target.record,target.totals.knownItems,markUncertain=true)
             ReceiptTotalLines(target.record,target.totals)
-            if(target.staleExport)YText(word("导出后原记录或小票已变化；请核对旧修订。","出力後に元記録・レシートが変わっています。旧リビジョンを確認してください。"),12,color=LocalYohaku.current.warm)
+            if(target.staleExport)YText(word("上传后这笔记账或小票有改动。","送信後にこの記録かレシートが変わっています。"),12,color=LocalYohaku.current.warm)
             if(target.addedImageIds.isNotEmpty())YText(word("另有 ${target.addedImageIds.size} 张图片未覆盖，保存后仍待整理。","ほかに ${target.addedImageIds.size} 枚の未処理画像があり、保存後も未整理です。"),11,color=LocalYohaku.current.warm)
-            if(target.existingItemsRevision!=null)YText(word("已有商品：保存将替换，不重复追加。","明細あり：保存時に置換し、重複追加しません。"),11)
+            if(target.existingItemsRevision!=null)YText(word("将替换已有的商品明细。","既存の商品明細を置き換えます。"),11)
         } }
         YButton(word("确认保存商品明细","商品明細の保存を確認"),{if(needsStale||needsReplacement)confirming=true else onSave(false,false)},Modifier.fillMaxWidth().testTag("receipt-confirm-import"),primary=true,enabled=!busy)
         YButton(word("重新选择文件","別のファイルを選択"),onReselect,Modifier.fillMaxWidth(),enabled=!busy)
-        YText(word("保存不修改原记账金额。未知价格、数量和行金额保留待补。","元記録の金額は変更しません。不明な価格・数量・行金額は未入力のまま保持します。"),11,color=LocalYohaku.current.muted)
     }
 }

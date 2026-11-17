@@ -31,6 +31,20 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipFile
 
+/**
+ * Free-text rules for converted files. The app already shows amounts, differences and unknown values, so the assistant
+ * only adds what the user cannot see on the page; restated rules and disclaimers would surface as warnings.
+ */
+internal const val STATEMENT_TASK_RULES="""- 日期：银行账户用流水上的入账日（date_basis=posted_date）；信用卡用明细上列出的日期，通常是利用日（occurred_date）。收支方向按金额栏（支出/入金、正负号）判断。按资料格式判断即可，只有资料本身确实看不出时才要求补充。
+- complete 表示资料是否覆盖 from–to 的全部交易。
+- issues 只写看了页面也看不出、需要用户处理的具体问题（例如某行看不清、缺页），每条一句并指明哪一行；没有就留空数组。不要写规则说明或免责声明，不要写“无法核对/无法验证”类的话；匹配和差额由手机计算。
+- 分析说明一两句话：结果和需要用户看的点。"""
+internal const val RECEIPT_TASK_RULES="""- 看不清的名称、数量、单价、金额留空（null），不要猜。uncertain_fields 只列填了值但不确定的字段，留空的字段不要列。
+- complete 只表示票面上的商品是否都已列出，与日期、店名无关。
+- issues 只写看了页面也看不出、需要用户处理的问题：某行可能读错、票面数字互相对不上、图片缺了一部分可能漏掉商品。每条一句并指明哪一行；没有就留空数组。
+- 不要核对日期和店名；不要写与原记录的金额差（手机会计算并显示）；不要解释某个字段为什么未知；不要写“未修改原交易”之类的说明。
+- 分析说明一两句话：整理结果和需要用户看的点。"""
+
 internal class CloudBlockedException(message:String):IllegalStateException(message)
 // Reserve even optional generated names, so a user source cannot masquerade as a monthly summary.
 private val commandGeneratedNames=setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-command-plan-v1.schema.json","yohaku-ledger-context-v1.json","yohaku-records-v1.json","yohaku-monthly-review-v1.json")
@@ -196,7 +210,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     }
     suspend fun prepareStatementTask(bookId:String,accountId:String,sources:List<Uri>,title:String,note:String):String {
         val account=ledger.dao.account(bookId,accountId) ?: error("账户不存在 / 口座がありません")
-        val instructions="目标账户：${account.id}，名称：${account.name}，币种：${account.currency}。仅返回该账户的一份 yohaku.statement v1。入账日或发生日不明确时必须记入 issues，不得猜测。\n$note"
+        val instructions="目标账户：${account.id}，名称：${account.name}，币种：${account.currency}。仅返回该账户的一份 yohaku.statement v1。\n$STATEMENT_TASK_RULES\n$note"
         return prepare(bookId,"statement",title,instructions,accountId=accountId,taskContext=buildJsonObject {
             put("book_id",bookId); put("account_id",accountId); put("account_currency",account.currency)
         }) { localId,directory ->
@@ -244,7 +258,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     }
     suspend fun prepareReceiptTask(bookId:String,receiptIds:Set<String>,title:String,note:String):String {
         val bundleId=id()
-        val instructions="返回一份 yohaku.receipt-items v1，原样复制 bundle_id、book_id、record_id、receipt_id、record_revision、receipt_revision 和图片ID，不得猜测。\n$note"
+        val instructions="返回一份 yohaku.receipt-items v1，原样复制 bundle_id、book_id、record_id、receipt_id、record_revision、receipt_revision 和图片ID。\n$RECEIPT_TASK_RULES\n$note"
         val localId=prepare(bookId,"receipt",title,instructions,bundleId=bundleId,taskContext=buildJsonObject {
             put("book_id",bookId); put("bundle_id",bundleId)
         }) { operation,directory ->
