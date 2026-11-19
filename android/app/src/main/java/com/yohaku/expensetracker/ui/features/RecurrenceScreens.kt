@@ -95,12 +95,14 @@ import java.time.YearMonth
     more?.let{id->values.find{it.id==id}?.let{o->
         val inlineConfirm=o.id in pending&&(!current||o.scheduledDate<=today.plusDays(7).toString())
         YSheet(o.name,{more=null}) {
-            if(o.id in pending) {
-                if(!inlineConfirm)YButton(word("确认付款","支払を確認"),{more=null;onConfirm(o)},Modifier.testTag("confirm-occurrence-$id"),enabled=!busy,primary=true)
-                YButton(word("关联已有支出","既存の支出に関連付け"),{more=null;linking=id},Modifier.testTag("link-occurrence-$id"),enabled=!busy)
-                YButton(word("取消这次待办","この予定を取消"),{more=null;vm.execute{vm.repository.cancelOccurrence(s.book.id,id);vm.haptic(Haptic.Removed)}},Modifier.testTag("cancel-occurrence-$id"),enabled=!busy)
+            YActionRow {
+                if(o.id in pending) {
+                    if(!inlineConfirm)YButton(word("确认付款","支払を確認"),{more=null;onConfirm(o)},Modifier.testTag("confirm-occurrence-$id"),enabled=!busy,primary=true,compact=true)
+                    YButton(word("关联已有支出","既存の支出に関連付け"),{more=null;linking=id},Modifier.testTag("link-occurrence-$id"),enabled=!busy)
+                    YButton(word("取消这次待办","この予定を取消"),{more=null;vm.execute{vm.repository.cancelOccurrence(s.book.id,id);vm.haptic(Haptic.Removed)}},Modifier.testTag("cancel-occurrence-$id"),enabled=!busy)
+                }
+                YButton(word("编辑规则","ルールを編集"),{more=null;editor=o.recurrenceId},Modifier.testTag("edit-occurrence-$id"),enabled=!busy)
             }
-            YButton(word("编辑规则","ルールを編集"),{more=null;editor=o.recurrenceId},Modifier.testTag("edit-occurrence-$id"),enabled=!busy)
         }
     }}
     ThemeSection(word("周期规则","定期ルール"),"SCHEDULE RULES")
@@ -145,10 +147,10 @@ import java.time.YearMonth
     var date by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.anchorDate?:java.time.LocalDate.now(vm.repository.clock).toString())}
     var endEnabled by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.endDate!=null)}
     var end by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.endDate?:date)}
-    var estimated by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.estimated?:true)}
+    var estimated by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.estimated?:false)}
     var active by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.active?:true)}
     var activity by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.activityId)}
-    var fixed by remember(original?.id){mutableStateOf(EntryDraft(merchant=original?.merchant.orEmpty(),merchantId=original?.merchantId,merchantBaseline=original?.let{MerchantBaseline(it.merchant,it.merchantId)},note=original?.note.orEmpty(),cardPaymentChoice=original?.cardPaymentChoice,cardPaymentPeriods=original?.cardPaymentPeriods?.toString().orEmpty()))}
+    var fixed by remember(original?.id){mutableStateOf(EntryDraft(merchant=original?.merchant.orEmpty(),merchantId=original?.merchantId,merchantBaseline=original?.let{MerchantBaseline(it.merchant,it.merchantId)},note=original?.note.orEmpty(),cardPaymentChoice=original?.cardPaymentChoice?:if(original==null)defaultFixedPayment(accounts.firstOrNull())else null,cardPaymentPeriods=original?.cardPaymentPeriods?.toString().orEmpty()))}
     LaunchedEffect(original?.merchant,original?.merchantId,s.merchants){if(original!=null)fixed=fixed.syncMerchantFields(MerchantBaseline(original.merchant,original.merchantId),s.merchants).clearMissingMerchant(s.merchants)}
     var owner by remember{mutableStateOf<YDateSelection?>(null)}
     val account=accounts.find{it.id==accountId}
@@ -161,7 +163,7 @@ import java.time.YearMonth
             YDateFields(listOf(YDateField("date",word("首次安排日期","最初の予定日"),date))+if(endEnabled)listOf(YDateField("end",word("结束日期","終了日"),end))else emptyList(),owner,{owner=it},{index,value->if(index=="date")date=value else end=value})
             YSelect(word("频率","頻度"),frequency,listOf(RecurrenceFrequency.MONTHLY,RecurrenceFrequency.WEEKLY,RecurrenceFrequency.YEARLY).map{it.name to frequencyName(it)},{frequency=it})
             YSelect(word("付款账户","支払口座"),accountId,accounts.map{it.id as String? to it.name},{id->
-                val next=accounts.first{it.id==id};if(next.currency!=account?.currency){amount="";base="";estimated=true};accountId=id;fixed=fixed.clearCardPayment()
+                val next=accounts.first{it.id==id};if(next.currency!=account?.currency){amount="";base="";estimated=false};accountId=id;fixed=fixed.clearCardPayment().copy(cardPaymentChoice=defaultFixedPayment(next))
             },columns=2)
             CategorySelectField(word("分类","カテゴリ"),s.categories,categories,categoryId,{categoryId=it})
             EntryMerchantInput(s,fixed){fixed=it}
@@ -241,3 +243,5 @@ import java.time.YearMonth
         YLink(word("修改后再记","編集して記録"),onEdit,Modifier.testTag("occurrence-confirm-edit"))
     }
 }
+/** 新建周期账单与换卡时默认一次付；非信用卡没有付款方式。 */
+private fun defaultFixedPayment(account:AccountEntity?)=if(account?.type==AccountType.CREDIT.name)CardPaymentChoice.SINGLE.name else null

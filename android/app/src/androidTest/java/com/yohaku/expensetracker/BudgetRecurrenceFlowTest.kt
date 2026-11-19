@@ -455,6 +455,7 @@ class BudgetRecurrenceFlowTest {
             tap(text("保存周期规则","定期ルールを保存"))
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.recurrences?.size==1&&!vm.busy.value}
             val planned=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            assertFalse(planned.recurrences.single().estimated)
             assertEquals(1,planned.visibleEvents.size)
             assertEquals(60000L,planned.budgetProjection("2026-10").availableMinor)
             val occurrence=planned.pendingOccurrences().single()
@@ -481,6 +482,8 @@ class BudgetRecurrenceFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.occurrences?.any{it.scheduledDate.startsWith("2026-11")}==true&&!vm.busy.value}
             val nextOccurrence=(vm.state.value as AppState.Ready).snapshot!!.occurrences.single{it.scheduledDate=="2026-11-14"}
             ui.occurrenceMenu(nextOccurrence.id)
+            sheetTarget(ui.onNodeWithTag("link-occurrence-${nextOccurrence.id}"))
+            shot("$theme-$language-recurring-more",true)
             tap(text("关联已有支出","既存の支出に関連付け"))
             ui.onNodeWithTag("occurrence-link-context").assertExists()
             ui.onNodeWithTag("occurrence-link-context").assert(hasAnyDescendant(hasText("2026-11-14")))
