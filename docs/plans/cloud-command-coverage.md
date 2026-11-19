@@ -2,7 +2,7 @@
 
 审计日期：2026-11-03。基线：阶段7 `5216585`。状态：阶段8已验收（2026-11-03 本机编译与设备测试）。
 
-2026-11-09 全量审计基线为 **245 条写入路径**：命令 **113**、永久边界 **40**、内部编排 **92**；商户函数拆分后的现行映射见下方商户补充，旧计数不作为重构后的函数总数。注册表为 **90 个命令**；触感反馈增量登记 `AppPreferences.setHapticsEnabled` 与 `AppViewModel.setHapticsEnabled` 两条路径，对应同一 `preferences.haptics` 命令。扫描阶段 4 增量登记 `AppPreferences.setScanAutoCapture` 与 `setScanAutoProcess`，分别对应两个扫描偏好命令。`cloud.task.discard` 与本机 `merchant.delete` 永久边界不变（forbidden 共59项）。未发现未下沉的UI DAO写入。
+2026-11-09 全量审计基线加上 2026-11-19 的本机扫描倍率，共 **246 条写入路径**：命令 **113**、永久边界 **40**、内部编排 **93**；商户函数拆分后的现行映射见下方商户补充，旧计数不作为重构后的函数总数。注册表为 **90 个命令**；触感反馈增量登记 `AppPreferences.setHapticsEnabled` 与 `AppViewModel.setHapticsEnabled` 两条路径，对应同一 `preferences.haptics` 命令。扫描阶段 4 增量登记 `AppPreferences.setScanAutoCapture` 与 `setScanAutoProcess`，分别对应两个扫描偏好命令。`cloud.task.discard` 与本机 `merchant.delete` 永久边界不变（forbidden 共59项）。未发现未下沉的UI DAO写入。
 
 2026-11-09 扫描阶段 4：两个扫描偏好的命令读写、展示、撤销/恢复、协议/schema 和能力快照已接入；与触感偏好一样沿用 DataStore 原值校验和原子效果凭据。设备执行与扫描视觉验收待用户运行。
 
@@ -181,6 +181,7 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 | [AppPreferences.kt:23](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L23) `setPhotoSaveOriginal` | 命令 → preferences.photoStorage | post-commit；权限引导需要手机操作，不能由助手授权。 |
 | [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setScanAutoCapture` | 命令 → preferences.scanAutoCapture | enabled 必填；全账本共用，默认 false；post-commit 原值比较、原子凭据、撤销/恢复；不打开相机或授予权限。 |
 | [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setScanAutoProcess` | 命令 → preferences.scanAutoProcess | enabled 必填；全账本共用，默认 true；关闭时相机原图照常走保存优化，显式「处理这张」仍进入确认页；不改写已保存图片。 |
+| [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setScanZoom2x` | 内部 → 内部编排 | 取景倍率取决于本机后置相机能力，仅在此设备保存；完整备份和云端命令均不携带，恢复备份时沿用本机选择。 |
 | [AppPreferences.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt) `setHapticsEnabled` | 命令 → preferences.haptics | enabled 必填；本机全账本共用，默认 true；post-commit 原值比较、效果凭据和撤销同照片偏好，无权限引导。 |
 | [AppPreferences.kt:28](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L28) `setAutomaticReferenceRates` | 命令 → preferences.automaticRates | post-commit；权限引导需要手机操作，不能由助手授权。 |
 | [AppPreferences.kt:36](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AppPreferences.kt#L36) `saveReminderSettings` | 命令 → preferences.reminders | post-commit；权限引导需要手机操作，不能由助手授权。 |

@@ -30,6 +30,9 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
     private val scanAutoProcessKey=booleanPreferencesKey("scan_auto_process")
     val scanAutoProcess=storage.data.map{it[scanAutoProcessKey]?:true}.distinctUntilChanged()
     suspend fun setScanAutoProcess(value:Boolean){storage.edit{it[scanAutoProcessKey]=value}}
+    private val scanZoom2xKey = booleanPreferencesKey("scan_zoom_2x")
+    val scanZoom2x = storage.data.map { it[scanZoom2xKey] ?: false }.distinctUntilChanged()
+    suspend fun setScanZoom2x(value: Boolean) { storage.edit { it[scanZoom2xKey] = value } }
     private val rateCache = stringPreferencesKey("reference_rates_v2_ecb")
     private val automaticRates = booleanPreferencesKey("automatic_reference_rates")
     override val automaticReferenceRates=storage.data.map{it[automaticRates]?:true}
@@ -134,7 +137,9 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
     suspend fun restoreBackup(value:com.yohaku.expensetracker.data.backup.BackupPreferences) {
         value.validate()
         storage.edit { p ->
+            val localZoom = p[scanZoom2xKey]
             p.clear()
+            localZoom?.let { p[scanZoom2xKey] = it }
             p[commandReceipts]=value.commandEffectReceipts
             p[automaticRates]=value.automaticReferenceRates
             p[photoOriginalKey]=value.photoSaveOriginal

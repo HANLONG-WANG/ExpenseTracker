@@ -48,7 +48,9 @@ class ScanCapturePolicyTest {
         assertTrue(smooth.stable)
         assertEquals(outline[0].x + .005 * ScanThresholds.SMOOTH_ALPHA, smooth.points[0].x, 1e-9)
         val moving = jitter.map { it.copy(x=it.x+.03) }
-        assertFalse(smoother.update(moving).stable)
+        val followed = smoother.update(moving)
+        assertFalse(followed.stable)
+        assertEquals(moving, followed.points) // Real motion is followed immediately, not eased in.
         val jumped = outline.map { it.copy(x=it.x+.2) }
         assertEquals(jumped, smoother.update(jumped).points)
         assertTrue(smoother.update(emptyList()).points.isEmpty())

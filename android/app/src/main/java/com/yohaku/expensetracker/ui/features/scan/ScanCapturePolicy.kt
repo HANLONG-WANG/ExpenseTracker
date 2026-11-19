@@ -10,7 +10,9 @@ internal object ScanThresholds {
     const val MAX_FRAME_GAP_MS = 1500L
     const val STABLE_DISTANCE = .012
     const val JUMP_DISTANCE = .09
-    const val SMOOTH_ALPHA = .45
+    const val SMOOTH_ALPHA = .45 // Used only while the lag is within detection noise.
+    const val SMOOTH_NOISE = .006
+    const val FOLLOW_DISTANCE = .03 // Lag at or above this follows the new contour immediately.
     const val MIN_AREA = .16
     const val MAX_AREA = .78
     const val CENTER_X = .16
@@ -35,9 +37,12 @@ internal class ContourSmoother {
         if (points.isEmpty()) { reset(); return SmoothedContour(emptyList(), false) }
         val displacement = if (previous.size != points.size) Double.POSITIVE_INFINITY else
             points.indices.maxOf { hypot(points[it].x - previous[it].x, points[it].y - previous[it].y) }
-        displayed = if (displacement > ScanThresholds.JUMP_DISTANCE) points.toList() else points.indices.map { i ->
-            val a = ScanThresholds.SMOOTH_ALPHA
-            ScanPoint(displayed[i].x * (1 - a) + points[i].x * a, displayed[i].y * (1 - a) + points[i].y * a)
+        displayed = if (displacement > ScanThresholds.JUMP_DISTANCE) points.toList() else {
+            // Adaptive: smooth noise-sized lag, follow real motion without an exponential tail.
+            val lag = points.indices.maxOf { hypot(points[it].x - displayed[it].x, points[it].y - displayed[it].y) }
+            val follow = ((lag - ScanThresholds.SMOOTH_NOISE) / (ScanThresholds.FOLLOW_DISTANCE - ScanThresholds.SMOOTH_NOISE)).coerceIn(0.0, 1.0)
+            val a = ScanThresholds.SMOOTH_ALPHA + (1 - ScanThresholds.SMOOTH_ALPHA) * follow
+            points.indices.map { i -> ScanPoint(displayed[i].x * (1 - a) + points[i].x * a, displayed[i].y * (1 - a) + points[i].y * a) }
         }
         previous = points.toList()
         return SmoothedContour(displayed, displacement < ScanThresholds.STABLE_DISTANCE)

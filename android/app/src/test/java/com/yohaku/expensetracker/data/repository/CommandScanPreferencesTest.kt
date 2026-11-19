@@ -43,6 +43,17 @@ class CommandScanPreferencesTest {
         assertFalse(prefs.scanAutoCapture.first()); assertTrue(prefs.scanAutoProcess.first())
     }
 
+    @Test fun zoomStaysOnTheDeviceAcrossBackupRestore() = runBlocking {
+        val prefs = AppPreferences(ContextWrapper(null), MemoryStore())
+        val backup = prefs.backup()
+        assertFalse(prefs.scanZoom2x.first())
+        prefs.setScanZoom2x(true)
+        assertFalse("scanZoom2x" in prefs.commandValues("book"))
+        assertFalse("scanZoom2x" in commandJson.encodeToJsonElement(prefs.backup()).jsonObject)
+        prefs.restoreBackup(backup)
+        assertTrue(prefs.scanZoom2x.first())
+    }
+
     @Test fun commandsRequireBooleanAndFoldUndoToOriginalValue() {
         val registry = CommandRegistry()
         for (key in listOf("scanAutoCapture", "scanAutoProcess")) {

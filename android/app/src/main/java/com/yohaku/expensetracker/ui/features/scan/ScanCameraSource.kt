@@ -13,6 +13,7 @@ import androidx.camera.view.transform.CoordinateTransform
 import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import com.yohaku.expensetracker.BuildConfig
@@ -35,7 +36,8 @@ internal data class ScanCameraFrame(
 )
 internal enum class CameraIssue { NO_CAMERA, FAILED }
 internal interface ScanCameraListener {
-    fun ready(hasTorch: Boolean)
+    fun ready(hasTorch: Boolean, zoom2xAvailable: Boolean)
+    fun idle()
     fun frame(frame: ScanCameraFrame)
     fun failed(issue: CameraIssue, cause: Exception? = null)
 }
@@ -48,6 +50,7 @@ internal interface ScanCameraSource : AutoCloseable {
     fun start(owner: LifecycleOwner, listener: ScanCameraListener)
     fun capture(file: File, result: (Result<Unit>) -> Unit)
     fun torch(enabled: Boolean)
+    fun setZoomRatio(ratio: Float, onApplied: () -> Unit)
 }
 
 /** Created/used/closed only on the source's analysis executor; shared with static-frame tests. */
@@ -55,6 +58,7 @@ internal class ScanFrameProcessor(context: Context) : AutoCloseable {
     private val scanner = ReceiptScanner(context)
     private val smoother = ContourSmoother()
     private var lastFrame = 0L
+    fun resetContour() = smoother.reset()
     fun analyze(bgr: Mat, timestampMs: Long): Pair<ScanPreview, SmoothedContour> {
         if (timestampMs - lastFrame > ScanThresholds.MAX_FRAME_GAP_MS) smoother.reset()
         lastFrame = timestampMs
@@ -83,6 +87,21 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
     private var capture: ImageCapture? = null
     private var camera: Camera? = null
     private var listener: ScanCameraListener? = null
+    private lateinit var lifecycle: Lifecycle
+    @Volatile private var zoomGeneration = 0 // Main thread writes, analyzer and delivery both check.
+    private val streamObserver = Observer<PreviewView.StreamState> { state ->
+        if (state == PreviewView.StreamState.STREAMING) {
+            val info = checkNotNull(camera).cameraInfo
+            val supports2x = (info.zoomState.value?.maxZoomRatio ?: 1f) >= 2f
+            val generation = zoomGeneration
+            listener?.ready(info.hasFlashUnit(), supports2x)
+            // A zoom requested by ready() starts its analyzer when the ratio takes effect.
+            if (generation == zoomGeneration) startAnalysis(generation)
+        } else {
+            zoomGeneration++
+            listener?.idle()
+        }
+    }
     private var lastDelivered = 0L
     private val frameFailures = ScanFrameFailures { count, error ->
         Log.w("ScanCamera", "Dropped analysis frame; total failures=$count", error)
@@ -95,6 +114,7 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
 
     override fun start(owner: LifecycleOwner, listener: ScanCameraListener) {
         this.listener = listener
+        lifecycle = owner.lifecycle
         view.doOnLayout {
             val future = ProcessCameraProvider.getInstance(context)
             future.addListener({
@@ -122,18 +142,23 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
                     val group = UseCaseGroup.Builder().setViewPort(checkNotNull(view.viewPort))
                         .addUseCase(pv).addUseCase(a).addUseCase(shot).build()
                     camera = p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, group)
-                    a.setAnalyzer(worker, ::analyze)
-                    listener.ready(checkNotNull(camera).cameraInfo.hasFlashUnit())
+                    // The PreviewView metering factory is valid once its preview is streaming.
+                    // Observe IDLE even when the lifecycle stops and CameraX resets its controls.
+                    view.previewStreamState.observeForever(streamObserver)
                     checkNotNull(camera).cameraInfo.cameraState.observe(owner, cameraStateObserver)
                 } catch (e: Exception) { fail(e) }
             }, main)
         }
     }
 
-    private fun analyze(image: ImageProxy) {
+    private fun startAnalysis(generation: Int) {
+        analysis?.setAnalyzer(worker) { image -> analyze(image, generation) }
+    }
+
+    private fun analyze(image: ImageProxy, generation: Int) {
         val began = SystemClock.elapsedRealtime()
         try {
-            if (closed.get()) return
+            if (closed.get() || generation != zoomGeneration) return
             frameFailures.dropping(began) {
                 val engine = processor ?: ScanFrameProcessor(context).also { processor = it }
                 val bgr = rgbaToUpright(image)
@@ -144,7 +169,7 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
                     // Integer OpenCV pixel centers -> CameraX edge coordinates (+0.5), as ReceiptBench.
                     val points = smooth.points.flatMap { listOf((it.x * bgr.cols() + .5).toFloat(), (it.y * bgr.rows() + .5).toFloat()) }.toFloatArray()
                     main.execute {
-                        if (!closed.get()) frameFailures.dropping(SystemClock.elapsedRealtime()) {
+                        if (!closed.get() && generation == zoomGeneration) frameFailures.dropping(SystemClock.elapsedRealtime()) {
                             val target = view.outputTransform
                             if (target != null) {
                                 CoordinateTransform(source, target).mapPoints(points)
@@ -163,6 +188,8 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
 
     private fun fail(e: Exception) {
         Log.e("ScanCamera", "Camera failed", e)
+        zoomGeneration++
+        view.previewStreamState.removeObserver(streamObserver)
         analysis?.clearAnalyzer()
         listener?.failed(CameraIssue.FAILED, e)
     }
@@ -181,9 +208,36 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
         val future = camera?.cameraControl?.enableTorch(enabled) ?: return
         future.addListener({ try { future.get() } catch (e: Exception) { if (!closed.get()) fail(e) } }, main)
     }
+    private fun currentZoom(generation: Int) = !closed.get() && generation == zoomGeneration &&
+        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+
+    override fun setZoomRatio(ratio: Float, onApplied: () -> Unit) {
+        val control = checkNotNull(camera).cameraControl
+        val generation = ++zoomGeneration
+        analysis?.clearAnalyzer() // Also discard CameraX's cached KEEP_ONLY_LATEST image.
+        worker.execute { processor?.resetContour() }
+        val zoom = control.setZoomRatio(ratio)
+        zoom.addListener({
+            if (!currentZoom(generation)) return@addListener
+            try {
+                zoom.get()
+                val center = view.meteringPointFactory.createPoint(view.width / 2f, view.height / 2f)
+                val focus = control.startFocusAndMetering(FocusMeteringAction.Builder(center).build())
+                focus.addListener({
+                    if (currentZoom(generation)) {
+                        // Best effort: the camera keeps its continuous AF when this one-shot focus fails.
+                        try { focus.get() } catch (e: Exception) { Log.w("ScanCamera", "Center focus after zoom failed", e) }
+                    }
+                }, main)
+                startAnalysis(generation)
+                onApplied()
+            } catch (e: Exception) { fail(e) }
+        }, main)
+    }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         analysis?.clearAnalyzer()
+        view.previewStreamState.removeObserver(streamObserver)
         camera?.cameraInfo?.cameraState?.removeObserver(cameraStateObserver)
         camera?.cameraControl?.enableTorch(false)
         val cases = listOfNotNull(analysis, preview, capture).toTypedArray()

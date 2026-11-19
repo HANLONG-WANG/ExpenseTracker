@@ -13,6 +13,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.*
@@ -42,6 +44,7 @@ import com.yohaku.expensetracker.data.repository.AppPreferences
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -129,13 +132,16 @@ private fun Context.activity(): Activity = when (this) {
             }
         } else {
             var attempt by remember { mutableIntStateOf(0) }
-            key(attempt) { ScanCameraContent(preferences, sourceFactory, motionFactory, onCaptured, { attempt++ }) }
+            key(attempt) {
+                val initialZoom by produceState<Boolean?>(null, preferences) { value = preferences.scanZoom2x.first() }
+                initialZoom?.let { ScanCameraContent(preferences, it, sourceFactory, motionFactory, onCaptured, { attempt++ }) }
+            }
         }
     }
 }
 
 @Composable private fun ColumnScope.ScanCameraContent(
-    preferences: AppPreferences, sourceFactory: (Context) -> ScanCameraSource,
+    preferences: AppPreferences, initialZoom2x: Boolean, sourceFactory: (Context) -> ScanCameraSource,
     motionFactory: (Context, () -> Unit) -> ScanMotionSource,
     onCaptured: (File, Boolean) -> Unit, retry: () -> Unit,
 ) {
@@ -149,6 +155,8 @@ private fun Context.activity(): Activity = when (this) {
     val latestCaptured by rememberUpdatedState(onCaptured)
     var cameraFrame by remember { mutableStateOf<ScanCameraFrame?>(null) }
     var ready by remember { mutableStateOf(false) }
+    var supports2x by remember { mutableStateOf(false) }
+    var zoom2x by remember { mutableStateOf(initialZoom2x) }
     var torchAvailable by remember { mutableStateOf(false) }
     var torch by remember { mutableStateOf(false) }
     var cameraIssue by remember { mutableStateOf<CameraIssue?>(null) }
@@ -162,6 +170,17 @@ private fun Context.activity(): Activity = when (this) {
     val motion = remember { motionFactory(context) { gate.interrupt(); progress = 0f } }
     val latestAutoCapture by rememberUpdatedState(autoCapture)
     val latestAutoProcess by rememberUpdatedState(autoProcess)
+    fun clearTracking() {
+        cameraFrame = null
+        gate.interrupt()
+        progress = 0f
+    }
+    fun applyZoom(use2x: Boolean) {
+        ready = false
+        zoom2x = use2x
+        clearTracking()
+        source.setZoomRatio(if (use2x) 2f else 1f) { ready = true }
+    }
     fun shoot() {
         val process = latestAutoProcess ?: return
         if (!ready || busy || !active || cameraIssue != null) return
@@ -175,12 +194,12 @@ private fun Context.activity(): Activity = when (this) {
     LaunchedEffect(autoCapture) { gate.interrupt(); progress = 0f }
     LaunchedEffect(cameraFrame?.timestampMs) {
         delay(ScanThresholds.MAX_FRAME_GAP_MS)
-        gate.interrupt(); progress = 0f; cameraFrame = null
+        clearTracking()
     }
     DisposableEffect(source, owner) {
         var activeSince = SystemClock.elapsedRealtime()
         fun resume() { active = true; activeSince = SystemClock.elapsedRealtime(); motion.start() }
-        fun pause() { active = false; motion.close(); gate.interrupt(); progress = 0f; cameraFrame = null; source.torch(false); torch = false }
+        fun pause() { active = false; motion.close(); clearTracking(); source.torch(false); torch = false }
         if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) resume()
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) resume()
@@ -188,9 +207,17 @@ private fun Context.activity(): Activity = when (this) {
         }
         owner.lifecycle.addObserver(observer)
         source.start(owner, object : ScanCameraListener {
-            override fun ready(hasTorch: Boolean) { ready = true; torchAvailable = hasTorch }
+            override fun ready(hasTorch: Boolean, zoom2xAvailable: Boolean) {
+                torchAvailable = hasTorch
+                supports2x = zoom2xAvailable
+                if (zoom2xAvailable) applyZoom(zoom2x) else ready = true
+            }
+            override fun idle() {
+                ready = false
+                clearTracking()
+            }
             override fun frame(frame: ScanCameraFrame) {
-                if (!active || busy || frame.timestampMs < activeSince) return
+                if (!ready || !active || busy || frame.timestampMs < activeSince) return
                 cameraFrame = frame
                 val decision = gate.update(frame.timestampMs, latestAutoCapture, frame.hint == ScanHint.NONE, motion.isStill(SystemClock.elapsedRealtime()))
                 progress = decision.progress
@@ -208,6 +235,13 @@ private fun Context.activity(): Activity = when (this) {
                 Box(Modifier.width(width).height(width * 4f / 3f).clipToBounds().testTag("scan-viewfinder")) {
                     AndroidView(factory = { source.view }, modifier = Modifier.fillMaxSize())
                     ScanContourOverlay(cameraFrame, Modifier.fillMaxSize())
+                    if (supports2x) ScanZoomSwitch(zoom2x, ready && active && !busy,
+                        Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp)) { use2x ->
+                        if (use2x != zoom2x) {
+                            applyZoom(use2x)
+                            scope.launch { preferences.setScanZoom2x(use2x) }
+                        }
+                    }
                     if (BuildConfig.DEBUG) YText(
                         "%.1f fps · dropped %d\n%s".format(cameraFrame?.fps ?: 0.0, cameraFrame?.failedFrames ?: 0, cameraFrame?.actualEps?.entries?.joinToString("\n") { "${it.key}: ${it.value}" } ?: "EP …"),
                         10, Modifier.align(Alignment.TopStart).background(t.ink.copy(alpha = .85f)).padding(8.dp).testTag("scan-debug"), color = t.surface,
@@ -222,7 +256,7 @@ private fun Context.activity(): Activity = when (this) {
     val hint = cameraFrame?.hint ?: ScanHint.CENTER
     // Caption occupies paper below the image, including automatic capture feedback.
     if (cameraIssue == null) Box(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-        if (hint != ScanHint.NONE) ScanHintLabel(hint, Modifier.fillMaxWidth())
+        if (hint != ScanHint.NONE) ScanHintLabel(hint, supports2x && !zoom2x, Modifier.fillMaxWidth())
         else ScanCaption(if (progress > 0f) word("保持稳定 · 即将拍摄", "そのままで・まもなく撮影") else word("小票已入镜 · 可以拍摄", "レシートを捉えました・撮影できます"), Modifier.fillMaxWidth())
     }
     Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
@@ -263,16 +297,66 @@ private fun Context.activity(): Activity = when (this) {
     }
 }
 
+@Composable private fun ScanZoomSwitch(use2x: Boolean, enabled: Boolean, modifier: Modifier, select: (Boolean) -> Unit) {
+    val t = LocalYohaku.current
+    val shape = when (t.id) {
+        "journal" -> RoundedCornerShape(44, 49, 45, 48)
+        "objects" -> RoundedCornerShape(13.dp)
+        else -> RectangleShape
+    }
+    val border = if (t.id == "journal") t.warm else t.ink
+    Box(modifier.testTag("scan-zoom").alpha(if (enabled) 1f else .65f)) {
+        if (t.id == "objects") Box(Modifier.matchParentSize().offset(y = 4.dp).background(t.ink, shape))
+        Row(Modifier.background(t.surface, shape).border(if (t.id == "objects") 2.dp else 1.dp, border, shape)
+            .padding(if (t.id == "magazine") 1.dp else 3.dp).selectableGroup()) {
+            val fill = when (t.id) {
+                "journal" -> t.warm
+                "objects" -> t.accent
+                else -> t.ink
+            }
+            for (ratio in 1..2) {
+                val selected = ratio == (if (use2x) 2 else 1)
+                Box(Modifier.size(48.dp).clip(shape).background(if (selected) fill else t.surface)
+                    .testTag("scan-zoom-${ratio}x").selectable(selected, enabled = enabled, role = Role.RadioButton,
+                        onClick = { select(ratio == 2) }), contentAlignment = Alignment.Center) {
+                    YText("${ratio}×", 16, number = true, bold = selected,
+                        color = if (selected) t.surface else t.ink)
+                }
+            }
+        }
+    }
+}
+
 @Composable internal fun ScanContourOverlay(frame: ScanCameraFrame?, modifier: Modifier = Modifier) {
     val t = LocalYohaku.current
-    Canvas(modifier.testTag("scan-outline").semantics { contentDescription = "contour:${frame?.outline?.size ?: 0}" }) {
-        frame?.outline?.takeIf { it.isNotEmpty() }?.let { points ->
+    val outline = frame?.outline.orEmpty()
+    val tracker = remember { ScanOutlineTracker() }
+    var drawing by remember { mutableStateOf(tracker.drawing) }
+    var lastTick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(outline) {
+        tracker.setTarget(outline)
+        drawing = tracker.drawing
+        while (!tracker.converged) {
+            withFrameNanos { now ->
+                if (lastTick != 0L) tracker.step((now - lastTick) / 1_000_000.0)
+                drawing = tracker.drawing
+                lastTick = now
+            }
+        }
+        lastTick = 0L
+    }
+    Canvas(modifier.testTag("scan-outline").semantics { contentDescription = "contour:${outline.size}" }) {
+        val (points, alpha) = drawing
+        if (points.isNotEmpty()) {
             val path = Path().apply {
                 moveTo((points.first().x * size.width).toFloat(), (points.first().y * size.height).toFloat())
-                points.drop(1).forEach { lineTo((it.x * size.width).toFloat(), (it.y * size.height).toFloat()) }; close()
+                for (i in 1 until points.size) {
+                    lineTo((points[i].x * size.width).toFloat(), (points[i].y * size.height).toFloat())
+                }
+                close()
             }
-            drawPath(path, t.surface.copy(alpha = .85f), style = Stroke((if (t.id == "objects") 6 else 4).dp.toPx()))
-            drawPath(path, if (t.id == "journal") t.warm else if (t.id == "magazine") t.ink else t.accent, style = Stroke(
+            drawPath(path, t.surface.copy(alpha = .85f), alpha = alpha, style = Stroke((if (t.id == "objects") 6 else 4).dp.toPx()))
+            drawPath(path, if (t.id == "journal") t.warm else if (t.id == "magazine") t.ink else t.accent, alpha = alpha, style = Stroke(
                 (if (t.id == "objects") 3.5f else 1.5f).dp.toPx(), join = StrokeJoin.Round,
                 pathEffect = if (t.id == "journal") PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx())) else null))
         }
@@ -290,10 +374,11 @@ private fun Context.activity(): Activity = when (this) {
     }
 }
 
-@Composable private fun ScanHintLabel(hint: ScanHint, modifier: Modifier) {
+@Composable private fun ScanHintLabel(hint: ScanHint, suggest2x: Boolean, modifier: Modifier) {
     val label = when (hint) {
         ScanHint.CENTER -> word("把小票放在中间", "レシートを中央に合わせてください")
-        ScanHint.CLOSER -> word("靠近一些", "もう少し近づけてください")
+        ScanHint.CLOSER -> if (suggest2x) word("切到 2× 或靠近一些", "2×に切り替えるか、もう少し近づけてください")
+            else word("靠近一些", "もう少し近づけてください")
         ScanHint.STEADY -> word("拿稳", "動かさずにお待ちください")
         ScanHint.NOT_FOUND -> word("未找到小票", "レシートが見つかりません")
         ScanHint.NONE -> ""

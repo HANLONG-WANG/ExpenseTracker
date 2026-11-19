@@ -83,11 +83,14 @@
 
 - `ScanCameraScreen.kt`：权限首次申请、拒绝重试/永久拒绝跳系统设置、全屏页面、生命周期和主题令牌；取景框、提示、快门分成独立 composable，专属三主题构图由 `ScanDesign.kt` 等呈现组件提供。无后置相机/相机绑定或连接故障有独立说明和重试；普通未检测到继续显示既有取景提示。
 - `ScanCameraSource.kt`：CameraX Preview + RGBA_8888 ImageAnalysis（KEEP_ONLY_LATEST、4:3、请求 960×720）+ ImageCapture（MAXIMIZE_QUALITY、4:3、最高可用分辨率，允许高分辨率模式），共享 PreviewView ViewPort。实际流尺寸由 CameraX 根据设备组合能力协商。裁剪 RGBA、转正 BGR、`ImageProxyTransformFactory` + `CoordinateTransform` + FILL_CENTER 映射和像素中心 +0.5 沿用真机验证方法。
+- 预览开始出帧后读取 `cameraInfo.zoomState`，最大倍率达到 2× 时显示取景框底部的两档选择。通过 `cameraControl.setZoomRatio` 让三路画面使用同一倍率，原有 ViewPort 坐标变换继续适用。切换时卸下分析器、在同一分析线程重置轮廓平滑器、淡出旧轮廓并中断自动快门计时。倍率 future 成功后，用 `PreviewView.meteringPointFactory` 创建中心测光点并发起对焦，恢复分析。按请求代次检查在途结果，旧帧不会回到界面。
+- `ScanOutlineTracker.kt` 在显示层按 128 个对应点追踪，每个新目标从当前显示位置出发，在固定 110ms 内按二次减速曲线到达（不用指数追踪，避免越接近越慢的渐近尾巴）。出现和消失各淡变 150ms，点数改变时先淡出再淡入。到达目标且淡变结束后停止请求动画帧。
 - `ScanCapturePolicy.kt`：纯 JVM 的平滑、提示、自动拍摄判定。`ScanFrameProcessor` 在一个专属分析线程创建、使用和关闭原有 `ReceiptScanner`。
 - `ScanMotionMonitor.kt`：加速度计去重力后与陀螺仪共同判断手机静止；有哪个用哪个，都没有时只看画面。后台暂停传感器并清空进度，返回后不沿用旧帧。
 - `ScanCaptureSession.kt`：原始 JPEG 写入 `cache/receipt-capture/<uuid>/original.jpg`。采用 **CameraX 写入 EXIF 方向**，不额外重新编码；`targetRotation` 在快门时刷新，引擎解码应用 EXIF。成功时先释放相机，再调用 `onCaptured(File, autoProcess)`；此后文件所有权交给确认流程，入库成功/放弃后删除文件及其父目录。返回、拍照失败、晚到的拍照回调会清理本次未交接目录。`ScanFlow` 接续确认/调整状态恢复，`ScanTemporaryFiles` 统一目录生成、写入、删除及启动时的过期清理。
-- 两个 DataStore 偏好：`scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true；进入完整备份，旧备份缺字段采用上述默认。自动处理仅控制出口布尔值，相机页不执行 detect/render/process。通过 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 发布这两个偏好。
-- 单帧转换、推理或叠加映射的意外异常由 `ScanFrameFailures` 丢弃，继续下一帧，不调用 `fail()` / `clearAnalyzer()`。累计失败数保留在会话内，警告日志最多每 5 秒一次；正常几何不足不计入失败帧。相机绑定失败、CameraState 报告的设备错误及补光控制故障才走相机错误页，无后置相机单独提示。
+- 跨设备的两个 DataStore 偏好：`scanAutoCapture` 默认 false、`scanAutoProcess` 默认 true；进入完整备份，旧备份缺字段采用上述默认。自动处理仅控制出口布尔值，相机页不执行 detect/render/process。通过 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 发布这两个偏好。
+- 本机倍率偏好 `scanZoom2x`（键 `scan_zoom_2x`）默认 false。倍率受这台设备的相机能力限制，完整备份和云端命令均不携带；本机恢复备份时保留原选择。不支持 2× 时隐藏控件并使用 1×。
+- 单帧转换、推理或叠加映射的意外异常由 `ScanFrameFailures` 丢弃，继续下一帧，不调用 `fail()` / `clearAnalyzer()`。累计失败数保留在会话内，警告日志最多每 5 秒一次；正常几何不足不计入失败帧。相机绑定失败、CameraState 报告的设备错误及补光或变焦请求失败时走相机错误页（变焦后的中心对焦失败只记警告，相机保持连续自动对焦），无后置相机单独提示。
 - Debug 角落显示分析帧率、累计丢弃异常帧数与当前结果的 `actualEps`；Logcat `ScanCamera` 输出各阶段耗时、平滑耗时和到达分析器至叠加的延迟。release 不显示/输出这些调试信息；节流后的异常警告仍保留。
 
 拍照入口统一打开 `ScanFlow`，不另行申请权限或维护另一套相机缓存。权限和不可用状态统一由 `ScanCameraScreen` 处理；Manifest 的 camera、autofocus 均 required=false，不排除无相机设备。FileProvider 保留附件/导出路径，并使用 `receipt-capture/` 传递扫描输出。
@@ -100,13 +103,13 @@
 |---|---|
 | 连续合格时间 | 800 ms；帧间隔超过 1500 ms 重置 |
 | 轮廓稳定 | 未平滑轮廓对应点的最大归一化位移 < 0.012 |
-| 平滑 | EMA α=0.45；位移 >0.09 或无轮廓/长时间断帧直接重置 |
+| 平滑 | 自适应 EMA：显示轮廓与新轮廓的最大点距 ≤0.006（识别噪声）时 α=0.45，≥0.03 时 α=1 直接跟随，两者之间线性过渡；位移 >0.09 或无轮廓/长时间断帧直接重置 |
 | 面积 | 0.16–0.78 |
 | 中心偏离 | x ≤0.16、y ≤0.19 |
 | 可靠性 | modelScore ≥0.80、拟合残差/短边 ≤0.018、离群率 ≤0.25、不使用宽松闭合 |
 | 手机静止 | 陀螺仪 ≤0.12 rad/s、去重力加速度 ≤0.35 m/s²，运动后等待 400 ms |
 
-检测失败提示「未找到小票」；中心不合格/面积过大提示「把小票放在中间」；面积过小提示「靠近一些」；轮廓不稳/可靠性不足提示「拿稳」；正常无提示。自动拍摄需要所有条件同时满足，进度中断即清零，手动拍照随时可用，每次相机会话最多自动触发一次；拍摄失败后可手动重试。
+检测失败提示「未找到小票」；中心不合格/面积过大提示「把小票放在中间」；面积过小时，支持 2× 且正在用 1× 则提示「切到 2× 或靠近一些」，其余情况提示「靠近一些」；轮廓不稳/可靠性不足提示「拿稳」；正常无提示。自动拍摄需要所有条件同时满足，进度中断即清零，手动拍照随时可用，每次相机会话最多自动触发一次；拍摄失败后可手动重试。
 
 ### 不做流水线化的依据
 
@@ -170,15 +173,17 @@ ScanFlowRequest(target = "draft-id", photo = capturedFile, source = ScanPhotoSou
 
 杂志采用编号刊头、编辑校样框、方形快门与控制点；手账采用横线纸、胶带照片框、朱红笔迹与圈画放大镜；小物采用圆角相机窗口、实体快门与圆钮控制点。确认、调整、权限、无相机、处理中与错误状态都沿用本主题的构图。详见 [产品设计](../../../docs/product-design.md#122-三套主题)。
 
+倍率控件位于取景框底部中央。杂志使用直角墨色反白，手账使用不规则圆角与暖色纸边，小物使用粗描边与向下偏移的底影。
+
 自动拍摄进度沿取景框外缘留白前进，不遮盖小票文字；定稿后加粗为杂志 4dp、手账 3dp 朱红分段线、小物 6dp 圆角线。快门旁状态为「拍后自动裁剪展平 / 拍后原图直出」，日文为「撮影後に自動補正 / 撮影後そのまま」。开关名称仍为「自动拍摄」「自动处理」，云端对应命令未改名。
 
 ## 验证
 
 统一的 JVM、默认仪器流程、三主题视觉、S24 Ultra 与 320dp/fontScale 1.3 命令，以及 `captureSuffix` 的目录/文件名差异，见 [Android README：小票扫描验证](../../README.md#小票扫描验证)。Gradle 串行执行；阶段 6 仅核对文档/许可并构建 APK，不启动模拟器、不重跑视觉。
 
-- `ScannerNumericsTest`：percentile/round/PCG64、PIL 双轴顺序与缩放、网格外延/align_corners、坐标组合/端线剪裁、五点三次轮廓/自交约束。`ScanOrientationTest`：近水平/近竖直主轴、±45° 精确边界与两侧、宽短默认轮廓及编辑显示方向。`ScanFrameFailuresTest`：异常帧丢弃、日志节流和后续帧恢复。`ScanCapturePolicyTest`：稳定/运动/开关/断帧/不重复触发、提示和平滑。`ScanContourEditorTest`：控制点约束、出画阈值、序列化与坐标往返、过期清理及输出交接。
+- `ScannerNumericsTest`：percentile/round/PCG64、PIL 双轴顺序与缩放、网格外延/align_corners、坐标组合/端线剪裁、五点三次轮廓/自交约束。`ScanOrientationTest`：近水平/近竖直主轴、±45° 精确边界与两侧、宽短默认轮廓及编辑显示方向。`ScanFrameFailuresTest`：异常帧丢弃、日志节流和后续帧恢复。`ScanCapturePolicyTest`：稳定/运动/开关/断帧/不重复触发、提示和自适应平滑。`ScanOutlineTrackerTest`：中途转向、任意位移固定时长内到位及轮廓淡变。`ScanContourEditorTest`：控制点约束、出画阈值、序列化与坐标往返、过期清理及输出交接。
 - `ReceiptScannerTest`：五张合成图完整 process、分开 detect/render、编辑 render 不运行 EdgeSAM、preview 指标及 CPU EP、无候选/几何不足输入、坏图片与错误帧参数仍抛错、全部 8 种 EXIF 方向；裁出宽于高的中段，检查预览/输出/编辑角度、宽高和红色上标记/蓝色下标记位置。与 Python JPEG90 金标准按 `compare_device.py` 的 identity/phase/ECC 纯平移候选（每轴 ≤8px）比较，去除 10px 边界后取最低 MAE；mask IoU ≥0.995、尺寸相同、MAE ≤8/255、角差 ≤0.1°、几何最大差 ≤3、端线可见性相同。
-- `ScanCameraFlowTest`：真实引擎对合成静态帧做 preview；验证轮廓/提示、偏好持久化、手动与自动出口、权限状态、无相机、返回释放及晚到照片清理；连续喂入无票、只露一角、几何不足、损坏帧、完整小票，检查不中断、不弹错误页并恢复轮廓。权限为注入状态，不验证真实 CameraX/系统权限/传感器。
+- `ScanCameraFlowTest`：真实引擎对合成静态帧做 preview；三主题取景截图包含选中的 2× 与轮廓，假相机记录倍率请求；验证支持与不支持 2× 的入口、切换中断自动拍摄、倍率恢复、轮廓/提示、偏好持久化、手动与自动出口、权限状态、无相机、返回释放及晚到照片清理；连续喂入无票、只露一角、几何不足、损坏帧、完整小票，检查不中断、不弹错误页并恢复轮廓。权限为注入状态，不验证真实 CameraX/系统权限/传感器。
 - `ScanReviewFlowTest`：已有图片使用、相机重拍、原图直出、拖动后重新处理、精确恢复自动结果、无票直接调整、取消清理、`ActivityScenario.recreate()` 后保留编辑轮廓；另有几何不足直接调整、手动拟合不足保留草稿、解码失败仍显示处理错误，以及处理中/失败呈现。测试用与触摸相同的 `MoveScanHandle` 驱动控制点，放大镜截图保持拖动状态。`ScanFlowTestActivity` 仅存在于 debug。
 - `MediaFlowTest`：表单/记录拍照入库、两种保存方式、取消与临时文件清理、已有图片原位置替换及旧修订保留、重建并切账本仍落到原目标、云端 `RECEIPT_CAMERA` 续办。重建测试不等同于真实杀进程测试。
 - `PhotoStorageTest` / `BackupRoundTripTest`：旧备份默认与偏好往返；`CommandScanPreferencesTest` / `CommandCapabilitiesTest` / `CommandWorkflowExecutionTest`：两个扫描偏好的默认、原子写入、撤销/冲突/恢复和能力产物一致性。

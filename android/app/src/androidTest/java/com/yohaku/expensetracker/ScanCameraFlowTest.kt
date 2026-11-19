@@ -54,8 +54,8 @@ class ScanCameraFlowTest {
         override fun isStill(nowMs: Long) = true
         override fun close() = Unit
     } }
-    private fun source(c: Context, infer: Boolean = false, deferCapture: Boolean = false): StaticReceiptSource =
-        StaticReceiptSource(c, photo, infer, deferCapture).also { sources.add(it) }
+    private fun source(c: Context, infer: Boolean = false, deferCapture: Boolean = false, supports2x: Boolean = true): StaticReceiptSource =
+        StaticReceiptSource(c, photo, infer, deferCapture, supports2x).also { sources.add(it) }
 
     @After fun cleanup() {
         ui.runOnIdle { sources.forEach { it.close() } }
@@ -86,10 +86,13 @@ class ScanCameraFlowTest {
         val source = sources.single()
         assertTrue(source.inferred!!.outline.size > 4)
         assertEquals(setOf("CPU"), source.inferred!!.actualEps.values.toSet())
+        ui.onNodeWithTag("scan-zoom-2x").performClick().assertIsSelected()
         for ((t, l) in testLooks(this)) {
             ui.runOnIdle { theme = t; language = l; source.emit(ScanHint.NONE) }
             ui.onNodeWithTag("scan-viewfinder").assertIsDisplayed().assertHeightIsAtLeast(200.dp)
             ui.onNodeWithTag("scan-shutter").assertIsDisplayed()
+            ui.onNodeWithTag("scan-outline").assertContentDescriptionEquals("contour:${source.inferred!!.outline.size}")
+            // captureToImage synchronizes with the finite frame loop on the auto-advancing mainClock.
             shot("$t-$l-viewfinder")
             ui.runOnIdle { source.emit(ScanHint.STEADY) }
             ui.onNodeWithTag("scan-hint").assertTextEquals(if (l == "ja") "動かさずにお待ちください" else "拿稳")
@@ -106,6 +109,55 @@ class ScanCameraFlowTest {
             toggle("scan-auto-capture").assertIsOff()
         }
         assertEquals(0, captured)
+    }
+
+    @Test fun zoomSelectionResetsHoldAndRestoresOnlyOnSupportedCameras() {
+        var open by mutableStateOf(true)
+        var supports2x = true
+        runBlocking { prefs.setScanAutoCapture(true) }
+        ui.setContent {
+            YohakuTheme("magazine", "zh") {
+                if (open) ScanCameraHost(ScanCameraRequest("zoom"), prefs, { open = false }, { _, _ -> fail("Unexpected capture") },
+                    sourceFactory = { source(it, supports2x = supports2x) }, permissionOverride = CameraPermission.GRANTED, motionFactory = still)
+            }
+        }
+        waitForSource()
+        val first = sources.single()
+        ui.onNodeWithTag("scan-zoom").assertIsDisplayed()
+        ui.onNodeWithTag("scan-zoom-1x").assertIsSelected()
+        ui.runOnIdle { first.emit(ScanHint.CLOSER) }
+        ui.onNodeWithTag("scan-hint").assertTextEquals("切到 2× 或靠近一些")
+        toggle("scan-auto-capture").assertIsOn()
+        ui.runOnIdle {
+            first.emit(ScanHint.NONE)
+            first.emit(ScanHint.NONE, first.lastTimestamp + 400)
+        }
+        ui.onNodeWithTag("scan-auto-progress").assertIsDisplayed()
+        ui.onNodeWithTag("scan-zoom-2x").performClick().assertIsSelected()
+        ui.onNodeWithTag("scan-auto-progress").assertDoesNotExist()
+        ui.runOnIdle {
+            assertEquals(listOf(1f, 2f), first.zoomRatios)
+            first.emit(ScanHint.NONE, first.lastTimestamp + 400)
+        }
+        ui.onNodeWithTag("scan-auto-progress").assertDoesNotExist()
+        ui.runOnIdle { first.emit(ScanHint.CLOSER) }
+        ui.onNodeWithTag("scan-hint").assertTextEquals("靠近一些")
+        ui.waitUntil { runBlocking { prefs.scanZoom2x.first() } }
+
+        ui.onNodeWithTag("scan-back").performClick()
+        ui.runOnIdle { open = true }
+        waitForSource()
+        ui.onNodeWithTag("scan-zoom-2x").assertIsSelected()
+        ui.runOnIdle { assertEquals(listOf(2f), sources.last().zoomRatios) }
+        ui.onNodeWithTag("scan-back").performClick()
+        ui.runOnIdle { supports2x = false; open = true }
+        waitForSource()
+        ui.onNodeWithTag("scan-zoom").assertDoesNotExist()
+        ui.runOnIdle {
+            assertFalse(2f in sources.last().zoomRatios)
+            sources.last().emit(ScanHint.CLOSER)
+        }
+        ui.onNodeWithTag("scan-hint").assertTextEquals("靠近一些")
     }
 
     @Test fun incompleteFramesAndUnexpectedFailureDoNotInterruptAnalysis() {
@@ -219,6 +271,7 @@ class ScanCameraFlowTest {
         val first = sources.single()
         val path = requireNotNull(first.pendingFile)
         assertTrue(path.exists())
+        ui.onNodeWithTag("scan-zoom-2x").assertIsNotEnabled()
         ui.onNodeWithTag("scan-back").performClick()
         ui.runOnIdle {
             assertTrue(first.closed); assertFalse(path.exists())
@@ -273,6 +326,7 @@ class ScanCameraFlowTest {
 /** Test-only static ImageView, with the exact file also returned by the replaceable shutter. */
 internal class StaticReceiptSource(
     context: Context, private val jpeg: ByteArray, private val infer: Boolean, private val deferCapture: Boolean,
+    private val supports2x: Boolean = true,
 ) : ScanCameraSource {
     override val view = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setImageBitmap(BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)) }
     private val main = ContextCompat.getMainExecutor(context)
@@ -290,11 +344,12 @@ internal class StaticReceiptSource(
     var pendingFile: File? = null
     private var captureCallback: ((Result<Unit>) -> Unit)? = null
     var lastTimestamp = 0L
+    val zoomRatios = mutableListOf<Float>()
     override fun start(owner: LifecycleOwner, listener: ScanCameraListener) {
         this.listener = listener
         view.doOnLayout {
             if (closed) return@doOnLayout
-            listener.ready(true); started = true
+            listener.ready(true, supports2x); started = true
             if (infer) analyzePhoto(jpeg)
         }
     }
@@ -340,6 +395,10 @@ internal class StaticReceiptSource(
         captureCallback?.invoke(Result.success(Unit)); captureCallback = null
     }
     override fun torch(enabled: Boolean) = Unit
+    override fun setZoomRatio(ratio: Float, onApplied: () -> Unit) {
+        zoomRatios.add(ratio)
+        onApplied()
+    }
     override fun close() {
         if (closed) return
         closed = true

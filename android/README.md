@@ -122,6 +122,8 @@ adb shell am instrument -w -e class com.yohaku.expensetracker.DesktopWidgetVisua
 
 相机页“自动拍摄”默认关，“自动处理”默认开，偏好跨账本共享并进入完整备份。关闭自动处理后原图直出、跳过确认页，仍按“原样保存（不压缩）”开关优化或保留字节；处理后的图片也按同一开关作为新照片入库。表单小票缩略图下的“处理这张”与排序按钮分行，始终打开已有图片确认/调整（即使自动处理关闭），确认后在同一媒体会话的原位置替换为新文件。已保存图片字节不改写，编辑保存按既有规则产生新小票修订；取消或入库失败保留旧图，旧文件沿用暂存/引用清理。扫描/处理与导入期间禁用其他媒体变更。云端 `preferences.scanAutoCapture` / `preferences.scanAutoProcess` 使用必填 `enabled`，支持原值比较、原子效果凭据、撤销及恢复；`entry.prepareDraft(media=RECEIPT_CAMERA)` 续办仍在表单点“拍照”打开此流程。扫描相关测试与截图命令见下方 [小票扫描验证](#小票扫描验证)。
 
+支持 2× 的后置相机在取景框底部显示 1× / 2×，首次默认 1×。CameraX 通过 `setZoomRatio` 同步缩放预览、识别和照片，切换后重新对中心点对焦，自动拍摄重新计时。倍率取决于本机镜头能力，因此只保存在本机，完整备份和云端命令均不携带。实时轮廓在两次识别之间逐帧移向新位置，出现和消失时淡入淡出，收敛后停止刷新轮廓。
+
 应用内扫描已完成阶段 1–6，待阶段 7 用户真机验收。CameraX 提供实时轮廓、补光和快门；自动拍摄要求轮廓可靠、画面及手机稳定约 0.8 秒，进度沿取景框边缘显示。确认页可使用、重拍、调整轮廓（左右各五点、上下端线、拖动放大镜）、重新处理与恢复自动结果；未检测到时直接进入手动调整，真实错误可重试。仅做几何处理，不做 OCR/图像增强；相册导入不自动扫描。原图和结果暂存于 `cache/receipt-capture/<uuid>/`，确认同步交接选中路径及整个会话的所有权，不搬移文件；入库成功才清理会话，失败保留原图和结果供重试，用户取消/重拍时清理会话；启动清理超过 24 小时的残留，近期确认/调整状态可恢复。
 
 三主题采用用户选定的设计 A：杂志编辑校样框、手账胶带照片与朱红笔迹、小物圆角相机窗口，确认/调整、权限与错误状态均保持本主题设计。定稿后自动拍摄进度线加粗，快门旁状态为「拍后自动裁剪展平 / 拍后原图直出」（日文「撮影後に自動補正 / 撮影後そのまま」）；开关及云端命令仍称自动拍摄、自动处理。接口、缓存与坐标细节见 [扫描模块说明](tools/receipt-scanner/README.md)。
@@ -206,10 +208,10 @@ Room 33→34：`recurrences` 增加 `merchant`/`note`（NOT NULL DEFAULT ''）�
 
 | 类（省略 `com.yohaku.expensetracker.`） | 目的 |
 |---|---|
-| JVM `receipt.scan.ScannerNumericsTest`、`receipt.scan.ScanContourEditorTest`、`receipt.scan.ScanOrientationTest`、`ui.features.scan.ScanCapturePolicyTest`、`ui.features.scan.ScanFrameFailuresTest` | 数值金标准、±45° 纠斜、轮廓/坐标/文件交接、平滑/提示/自动拍摄、异常帧恢复与日志节流 |
+| JVM `receipt.scan.ScannerNumericsTest`、`receipt.scan.ScanContourEditorTest`、`receipt.scan.ScanOrientationTest`、`ui.features.scan.ScanCapturePolicyTest`、`ui.features.scan.ScanFrameFailuresTest`、`ui.features.scan.ScanOutlineTrackerTest` | 数值金标准、±45° 纠斜、轮廓/坐标/文件交接、平滑/提示/自动拍摄、异常帧恢复与日志节流、轮廓追踪和淡入淡出 |
 | JVM `PhotoStorageTest`、`data.repository.CommandScanPreferencesTest`、`data.command.CommandCapabilitiesTest` | 旧备份默认、偏好原子应用/撤销、能力/schema 一致性 |
 | 仪器 `receipt.scan.ReceiptScannerTest` | 合成图完整引擎、宽短裁图方向与上下标记、几何不足、CPU 回退、EXIF、Python 金标准 |
-| 仪器 `ScanCameraFlowTest`、`ScanReviewFlowTest`、`MediaFlowTest` | 静态相机连续异常帧恢复、几何不足进入/保留调整、解码错误、确认/恢复、原目标入库及原位置替换、写入失败保留照片、重试成功清理、入库期间重建不重复导入、云端续办失败重试；也包含视觉方法 |
+| 仪器 `ScanCameraFlowTest`、`ScanReviewFlowTest`、`MediaFlowTest` | 倍率选择与恢复、2× 控件和轮廓截图、静态相机连续异常帧恢复、几何不足进入/保留调整、解码错误、确认/恢复、原目标入库及原位置替换、写入失败保留照片、重试成功清理、入库期间重建不重复导入、云端续办失败重试；也包含视觉方法 |
 | 仪器 `BackupRoundTripTest`、`CommandWorkflowExecutionTest` 指定方法 | 扫描偏好备份、命令执行/撤销/冲突/中断恢复 |
 
 ```sh
