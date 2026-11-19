@@ -70,7 +70,7 @@ private fun LedgerRepository.validateEntryRestoration(s:BookSnapshot,event:Event
 }
 private fun LedgerRepository.validateRestoredRepayments(restored:BookSnapshot,finance:FinancialGraph,ids:Set<String>) {
     restored.repayments.filter{it.eventId in ids&&it.platformConfirmed}.forEach{payment->
-        restored.validateRepaymentAllocationCapacity(finance,payment.eventId,restored.repaymentAllocations.filter{it.eventId==payment.eventId},json)
+        restored.validateRepaymentAllocationCapacity(finance,payment.eventId,restored.repaymentAllocations.filter{it.eventId==payment.eventId},json,restoring=true)
     }
 }
 suspend fun LedgerRepository.commitEntryLifecycle(review:EntryLifecycleReview):Boolean=db.withTransaction {
@@ -85,7 +85,8 @@ suspend fun LedgerRepository.commitEntryLifecycle(review:EntryLifecycleReview):B
             review.events.forEach{validateEntryRestoration(review.before.ledger,it,ids)}
             val restored=review.before.ledger.copy(events=review.before.ledger.events.map{if(it.id in ids)it.copy(deletedAt=null)else it})
             validateRestoredRepayments(restored,review.before.finance,ids)
-            review.events.forEach{e->dao.putEvent(e.copy(deletedAt=null,deletionGroupId=null));recheckOccurrences(b,e.id)}
+            review.events.forEach{e->val restored=e.copy(deletedAt=null,deletionGroupId=null);dao.putEvent(restored);recheckOccurrences(b,e.id)
+                if(restored.cardPaymentMode!=null)refreshCardEntryPrediction(restored)}
         }
         EntryLifecycleOperation.PURGE,EntryLifecycleOperation.EMPTY->{
             review.events.forEach{e->if(dao.event(b,e.id)!=null)purgeEntryGroup(b,e.id)}
@@ -121,8 +122,11 @@ internal suspend fun LedgerRepository.purgeEntryGroup(bookId:String,eventId:Stri
 internal suspend fun LedgerRepository.trashEntrySet(bookId:String,events:List<EventEntity>):String {
     val group=id();val now=clock.millis()
     events.forEach { e ->
-        dao.putEvent(e.copy(deletedAt=now,deletionGroupId=group))
+        val trashed=e.copy(deletedAt=now,deletionGroupId=group)
+        dao.putEvent(trashed)
         recheckOccurrences(bookId,e.id)
+        // Same protection as editing: confirmed, past-due or repaid card bills stay for explicit review.
+        if(trashed.cardPaymentMode!=null)refreshCardEntryPrediction(trashed)
         db.openHelper.writableDatabase.execSQL("UPDATE statement_decisions SET invalidatedAt=? WHERE bookId=? AND postingId IN (SELECT id FROM postings WHERE bookId=? AND eventId=?)",arrayOf<Any>(now,bookId,bookId,e.id))
     }
     return group

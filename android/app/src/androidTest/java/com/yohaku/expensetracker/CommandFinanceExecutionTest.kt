@@ -70,6 +70,17 @@ class CommandFinanceExecutionTest {
         assertEquals(299000L,state.ledger.balance(state.ledger.accounts.first{it.id==bank}))
         assertEquals(1000L,state.ledger.cashTimeline(state.finance,LocalDate.parse("2026-11-02"),LocalDate.parse("2027-01-31")).steps.filter{it.item.kind=="BILL"}.sumOf{it.item.amountMinor!!})
     }
+    @Test fun trashingCardPurchaseThroughCloudRetiresItsPredictionAndUndoRestoresIt()=runBlocking<Unit> {
+        val (b,bank)=setup();val c=card(b,"一次付卡",0)
+        r.commitFinancialRule(r.previewFinancialRule(b,c,FinancialRuleVersion("",b,c,FinanceMode.SINGLE,"2026-11-01","Asia/Tokyo",BillingRule(15,true,1,10,bank))))
+        val cat=r.saveCategory(b,"生活",EntryKind.EXPENSE,null)
+        val e=r.saveEntry(b,EntryDraft(accountId=c,categoryId=cat,amount="1000",date="2026-11-02",merchant="買物",cardPaymentChoice="SINGLE"))
+        val plan=db.financialDao().graph(b).first()!!.plans.single{it.sourceEventId==e}
+        cycle(b,listOf(step("trash","entry.lifecycle","""{"entry":"$e","operation":"TRASH"}"""))){_,s->
+            assertFalse(s.finance.plans.single{it.id==plan.id}.active);assertTrue(s.finance.bills.none{it.planId==plan.id&&it.active})
+        }
+        assertTrue(db.financialDao().graph(b).first()!!.plans.single{it.id==plan.id}.active)
+    }
     @Test fun repaymentRestoreCannotReuseBillCapacityLocallyOrThroughCloudCommand()=runBlocking<Unit> {
         val (b,bank)=setup();val debt=card(b,"还款恢复",1000)
         val plan=checkNotNull(r.commitManualFinancialPlan(r.previewManualFinancialPlan(b,ManualFinancialPlanInput(debt,"账单",FinanceMode.SINGLE,

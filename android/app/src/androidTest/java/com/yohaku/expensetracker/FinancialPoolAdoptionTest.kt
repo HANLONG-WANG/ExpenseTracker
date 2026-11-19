@@ -37,7 +37,7 @@ class FinancialPoolAdoptionTest {
         val mode=if(loan)FinanceMode.CREDIT_LINE else FinanceMode.REVOLVING
         r.commitFinancialRule(r.previewFinancialRule(b,debt,FinancialRuleVersion("",b,debt,mode,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,5,bank),revolving=RevolvingRule(InterestRule("0",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL),PaymentMethod.TOTAL_PAYMENT,1000,allocation=AllocationOrder.FEES_FIRST,automatic=true),limitRecovery=if(loan)LimitRecovery.PAYMENT_DATE else null)))
         val dates=listOf("2026-11-05","2026-12-05","2027-01-05","2027-02-05")
-        val windows=listOf(AccrualWindow("2026-10-01","2026-10-31"),AccrualWindow("2026-11-01","2026-11-30"),AccrualWindow("2026-12-01","2026-12-31"),AccrualWindow("2027-01-01","2027-01-31"))
+        val windows=listOf(AccrualWindow("2026-10-25","2026-10-31"),AccrualWindow("2026-11-01","2026-11-30"),AccrualWindow("2026-12-01","2026-12-31"),AccrualWindow("2027-01-01","2027-01-31"))
         val target=r.commitFinancialArrangement(r.previewFinancialArrangement(b,FinancialArrangementInput(old,"既存の変更",mode,FinancialScheduleTerms("2026-10-25",dates,windows),bank,OriginalFeeTreatment.CANCELLED_BY_PLATFORM,100,loanLimitDeltaMinor=if(loan)1000 else null)),clock.instant().toString(),true)!!
         val arrangement=db.financialDao().graph(b).first()!!.arrangements.single().id
         if(confirmed) {

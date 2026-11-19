@@ -6,7 +6,7 @@
   "hostedProbe": "Deployment succeeded with MCP enabled; Work event subscription not yet established.",
   "hashAlgorithm": "SHA-256",
   "files": {
-    "README.txt": "0d54c49aeb4c98bccb89a2315fbfb66b4da8358395ebe54255bb1cd3eb6a92cf",
+    "README.txt": "fe3efadada86ec605294ac37361b92abf4699bb350c83e9e36b3106c2159f194",
     "contract-test.mjs": "77a698e5cee85a55e6dae0f55b6ef1c24af36e51e6cd8a0b013bb53fd7646351",
     "fixtures/import-identifiers.valid.json": "8250934c0ca485e35d9fcf54664bf7e4542545e8db8c5f1d87dfd9e044a6358c",
     "fixtures/receipt-bundle.valid.json": "491a82410a97c5ef87bab5d6823fac2ee43edf3dfdbc214ff58609e14546837d",

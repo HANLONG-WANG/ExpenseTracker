@@ -28,13 +28,17 @@ internal fun BookSnapshot.pendingRepaymentAmountKnown(eventId:String):Boolean {
     return repaymentAllocationsWithinAmounts(rows,repayment.principalMinor,repayment.interestMinor,repayment.feeMinor,repayment.receivedMinor,paid)
 }
 
-/** Shared by save and restore, with the candidate event excluded from the other applied payments. */
-internal fun BookSnapshot.validateRepaymentAllocationCapacity(f:FinancialGraph,eventId:String,allocations:List<FinancialRepaymentAllocationEntity>,json:Json) {
+/** Shared by save and restore, with the candidate event excluded from the other applied payments.
+ * A restored payment is bounded by other live payments only: arrangement transfers made while it was in the
+ * trash assumed it absent, so restoring marks that arrangement stale and its reconciliation returns the principal. */
+internal fun BookSnapshot.validateRepaymentAllocationCapacity(f:FinancialGraph,eventId:String,allocations:List<FinancialRepaymentAllocationEntity>,json:Json,restoring:Boolean=false) {
     allocations.filter{it.billId!=null}.groupBy{it.billId}.forEach{(id,rows)->
         val bill=f.bills.first{it.id==id};val outstanding=billOutstanding(bill,eventId)
+        val transfers=if(restoring)billAdjustments.filter{it.billId==id}else emptyList()
+        val movedPrincipal=transfers.fold(0L){sum,a->addExact(sum,a.principalMinor)};val movedFee=transfers.fold(0L){sum,a->addExact(sum,a.feeMinor)}
         val principal=rows.fold(0L){sum,a->addExact(sum,a.principalMinor!!)}
         val fee=rows.fold(0L){sum,a->addExact(sum,addExact(a.interestMinor!!,a.feeMinor!!))}
-        require(addExact(principal,fee)<=outstanding.totalMinor&&outstanding.principalMinor?.let{principal<=it}!=false&&outstanding.feeMinor?.let{fee<=it}!=false){"该账期累计分配超过剩余义务，请先调整还款关联 / この回の合計充当額が残額を超えています。返済の関連付けを先に調整してください"}
+        require(addExact(principal,fee)<=addExact(outstanding.totalMinor,addExact(movedPrincipal,movedFee))&&outstanding.principalMinor?.let{principal<=addExact(it,movedPrincipal)}!=false&&outstanding.feeMinor?.let{fee<=addExact(it,movedFee)}!=false){"该账期累计分配超过剩余义务，请先调整还款关联 / この回の合計充当額が残額を超えています。返済の関連付けを先に調整してください"}
     }
     allocations.filter{it.contractId!=null}.groupBy{it.contractId}.forEach{(id,values)->
         val contract=f.contracts.first{it.id==id}

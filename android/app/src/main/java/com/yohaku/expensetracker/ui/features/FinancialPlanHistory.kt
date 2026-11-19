@@ -115,6 +115,7 @@ private sealed interface PlanHistoryRead {
     "RECALCULATED"->word("明确重算","再計算")
     "SOURCE_UPDATED"->word("原消费资料更新","元の利用情報を更新")
     "SOURCE_PAYMENT_CORRECTED"->word("纠正付款方式，替换本地预测","支払方式の訂正で予測を置換")
+    "SOURCE_TRASHED"->word("原消费移入回收站，移除本地预测","元の利用をごみ箱へ移し、予測を削除")
     "CONTRACT_LINKED"->word("合同关联","契約の関連付け")
     "BILL_CONFIRMED"->word("确认 / 修正平台账单","返済先の請求を確定・修正")
     "REPAYMENT"->word("实际还款与预测更新","実返済と予測更新")

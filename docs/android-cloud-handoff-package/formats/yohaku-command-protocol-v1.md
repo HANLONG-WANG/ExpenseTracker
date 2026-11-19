@@ -110,7 +110,7 @@
 - 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。付款选择及指定月、费用、分期期数与普通表单同规则。
 - 普通记录字段 `budgetExcluded`：新建默认 false，编辑省略保留、false 取消，不能为 null；只有 EXPENSE 可以设 true。排除月/分类预算（含待确认数、节奏、提醒及原支出的退款/费用），仍计入分析、账户余额、日历实际金额和活动自身预算。记录导出包含该字段。`template.save` 完整替换时默认 false，支出模板可保存并通过 `template.createEntry` 带入；周期规则、实例及固定预留不加字段。
 - `entry.update` 批量字段补丁；`entry.confirmActual` 采用相同 targets/set，但必须明确至少一个实际确认标志为 true。账户负余额加重在预览中单独要求勾选，列明具体账户、币种和金额。记录缺必填项则整批失败；待用户补完用 entry.prepareDraft（interactive，不代用户提交）。
-- `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；恢复会重查30天期限、原消费、退款上限及预留可用性；还款恢复还要校验恢复后账单、合同和循环池的剩余本金，冲突时先调整关联。PURGE/EMPTY 禁止。
+- `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；信用卡消费的本地预测若未确认、未到期且未分配还款，随 TRASH 停用归档（原因 SOURCE_TRASHED），RESTORE 按当前规则重新生成，已确认、已到期或已还款的账单保留待重核；恢复会重查30天期限、原消费、退款上限及预留可用性；还款恢复还要校验恢复后账单、合同和循环池的剩余本金（账单容量只扣除其他有效还款，还款在回收站期间办理安排转出的本金不占容量，恢复后该安排标为待重核并由重核退回本金），冲突时先调整关联。PURGE/EMPTY 禁止。
 - `template.save`：完整保存 name/kind/category/account/currency，以及可选固定金额、商户/备注、付款选择、活动；省略可选项恢复其默认空值，已有排序保留。`template.move`：template 和 direction=-1/+1，相邻移动，边缘保持。`template.createEntry`：template 与可选 set，调用普通记账准备，预览显示 `entry.create`；无金额或外币换算资料时需要在 set 补齐，不能生成待填草稿。模板内容也是确认依据。
 
 分类替代合并不是隐藏删除：entry.update 批量改记录分类、template.save 改模板，budget.save 明确目标各生效月额度并把原分类每个生效月设为 amount:null，activity.save 全量替换 categoryBudgets，recurrence.save 改规则，再 occurrence.update 改完成/取消等历史实例的分类，最后 category.lifecycle ARCHIVE。金额如何合并需明确给出，不能自行相加。原分类预算的空值历史行仍保留，不能宣称物理移除了所有引用。金融草稿分类用 financialDraft.reclassify；普通草稿分类用 entryDraft.reclassify；其余补完用本机草稿编辑，不替用户提交。

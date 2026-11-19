@@ -121,6 +121,28 @@ class CardPaymentTest {
             assertEquals(3,v.repo.dao.event(v.book,saved)!!.cardPaymentPeriods);assertEquals(2,v.snapshot().events.size);assertEquals(3,db.financialDao().graph(v.book).first()!!.bills.size)
         }finally{db.close();context.deleteDatabase(name)}
     }
+    @Test fun trashingRetiresUnprotectedCardPredictionKeepsConfirmedBillAndRestoreRegenerates()=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        try {
+            val v=setup(db);val r=v.repo
+            suspend fun graph()=db.financialDao().graph(v.book).first()!!
+            val open=r.saveEntry(v.book,v.draft("1000","2026-10-21"))
+            val confirmed=r.saveEntry(v.book,v.draft("2000","2026-10-10"))
+            val bill=graph().let{f->f.bills.single{it.planId==f.plans.single{p->p.sourceEventId==confirmed}.id}}
+            r.commitFinancialBillConfirmation(r.previewFinancialBillConfirmation(v.book,bill.id,KnownBillInput(bill.date,bill.totalMinor,bill.principalMinor,bill.feeMinor,v.bank)))
+            val openPlan=graph().plans.single{it.sourceEventId==open}
+            r.deleteEntry(v.book,open);r.deleteEntry(v.book,confirmed)
+            var f=graph()
+            assertFalse(f.plans.single{it.id==openPlan.id}.active);assertTrue(f.bills.none{it.planId==openPlan.id&&it.active})
+            assertEquals(open,db.financialDao().planRevisions(v.book,openPlan.id).first().single{it.reason=="SOURCE_TRASHED"}.causeEventId)
+            val kept=f.plans.single{it.active&&it.sourceEventId==confirmed};assertTrue(f.bills.single{it.planId==kept.id&&it.active}.confirmed)
+            r.restoreEntry(v.book,open)
+            f=graph()
+            val restored=f.plans.single{it.active&&it.sourceEventId==open}
+            assertNotEquals(openPlan.id,restored.id);assertEquals(listOf("2026-12-05" to 1000L),f.bills.filter{it.planId==restored.id&&it.active}.map{it.date to it.totalMinor})
+            assertFalse(r.financialPredictionStale(v.snapshot(),f,restored))
+        }finally{db.close()}
+    }
     @Test fun recurringForecastIsReplacedByMatchingRecordedCardBills()=runBlocking {
         for(choice in listOf("SINGLE","INSTALLMENT","BONUS")) {
             val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()

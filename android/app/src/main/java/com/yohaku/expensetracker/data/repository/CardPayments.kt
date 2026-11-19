@@ -86,16 +86,17 @@ internal suspend fun LedgerRepository.refreshCardEntryPrediction(event:EventEnti
         val protected=bills.any{it.confirmed||it.date<LocalDate.now(clock).toString()}||state.finance.repaymentAllocations.any{it.billId in ids}
         if(protected)return // Preserve real/overdue obligations; their explicit review path remains available.
         val expectedCount=if(event.cardPaymentMode=="SINGLE")1 else event.cardPaymentPeriods
-        if(old.mode!=event.cardPaymentMode||old.accountId!=account.id||expectedCount!=bills.size||event.historicalIncluded||account.type!=AccountType.CREDIT.name) {
+        if(event.deletedAt!=null||old.mode!=event.cardPaymentMode||old.accountId!=account.id||expectedCount!=bills.size||event.historicalIncluded||account.type!=AccountType.CREDIT.name) {
             val retired=old.copy(active=false,revision=Math.addExact(old.revision,1))
             archiveExistingPlan(old,bills)
             val archived=bills.map{it.copy(active=false,revision=Math.addExact(it.revision,1))}
             db.financialDao().updatePlan(retired);archived.forEach{db.financialDao().updateBill(it)}
-            archiveFinancialPlan(retired,archived,"SOURCE_PAYMENT_CORRECTED",event.id)
+            archiveFinancialPlan(retired,archived,if(event.deletedAt!=null)"SOURCE_TRASHED"else"SOURCE_PAYMENT_CORRECTED",event.id)
             old=null;state=stateProvider?.invoke()?:financialReviewState(event.bookId)
         }
     }
-    if(event.historicalIncluded||account.type!=AccountType.CREDIT.name||event.cardPaymentMode !in listOf("SINGLE","INSTALLMENT"))return
+    // A trashed source keeps no unprotected local prediction; restoring it regenerates one from current rules.
+    if(event.deletedAt!=null||event.historicalIncluded||account.type!=AccountType.CREDIT.name||event.cardPaymentMode !in listOf("SINGLE","INSTALLMENT"))return
     // Inactive applied members still own the source; editing it must not recreate a standalone plan.
     if(state.financialSourceOwned(event.id,old?.id))return
     val mode=FinanceMode.valueOf(event.cardPaymentMode!!)
