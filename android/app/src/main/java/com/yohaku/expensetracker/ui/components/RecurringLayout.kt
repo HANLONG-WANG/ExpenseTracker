@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
 import java.time.LocalDate
 
-@Composable private fun weekday(date:LocalDate)=word(listOf("周一","周二","周三","周四","周五","周六","周日")[date.dayOfWeek.value-1],listOf("月曜日","火曜日","水曜日","木曜日","金曜日","土曜日","日曜日")[date.dayOfWeek.value-1])
+@Composable internal fun weekday(date:LocalDate)=word(listOf("周一","周二","周三","周四","周五","周六","周日")[date.dayOfWeek.value-1],listOf("月曜日","火曜日","水曜日","木曜日","金曜日","土曜日","日曜日")[date.dayOfWeek.value-1])
 
 @Composable internal fun RecurringToday(today:LocalDate,content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current

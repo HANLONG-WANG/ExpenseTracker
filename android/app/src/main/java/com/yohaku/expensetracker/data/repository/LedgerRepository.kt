@@ -198,7 +198,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             require(!activity.ended||draft.date in activity.startDate..activity.endDate){"结束活动只补录期间事实 / 終了済みシーンは期間内の事実のみ記録できます"}
             require(dao.features(bookId)?.activityMode==true||old?.let{dao.eventActivity(bookId,it.id)?.activityId}==draft.activityId||occurrence?.activityId==draft.activityId)
         }
-        val snapshot=if(draft.reserveId!=null||occurrence!=null)preparedSnapshot?:snapshot(b).first()else null
+        val snapshot=preparedSnapshot?:if(draft.reserveId!=null||occurrence!=null||draft.merchantPlace!=null)snapshot(b).first()else null
         val reserveId=draft.reserveId?:occurrence?.let{o->snapshot!!.reserves.firstOrNull{it.occurrenceId==o.id&&it.active}?.id}
         val uses=reserveId?.let{rid->
             require(draft.kind==EntryKind.EXPENSE)
@@ -211,7 +211,10 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             listOf(ReserveUseEntity(bookId,event.id,rid,used))
         }.orEmpty()
         val treat=if(draft.treatEnabled)prepareTreat(bookId,draft.activityId?:error("互请必须关联活动 / ごちそうはシーンに関連付けてください"),event,null,draft.treatFriends,draft.treatMode,draft.treatWeights)else null
-        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantConflict=merchantDecision.conflict,merchantId=merchant.id,eventPlace=draft.copy(merchantId=merchant.id).placeForNewEntry(bookId,event.id,LocalDate.now(clock).toString()),cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,draft))
+        val today=LocalDate.now(clock).toString()
+        val merchantLocation=draft.merchantPlace?.let{requireNotNull(snapshot).merchantLocationForNewEntry(draft,today,id())}
+        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantConflict=merchantDecision.conflict,merchantId=merchant.id,eventPlace=draft.copy(merchantId=merchant.id).placeForNewEntry(bookId,event.id,today),
+            merchantLocation=merchantLocation,cardRuleChecked=event.cardPaymentChoice in listOf("BONUS","DEFERRED")||event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,draft))
     }
     /** Foundation for transfers/borrowing/repayments. UI is implemented in subsequent phases. */
     suspend fun saveMovement(bookId:String,kind:EntryKind,fromId:String,toId:String,fromAmount:Money,toAmount:Money,date:String):String=db.withTransaction {

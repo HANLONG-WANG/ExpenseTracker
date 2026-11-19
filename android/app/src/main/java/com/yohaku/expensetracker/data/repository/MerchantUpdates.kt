@@ -140,7 +140,8 @@ fun BookSnapshot.prepareMerchantOperation(input:MerchantOperationInput):Prepared
         else if(d.kind!=EntryKind.EXPENSE&&d.merchantId==null)d else {
             val (id,name)=if(op==MerchantOperationType.DELETE&&d.merchantId==removed)null to d.merchant
                 else destination(d.merchantId,d.merchant,d.kind==EntryKind.EXPENSE)
-            if(id==d.merchantId&&name==d.merchant)d else d.copy(merchantId=id,merchant=name,merchantLocated=if(id==null)false else d.merchantLocated)
+            if(id==d.merchantId&&name==d.merchant)d else d.copy(merchantId=id,merchant=name,merchantLocated=if(id==null)false else d.merchantLocated,
+                merchantPlace=d.merchantPlace?.takeIf{it.merchantId==id})
         }
     }
     val versionedDraft=nextDraft?.let{if(it!=draft)it.copy(merchantSyncVersion=it.merchantSyncVersion+1)else it}

@@ -16,13 +16,13 @@ suspend fun LedgerRepository.saveAnalysisPreferences(bookId:String,modules:List<
 }
 suspend fun LedgerRepository.saveMerchantLocation(bookId:String,merchantId:String,name:String,latitude:Double?,longitude:Double?,radiusMeters:Int=100,id:String?=null):String=db.withTransaction {
     require(dao.merchant(bookId,merchantId)!=null)
-    require(name.isNotBlank()){ "请输入地点名称 / 場所の名前を入力してください" }
+    val locationName=validatedPlaceName(name)
     require((latitude==null)==(longitude==null)){"经纬度请同时填写 / 緯度・経度を両方入力してください"}
     require(latitude==null||latitude.isFinite()&&latitude in -90.0..90.0&&longitude!!.isFinite()&&longitude in -180.0..180.0){"经纬度超出有效范围 / 緯度・経度が有効範囲外です"}
     require(radiusMeters>0){"匹配半径应大于零 / 選択範囲は0より大きくしてください"}
     val old=id?.let{dao.merchantLocation(bookId,it)?:error("地点不属于本账本 / 別の帳簿の場所です")}
     require(old==null||old.merchantId==merchantId)
-    val location=MerchantLocationEntity(bookId,old?.id?:this.id(),merchantId,name.trim(),latitude,longitude,radiusMeters)
+    val location=MerchantLocationEntity(bookId,old?.id?:this.id(),merchantId,locationName,latitude,longitude,radiusMeters)
     dao.putMerchantLocation(location);location.id
 }
 data class MerchantCandidate(val merchant:MerchantEntity,val location:MerchantLocationEntity,val distanceMeters:Double,val accuracyMeters:Double=0.0) {
@@ -50,4 +50,4 @@ suspend fun LedgerRepository.removeMerchantLocation(bookId:String,id:String)=db.
     dao.removeMerchantLocation(bookId,id)
 }
 
-internal fun EntryDraft.withoutMerchantLink()=copy(merchantId=null,merchantLocated=false)
+internal fun EntryDraft.withoutMerchantLink()=copy(merchantId=null,merchantLocated=false,merchantPlace=null)

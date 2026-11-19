@@ -8,6 +8,22 @@ internal fun EntryDraft.placeForNewEntry(bookId:String,eventId:String,today:Stri
     if(id!=null||kind!=EntryKind.EXPENSE||merchantId!=null||merchant.trim().isEmpty()||date!=today)return null
     return capturedPlace?.let{EventPlaceEntity(bookId,eventId,it.latitude,it.longitude,it.accuracyMeters)}
 }
+internal fun validatedPlaceName(name:String):String {
+    require(name.isNotBlank()){"请输入地点名称 / 場所の名前を入力してください"}
+    return name.trim()
+}
+
+internal fun EntryMerchantPlace.matches(fix:CapturedPlace)=
+    distanceMeters(position.latitude,position.longitude,fix.latitude,fix.longitude)<=100
+
+internal fun BookSnapshot.merchantLocationForNewEntry(draft:EntryDraft,today:String,locationId:String):MerchantLocationEntity? {
+    val requested=draft.merchantPlace?:return null
+    val fix=draft.capturedPlace?:return null
+    if(draft.id!=null||draft.kind!=EntryKind.EXPENSE||draft.date!=today||draft.merchantId!=requested.merchantId||!requested.matches(fix))return null
+    if(merchantCandidates(fix.latitude,fix.longitude,fix.accuracyMeters).isNotEmpty())return null
+    return MerchantLocationEntity(book.id,locationId,requested.merchantId,validatedPlaceName(requested.name),fix.latitude,fix.longitude)
+}
+
 internal fun distanceMeters(latitude:Double,longitude:Double,lat:Double,lon:Double):Double {
     val dLat=Math.toRadians(lat-latitude);val dLon=Math.toRadians(lon-longitude)
     val a=sin(dLat/2).pow(2)+cos(Math.toRadians(latitude))*cos(Math.toRadians(lat))*sin(dLon/2).pow(2)

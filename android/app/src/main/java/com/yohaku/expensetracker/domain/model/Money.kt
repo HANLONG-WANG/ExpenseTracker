@@ -2,6 +2,8 @@ package com.yohaku.expensetracker.domain.model
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -53,8 +55,15 @@ data class EntryDraft(
     val referenceExpectedAccountMinor:Long?=null,val referenceExpectedBaseMinor:Long?=null,
     val referenceRates:List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot> = emptyList(),
     val occurrenceLinkEventId:String?=null,
-    val cardPaymentChoice:String?=null,val cardPaymentPeriods:String="",val cardPaymentRecheck:Boolean=false,val cardPaymentMonth:String="",val cardPaymentFee:String=""
+    val cardPaymentChoice:String?=null,val cardPaymentPeriods:String="",val cardPaymentRecheck:Boolean=false,val cardPaymentMonth:String="",val cardPaymentFee:String="",
+    // 普通草稿和云端命令沿用原来的 JSON。
+    @OptIn(ExperimentalSerializationApi::class) @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val merchantPlace:EntryMerchantPlace?=null
 )
+
+/** 勾选时绑定商户和位置，恢复草稿后可用新定位核对。 */
+@Serializable
+data class EntryMerchantPlace(val merchantId:String,val position:CapturedPlace,val name:String="")
 
 @Serializable
 enum class TransferFeePosition { INCLUDED_FROM, DEDUCTED_TO, SEPARATE }

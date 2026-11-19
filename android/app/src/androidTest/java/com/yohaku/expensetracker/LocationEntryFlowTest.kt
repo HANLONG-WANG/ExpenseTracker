@@ -177,6 +177,54 @@ class LocationEntryFlowTest {
             assertEquals("過去の原名",repo.dao.event(b,existing)!!.merchant)
         }finally {vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
     }
+    @Test fun unmatchedLocationCanBeNamedAndSavedToAnExistingMerchant()=runBlocking {
+        val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as YohakuApplication
+        val db=Room.inMemoryDatabaseBuilder(app,YohakuDatabase::class.java).build()
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+        val path=File(app.cacheDir,"entry-place-${UUID.randomUUID()}.preferences_pb")
+        val prefs=AppPreferences(app,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
+        val repo=LedgerRepository(db);val source=ControlledLocation()
+        val vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock),locationSource=source)
+        try {
+            val book=repo.createBook("位置",Currency.JPY)
+            repo.dao.putBook(repo.dao.book(book)!!.copy(initialized=true))
+            val account=repo.saveAccount(book,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+            val category=repo.saveCategory(book,"食事",EntryKind.EXPENSE,null)
+            val merchant=repo.saveMerchant(book,"喫茶")
+            prefs.select(book);prefs.setForegroundLocation(book,true)
+            ui.setContent{NativeApp(vm)}
+            for((i,look) in testLooks(this@LocationEntryFlowTest).withIndex()) {
+                val (theme,language)=look
+                repo.updateAppearance(book,theme,language)
+                ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.id==book&&it.theme==theme&&it.language==language}==true}
+                ui.runOnIdle {
+                    vm.changeEntry(book,EntryDraft(categoryId=category,accountId=account,amount="500"))
+                    vm.navigate("entry")
+                }
+                val latitude=35.0+i*0.01
+                nextRequest(source).complete(LocationFix(latitude,139.0,8.0))
+                ui.waitUntil(10000){vm.entry.value?.capturedPlace!=null}
+                ui.onNodeWithTag("entry-save-place").assertDoesNotExist()
+                visible("entry-merchant-list").performClick()
+                ui.onNodeWithTag("merchant-choice-$merchant").performScrollTo().performClick()
+                visible("entry-save-place").assertIsOff().performClick()
+                visible("entry-place-name").performTextInput("駅前店")
+                if(visualEnabled()) {
+                    androidx.test.espresso.Espresso.closeSoftKeyboard()
+                    ui.settleKeyboard()
+                    visible("entry-location")
+                    shot("$theme-$language-entry-save-place")
+                }
+                ui.entryAction("entry-save-button").performClick()
+                ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+                val saved=repo.snapshot(repo.dao.book(book)!!).first()
+                val place=saved.merchantLocations.single{it.latitude==latitude}
+                assertEquals(MerchantLocationEntity(book,place.id,merchant,"駅前店",latitude,139.0,100),place)
+                assertEquals(i+1,saved.eventMerchants.count{it.merchantId==merchant})
+                assertTrue(saved.eventPlaces.isEmpty())
+            }
+        }finally{vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
+    }
     @Test fun newMerchantKeepsCapturedLocationUntilSavedFromOriginalName()=runBlocking {
         val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as YohakuApplication
         val db=Room.inMemoryDatabaseBuilder(app,YohakuDatabase::class.java).build()

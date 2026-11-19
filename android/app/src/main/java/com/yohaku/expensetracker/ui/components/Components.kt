@@ -131,7 +131,7 @@ import java.time.YearMonth
     }
 }
 
-@Composable fun YField(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,numeric:Boolean=false,multiline:Boolean=false,emphasizeAmount:Boolean=false,amountSymbol:String="¥",displayLabel:String=label,compactNumber:Boolean=false,readOnly:Boolean=false,expressionCurrency:com.yohaku.expensetracker.domain.model.Currency?=null) {
+@Composable fun YField(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,numeric:Boolean=false,multiline:Boolean=false,emphasizeAmount:Boolean=false,amountSymbol:String="¥",displayLabel:String=label,compactNumber:Boolean=false,readOnly:Boolean=false,expressionCurrency:com.yohaku.expensetracker.domain.model.Currency?=null,inputTag:String="field-"+label) {
     var editing by androidx.compose.runtime.saveable.rememberSaveable(stateSaver=androidx.compose.ui.text.input.TextFieldValue.Saver) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value)) }
     val fieldValue=if(editing.text==value)editing else androidx.compose.ui.text.input.TextFieldValue(value,androidx.compose.ui.text.TextRange(value.length))
     val expression=expressionCurrency!=null&&com.yohaku.expensetracker.domain.model.AmountExpression.isExpression(value)
@@ -155,7 +155,7 @@ import java.time.YearMonth
     Column(modifier.fillMaxWidth().testTag("field-group-"+label),verticalArrangement=Arrangement.spacedBy(if(journal)6.dp else if(objects)9.dp else 10.dp)) {
         FieldLabel(displayLabel,inkMark=true,compactNumber=compactNumber)
         Box(Modifier.fillMaxWidth()){
-            BasicTextField(fieldValue,onValueChange={change(it)},Modifier.testTag("field-"+label).semantics{contentDescription=displayLabel}.fillMaxWidth().then(frame).then(inset).height(textHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),
+            BasicTextField(fieldValue,onValueChange={change(it)},Modifier.testTag(inputTag).semantics{contentDescription=displayLabel}.fillMaxWidth().then(frame).then(inset).height(textHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),
                 textStyle=TextStyle(color=if(journal&&emphasizeAmount)t.accent else t.ink,fontFamily=if(emphasizeAmount||compactNumber)t.number else t.body,fontSize=size.sp,lineHeight=textLine.sp,fontWeight=if(objects&&emphasizeAmount)FontWeight.Medium else FontWeight.Normal,letterSpacing=(if(compactNumber)-.6f else if(emphasizeAmount)if(objects||journal)-2f else -1.7f else 0f).sp),cursorBrush=SolidColor(t.accent),singleLine=!multiline,readOnly=readOnly,onTextLayout={lines=it.lineCount},
                 keyboardOptions=KeyboardOptions(keyboardType=if(numeric)KeyboardType.Decimal else KeyboardType.Text))
             if(objects&&!emphasizeAmount)Box(Modifier.align(Alignment.BottomEnd).offset(x=(-13).dp,y=(-6).dp).size(13.dp,3.dp).background(Color(0xffe5d4ba),RoundedCornerShape(5.dp)))

@@ -252,8 +252,10 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         if(savingEntry)return
         val snapshot=(state.value as? AppState.Ready)?.snapshot?.takeIf{it.book.id==bookId}
         var next=if(entry.value?.accountId!=draft.accountId&&snapshot!=null)snapshot.withRememberedCardPayment(draft)else draft
-        if(next.date!=LocalDate.now(repository.clock).toString()&&next.merchantLocated&&!next.merchantManuallyEdited)next=next.copy(merchant="",merchantId=null,merchantLocated=false)
-        if(next.date!=LocalDate.now(repository.clock).toString()||next.kind!=EntryKind.EXPENSE)next=next.copy(capturedPlace=null)
+        val today=LocalDate.now(repository.clock).toString()
+        if(next.date!=today&&next.merchantLocated&&!next.merchantManuallyEdited)next=next.copy(merchant="",merchantId=null,merchantLocated=false)
+        if(next.date!=today||next.kind!=EntryKind.EXPENSE)next=next.copy(capturedPlace=null,merchantPlace=null)
+        else if(next.merchantPlace?.merchantId!=next.merchantId&&next.merchantPlace!=null)next=next.copy(merchantPlace=null)
         negativeBalanceReview.value=null;entry.value=next;persistDraft(bookId)
     }
     fun switchEntryKind(snapshot:BookSnapshot,kind:EntryKind) {

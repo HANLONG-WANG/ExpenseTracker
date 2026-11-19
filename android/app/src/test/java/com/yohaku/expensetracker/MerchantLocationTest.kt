@@ -46,6 +46,31 @@ class MerchantLocationTest {
         val empty=EntryDraft(categoryId="c",date=today)
         assertFalse(empty.copy(capturedPlace=draft.capturedPlace).hasManualInput(empty))
     }
+    @Test fun namedPlaceIsSavedOnlyForTheSelectedMerchantOnANewUnmatchedExpenseToday() {
+        val today="2026-11-01"
+        val fix=CapturedPlace(36.0,140.0,12.0)
+        val draft=EntryDraft(date=today,merchantId=merchant.id,merchant=merchant.name,capturedPlace=fix)
+        val requested=draft.copy(merchantPlace=EntryMerchantPlace(merchant.id,fix," 駅前店 "))
+        val s=snapshot()
+        val location=MerchantLocationEntity(book.id,"new",merchant.id,"駅前店",36.0,140.0,100)
+        assertEquals(location,s.merchantLocationForNewEntry(requested,today,"new"))
+        listOf(draft,requested.copy(merchantId=null),requested.copy(date="2026-10-31"),requested.copy(id="existing"),
+            requested.copy(kind=EntryKind.INCOME),requested.copy(capturedPlace=null)).forEach {
+            assertNull(s.merchantLocationForNewEntry(it,today,"new"))
+        }
+        assertNull(snapshot(places=listOf(location)).merchantLocationForNewEntry(requested,today,"another"))
+    }
+    @Test fun checkedPlaceNeedsANameAndCountsAsManualInput() {
+        val fix=CapturedPlace(36.0,140.0,12.0)
+        val base=EntryDraft(date="2026-11-01",merchantId=merchant.id,capturedPlace=fix)
+        val checked=base.copy(merchantPlace=EntryMerchantPlace(merchant.id,fix,"  "))
+        assertTrue(checked.hasManualInput(base))
+        assertTrue(checked.hasManualInput(null))
+        val error=assertThrows(IllegalArgumentException::class.java){
+            snapshot().merchantLocationForNewEntry(checked,base.date,"new")
+        }
+        assertEquals("请输入地点名称 / 場所の名前を入力してください",error.message)
+    }
     @Test fun clustersUseNewestAnchorAndMostAccurateCoordinates() {
         val dates=listOf("2026-11-03","2026-11-02","2026-11-01")
         val events=dates.mapIndexed{i,date->EventEntity("b","e$i","EXPENSE","a",null,100,"JPY",100,date," 新店 ","")}

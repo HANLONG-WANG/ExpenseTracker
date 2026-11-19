@@ -100,10 +100,11 @@
 - `RecurrenceEntity` 新增 merchant/merchantId/note/cardPaymentChoice/cardPaymentPeriods；`fixedCardPayment` 统一校验：非信用卡清空，不接受 DEFERRED，INSTALLMENT 须期数>0。`occurrenceDraft` 生成 date=scheduledDate、`merchantManuallyEdited=true` 的草稿；规则没设付款方式时用 `withRememberedCardPayment`。
 - 一键确认用 `AppViewModel.occurrenceConfirmation`：`previewEntry` → `commitEntryReview(clearDraft=false)`，不动用户草稿；提交时快照变化返回 null，则重新预览并标记 refreshed；负余额沿用 `negativeBalanceChanges`。「修改后再记」用同一草稿进入原表单（`startOccurrence`）。
 - `entry_templates`（book/account/category/activity 外键）。`validateTemplate` 和记账一样检查分类启用与类型、`entryAccounts(kind)`、币种、商户和活动；`templateIssue` 返回失效原因，`templateDraft` 拒绝失效模板。`startTemplate` 打开预填表单并建立基线，`amountFocusSession` 只聚焦一次金额框；分类选择页选定分类（含新建后直接使用）经 `finishCategoryPick` 回到表单，金额与实际入账金额都还空时同样聚焦金额框并弹出数字键盘，编辑已有记录或已带金额的草稿重选分类不抢焦点。分类合并在 `previewCategoryOperation` 中迁移模板，活动删除清空 activityId，账户/分类删除时模板算作引用。
-### 1.8 新商户记账位置与地图选点（2026-11-01）
+### 1.8 记账位置与地图选点（2026-11-19）
 
 - `EntryDraft.capturedPlace`（纬度/经度/精度）：`EntryLocation` 定位成功且为今天的新建支出时写入；`changeEntry` 在日期非今天或非支出时清空；`hasManualInput` 忽略它。
 - `placeForNewEntry`：先在保存事务解析商户，再判断新建、支出、最终 `merchantId==null`、商户非空、日期为今天且有暂存定位时，`PreparedLedgerChange.eventPlace` 在同一事务写入 `event_places`。新建时若已解析为正式商户就不新增临时位置；已有待整理位置不会被普通保存删除，永久清理沿用级联表清理。
+- 今天新建支出且无定位候选时，已关联商户可勾选记录地点。`EntryDraft.merchantPlace` 绑定商户、勾选时的位置和用户填写的地点名，默认空，勾选即算手动输入。重新定位期间暂停写入；重新获得定位后，仅当仍在原地点的 100 米内且无候选时沿用该选择。保存时复用本账本的候选匹配，有候选就跳过地点写入；否则校验名称，与支出同事务写入半径 100 米的 `merchant_locations`。
 - `recordedPlaces(name)`：`normalizedMerchantName` 相同且仍有临时位置的支出，包含已关联及可恢复回收站，按日期从新到旧，以簇首点100米内贪心合并，且不跨最终商户；坐标取精度最好的点。使用 `MerchantPlaceDecision` + `commitMerchantOperation` 在一个事务里完成位置保留/放弃、商户关联与对应临时位置清理。距离统一用 `distanceMeters`（haversine）。
 - `PlacePicker`：`AndroidView(MapView)`，转发生命周期；中心图钉、半径圈为 Compose 叠加层（像素半径 = 米 / `getMetersPerPixelAtLatitude`），相机停下回调中心坐标；MapView 在按下时请求父级不拦截，防止外层滚动抢走拖动。`applyPlaceTheme` 在 Liberty 样式加载后按图层 id 重设颜色、隐藏 3D 建筑和道路编号、文字只用 `name`。`YohakuApplication` 初始化 MapLibre，用 OkHttp 拦截器设置专用 User-Agent。
 

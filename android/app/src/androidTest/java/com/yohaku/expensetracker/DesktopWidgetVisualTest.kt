@@ -142,7 +142,10 @@ class DesktopWidgetVisualTest {
                 invalidateFirst(repo,f)
                 repo.saveTemplate(f.book,TemplateInput("周末和朋友去的那家拉面店",EntryKind.EXPENSE,f.categories[1],f.account,Currency.JPY,480,id=f.templates[1]))
                 capture(snapshot(repo,f.book),look,"wide-edge")
-                f.templates.forEach{repo.deleteTemplate(f.book,it)}
+                // 只剩一个模板：模板格仍按四格定位，后接“＋ 模板”入口。
+                f.templates.filterIndexed{index,_->index!=1}.forEach{repo.deleteTemplate(f.book,it)}
+                capture(snapshot(repo,f.book),look,"wide-one")
+                repo.deleteTemplate(f.book,f.templates[1])
                 capture(snapshot(repo,f.book),look,"wide-empty")
                 capture(null,look,"small-unavailable")
             }

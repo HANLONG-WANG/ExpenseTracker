@@ -32,7 +32,8 @@ fun EntryDraft.syncMerchantFields(latest:MerchantBaseline,merchants:List<Merchan
 fun EntryDraft.clearMissingMerchant(merchants:List<MerchantEntity>):EntryDraft {
     val ids=merchants.map{it.id}.toSet()
     return copy(merchantId=merchantId?.takeIf{it in ids},
-        merchantLocated=merchantLocated&&merchantId in ids)
+        merchantLocated=merchantLocated&&merchantId in ids,
+        merchantPlace=merchantPlace?.takeIf{it.merchantId==merchantId&&merchantId in ids})
 }
 
 fun BookSnapshot.syncEditingMerchant(draft:EntryDraft):EntryDraft {

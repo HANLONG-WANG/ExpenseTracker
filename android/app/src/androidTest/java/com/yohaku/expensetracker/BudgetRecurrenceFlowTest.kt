@@ -102,10 +102,10 @@ class BudgetRecurrenceFlowTest {
             runBlocking{repo.clearDraft(book)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.draft==null}
             ui.runOnIdle{vm.navigate("home")}
-            ui.onNodeWithTag("home-shortcuts").performScrollTo()
+            // 模板区在每日面板之上：滚到面板，模板完整露出且不被底栏遮住。
+            ui.onNodeWithTag("home-daily-panel").performScrollTo()
             shot("$theme-$language-home-templates",false,false)
-            ui.onNodeWithTag("home-shortcuts").performScrollTo()
-            ui.waitForIdle()
+            ui.onNodeWithTag("home-daily-panel").performScrollTo()
             ui.onNodeWithTag("use-template-$template").performClick()
             ui.waitUntil(10000){vm.entry.value?.merchant=="お店"&&!vm.busy.value}
             ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY").assertIsFocused()
@@ -113,8 +113,7 @@ class BudgetRecurrenceFlowTest {
             ui.onNodeWithTag("sheet-close").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.draft==null}
             assertEquals("home",vm.route.value)
-            ui.onNodeWithTag("home-shortcuts").performScrollTo()
-            ui.waitForIdle()
+            ui.onNodeWithTag("home-daily-panel").performScrollTo()
             ui.onNodeWithTag("use-template-$template").performClick()
             ui.waitUntil(10000){vm.entry.value!=null&&!vm.busy.value}
             sheetTarget(ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")).performTextReplacement("150")

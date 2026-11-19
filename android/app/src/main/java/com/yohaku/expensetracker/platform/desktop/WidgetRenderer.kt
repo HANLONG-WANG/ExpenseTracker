@@ -114,28 +114,38 @@ internal class WidgetRenderer(private val context:Context) {
             if(theme=="journal")text(R.id.widget_list_heading,"${today.monthValue}月 · "+word("记一笔 ↓","記録する ↓"),inner-mainWidth-12,12f,warm)
             val templates=s.templates.sortedBy{it.sortOrder}.take(4)
             rv.removeAllViews(R.id.widget_templates)
-            val count=templates.size.coerceAtLeast(1)
-            val slotWidth=if(theme=="journal")inner-mainWidth-12 else inner/count
-            for(index in 0 until count) {
+            // 模板格始终按四格定位：不足四个时不拉伸已有格，紧随其后放一个“＋ 模板”入口，其余格留白占位。
+            val slots=if(templates.isEmpty())1 else 4
+            val slotWidth=if(theme=="journal")inner-mainWidth-12 else inner/slots
+            for(index in 0 until slots) {
                 val template=templates.getOrNull(index)
-                val name=template?.name?:word("在 app 里创建模板","アプリでテンプレートを作成")
+                val adder=templates.isNotEmpty()&&index==templates.size
+                val child=RemoteViews(context.packageName,when(theme){"journal"->R.layout.widget_template_journal;"objects"->R.layout.widget_template_objects;else->R.layout.widget_template_magazine})
+                if(templates.isNotEmpty()&&template==null&&!adder) {
+                    child.setViewVisibility(R.id.widget_slot,View.INVISIBLE);rv.addView(R.id.widget_templates,child);continue
+                }
+                val name=template?.name?:if(adder)word("＋ 模板","＋ テンプレート")else word("在 app 里创建模板","アプリでテンプレートを作成")
                 val amount=template?.amountMinor?.let{Money(Currency.valueOf(template.currency),it).display()}.orEmpty()
                 val issue=template?.let{s.templateIssue(it)}
-                val child=RemoteViews(context.packageName,when(theme){"journal"->R.layout.widget_template_journal;"objects"->R.layout.widget_template_objects;else->R.layout.widget_template_magazine})
                 val textWidth=slotWidth-when(theme){"objects"->40;"journal"->20;else->6}
                 fun slotText(view:Int,value:String,size:Float,tint:Int,number:Boolean=false) {
-                    child.setImageViewBitmap(view,if(template==null&&view==R.id.widget_slot_name)art.paragraph(value,textWidth,size,tint)else art.text(value,textWidth,size,tint,number));child.setContentDescription(view,value)
+                    child.setImageViewBitmap(view,if(template==null&&!adder&&view==R.id.widget_slot_name)art.paragraph(value,textWidth,size,tint)else art.text(value,textWidth,size,tint,number));child.setContentDescription(view,value)
                 }
-                slotText(R.id.widget_slot_name,name,if(theme=="journal")15f else 12f,if(issue!=null)muted else ink)
+                slotText(R.id.widget_slot_name,name,if(theme=="journal")15f else 12f,if(issue!=null||adder)muted else ink)
                 slotText(R.id.widget_slot_amount,amount,9.5f,muted,true)
                 child.setViewVisibility(R.id.widget_slot_amount,if(amount.isEmpty())View.GONE else View.VISIBLE)
                 if(theme=="magazine") {
-                    slotText(R.id.widget_slot_mark,"0${index+1}",8.5f,warm)
+                    slotText(R.id.widget_slot_mark,"0${index+1}",8.5f,if(adder)muted else warm)
                     if(index==0)child.setInt(R.id.widget_slot,"setBackgroundColor",android.graphics.Color.TRANSPARENT)
                 }
-                if(theme=="objects")child.setImageViewBitmap(R.id.widget_slot_icon,art.category(resolveCategoryIcon(template?.categoryId,s.categories),index))
+                if(theme=="objects") {
+                    if(adder)child.setViewVisibility(R.id.widget_slot_icon,View.GONE)
+                    else child.setImageViewBitmap(R.id.widget_slot_icon,art.category(resolveCategoryIcon(template?.categoryId,s.categories),index))
+                }
+                if(theme=="journal"&&adder)child.setViewVisibility(R.id.widget_slot_check,View.INVISIBLE)
                 if(issue!=null)child.setFloat(R.id.widget_slot,"setAlpha",.45f)
-                child.setContentDescription(R.id.widget_slot,name+(if(amount.isEmpty())"" else " $amount")+(if(issue==null)"" else word("，需要编辑","、編集が必要です")))
+                val description=if(adder)word("添加记账模板","記録テンプレートを追加")else name+(if(amount.isEmpty())"" else " $amount")+(if(issue==null)"" else word("，需要编辑","、編集が必要です"))
+                child.setContentDescription(R.id.widget_slot,description)
                 child.setOnClickPendingIntent(R.id.widget_slot,action(template?.id?:"",index+1))
                 rv.addView(R.id.widget_templates,child)
             }

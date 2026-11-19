@@ -18,7 +18,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.repository.*
+import com.yohaku.expensetracker.domain.model.CapturedPlace
 import com.yohaku.expensetracker.domain.model.EntryDraft
+import com.yohaku.expensetracker.domain.model.EntryKind
+import com.yohaku.expensetracker.domain.model.EntryMerchantPlace
 import com.yohaku.expensetracker.platform.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
@@ -109,13 +112,18 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
         (read as? LocationRead.Ready)?.fix?.let{s.merchantCandidates(it.latitude,it.longitude,it.accuracyMeters)}.orEmpty()
     }
     LaunchedEffect(read,candidates,d.mediaSession,enabled,d.date) {
+        val current=vm.entry.value?.takeIf{it.mediaSession==d.mediaSession}?:return@LaunchedEffect
         if(enabled&&read is LocationRead.Ready) {
-            val current=vm.entry.value
-            if(current!=null&&current.mediaSession==d.mediaSession&&current.id==null&&current.kind==com.yohaku.expensetracker.domain.model.EntryKind.EXPENSE&&current.date==today.toString()) {
-                val fix=read.fix
-                vm.changeEntry(s.book.id,current.copy(capturedPlace=com.yohaku.expensetracker.domain.model.CapturedPlace(fix.latitude,fix.longitude,fix.accuracyMeters)))
+            if(current.id==null&&current.kind==EntryKind.EXPENSE&&current.date==today.toString()) {
+                val fix=CapturedPlace(read.fix.latitude,read.fix.longitude,read.fix.accuracyMeters)
+                val next=current.copy(capturedPlace=fix,
+                    merchantPlace=current.merchantPlace?.takeIf{candidates.isEmpty()&&it.matches(fix)})
+                if(next!=current)vm.changeEntry(s.book.id,next)
             }
             vm.offerLocatedMerchant(s.book.id,d.mediaSession,candidates)
+        }else if(current.merchantPlace!=null&&current.capturedPlace!=null) {
+            // 重新定位期间保留已填名称，旧坐标不能用于本次保存。
+            vm.changeEntry(s.book.id,current.copy(capturedPlace=null))
         }
     }
     if(!currentDate){YText(word("补录非今天的记录，不使用当前位置匹配商户","今日以外の記録では現在地でお店を照合しません"),11,Modifier.testTag("entry-location-historical"),color=LocalYohaku.current.muted);return}
@@ -123,8 +131,16 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
         if(enabled) {
             LocationStatus(read)
             if(read is LocationRead.Ready) {
-                if(candidates.isEmpty())YText(word("保存地点中没有候选，继续手动填写。","保存した場所に候補はありません。手入力で続けられます。"),11,Modifier.testTag("location-no-candidates"))
-                else {
+                if(candidates.isEmpty()) {
+                    YText(word("保存地点中没有候选，继续手动填写。","保存した場所に候補はありません。手入力で続けられます。"),11,Modifier.testTag("location-no-candidates"))
+                    if(d.id==null&&d.merchantId!=null&&d.capturedPlace!=null) {
+                        val place=d.merchantPlace
+                        YToggle(word("把这里记为「${d.merchant}」的地点","ここを「${d.merchant}」の場所として保存"),place!=null,
+                            {onChange(d.copy(merchantPlace=if(it)EntryMerchantPlace(d.merchantId,d.capturedPlace)else null))},Modifier.testTag("entry-save-place"))
+                        if(place!=null)YField(word("地点名称","場所の名前"),place.name,
+                            {onChange(d.copy(merchantPlace=place.copy(name=it)))},inputTag="entry-place-name")
+                    }
+                }else {
                     val auto=candidates.singleOrNull()?.trustworthy==true&&d.id==null&&!d.merchantManuallyEdited
                     YText(if(auto)word("唯一可信地点可自动带入；手填后保留你的输入。","確かな候補が1件なら自動入力。手入力した内容を優先します。")else word("请选择候选；已有商户不会被覆盖。","候補を選んでください。入力済みのお店は上書きしません。"),11)
                     FlowRow(horizontalArrangement=Arrangement.spacedBy(if(LocalYohaku.current.id=="magazine")15.dp else 5.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {

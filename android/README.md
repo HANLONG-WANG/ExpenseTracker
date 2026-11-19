@@ -2,6 +2,18 @@
 
 原生 Kotlin / Compose 本地记账应用。阶段E P21–P25的实现与本轮可执行验收完成，交付0.5.0/code5。用户明确选择本轮交付APK，用户实机检查保持未验。准确状态见[阶段E记录](verification/phase-e-status.md)与[UI01–UI27验收](../docs/phase-e-acceptance.md)。历史范围见[开发计划](../docs/plans/development-plan.md)、[阶段A](verification/phase-a-status.md)、[阶段B](verification/phase-b-status.md)、[阶段C](verification/phase-c-status.md)、[阶段D](verification/phase-d-status.md)。
 
+## 排版修复与记账存地点（2026-11-19）
+
+- 账户总览：「付款与变更」的「比较 / 更改付款方式」与「查看 / 补齐用户规则」同在一个 `YActionRow`；本期账单下的「批量转为循环还款」「查看该月账单」同样横排。
+- 账单期次详情（`plans/{plan}/{bill}`）：来源行右侧为「查看原记录 →」链接（`finance-period-source-*`）；确认/调整、与原预测核对、查看计划、比较付款方式、计划版本五个按钮合为一个 `YActionRow`，按自然宽度排布、放不下时整项换行。
+- 分析·对比：主要分类/商户/活动变化改为每节一张紧凑表（`ComparisonCauseList`，`comparison-list-{category|merchant|activity}`），一项一行显示名称、「对照 → 本期」金额与变化额；杂志为编号表格，手账为虚线纸条加边注箭头，小物为圆角托盘加变化胶囊。点行（`comparison-cause-*`）打开本期流水，明细弹层顶部「本期 / 对照期间」标签（`analysis-tab-current|previous`）切换期间；历史预览中行不可点。
+- 分析·未来：资金时间线日期改为「月 / 日 / 星期」日历签（杂志右侧墨线、手账斜写暖色、小物奶油色圆角签），第二行只显示账户，不再重复日期；行距收紧，情景余额与链接对齐文字列。
+- 首页：「常用的一笔」移到「给接下来的日常，留一点。」之前，账单核对提示仍在两者之间。
+- 记账存地点：今天新记支出、当前位置无匹配地点且已关联既有商户时，定位面板出现「把这里记为「商户」的地点」（`entry-save-place`），勾选后填地点名称（`entry-place-name`，必填），保存支出时同事务新增半径 100 米的商户地点。详见下文「记账位置与地图选点」。云端命令无手机定位，不受影响。
+
+验证（2026-11-19）：JVM `:app:testDebugUnitTest` 全量通过（含 `MerchantLocationTest` 新增两项）。S24 Ultra 尺寸（1080×2340/density 450）`looks=all visual=true`：`FinancialScaleFlowTest#fortySinglePurchases…`、`AnalysisFlowTest#comparisonDrills…`、`AnalysisFlowTest#planningTabs…`、`BudgetRecurrenceFlowTest#oneTapConfirmation…`、`LocationEntryFlowTest`（含新增 `unmatchedLocationCanBeNamedAndSavedToAnExistingMerchant`）、`DesktopWidgetVisualTest` 通过并查看截图；`SetupPresentationTest` 在 390dp 标准配置 17 项通过。
+- 桌面小组件：见下节「模板格始终按四格定位」。
+
 ## UI 外壳账户身份与补记收入修复（2026-11-15）
 
 账户编辑（含首次设置）在界面重建后保留编辑 ID 和表单字段，继续修改原账户；目标缺失显示提示且不能保存为新账户。资金风险页与金融总览的“补记已实际到账收入”使用入口指定的资金账户，已有草稿确认及其重建不丢失目标。指定账户失效、停用或为负债账户时提示错误，不回退到最近收入账户；无指定账户的普通记账仍使用原有默认值。无数据库或云端协议变更。
@@ -80,13 +92,13 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 月份取设备当地今天；`WidgetBudget` 纯函数接收 `BudgetProjection` 和日期。预算内还能花为 `remainingMinor`，自由可花为 `availableMinor`（扣除本月待付预留），与首页相同。剩余天数包含今天，日均为非负自由可花除以剩余天数、按币种最小单位向下取整，金额仍用 `Money.display()`。未设预算显示本月已花、未设预算和剩余天数；超支显示正数超出额、月预算和剩余天数；预留金额未知时自由可花/日均显示「—」，仅自由可花为负时保留负数而日均为零。
 
-余额点击切到账本首页；宽版模板按 sortOrder 取前四个（包含失效模板），无模板时进入模板管理。失效格置灰并进入编辑；已删除模板打开管理并显示主题提示。有效模板复用 `startTemplate`、既有草稿确认和金额聚焦，不新增保存流程。长按 app 图标的动态快捷方式取当前账本前四个**可用**模板；标签为模板名、长标签附固定金额。图标用共享字体链或现有分类路径绘制 adaptive bitmap，三主题独立设计；没有 pinned 快捷方式或桌面记账弹窗。快捷方式内容未变时不重复发布；系统限流会记录错误并安排重试，应用回到前台也重新检查。
+余额点击切到账本首页；宽版模板按 sortOrder 取前四个（包含失效模板），模板格始终按四格定位，不足四个时不拉伸，紧随最后一个模板放一格「＋ 模板」（进入模板管理），其余格留白；无模板时整行显示创建提示并进入模板管理。失效格置灰并进入编辑；已删除模板打开管理并显示主题提示。有效模板复用 `startTemplate`、既有草稿确认和金额聚焦，不新增保存流程。长按 app 图标的动态快捷方式取当前账本前四个**可用**模板；标签为模板名、长标签附固定金额。图标用共享字体链或现有分类路径绘制 adaptive bitmap，三主题独立设计；没有 pinned 快捷方式或桌面记账弹窗。快捷方式内容未变时不重复发布；系统限流会记录错误并安排重试，应用回到前台也重新检查。
 
 刷新集中在 `YohakuApplication.desktop`：Room `InvalidationTracker` 监听已提交变化，约一秒合并刷新所有小组件及快捷方式；activeBook 偏好另行监听。观察账本、事件/退款确认/手续费、预算、周期规则/实例、活动及关联、预留及使用、模板、账户、分类、商户、账本功能和记录保存顺序相关表；不在记账、云端执行/撤销、CSV 导入等写入点插入调用。`onUpdate`/调整尺寸通过 `goAsync()` 在 IO 线程读数据库；每天当地零点后 5 秒安排非精确 AlarmManager 刷新，系统可延迟投递，时间/时区、日期、重启、升级和语言变化也触发刷新。系统周期更新为 30 分钟。绑定按 widgetId 存在 noBackup 下独立 DataStore，删除小组件时清理；账本备份恢复不替换启动器绑定，`:restore` 前停止观察，应用重启先恢复数据库再启动桌面刷新。绑定账本不存在时保留最后主题/语言显示空状态，点击重新配置。
 
 `ThemeTypefaces` 抽出原 `ThemeFonts` 的原生 Typeface 构建与缓存，资源顺序、400 字重和 variable font 参数完全不变，Compose 仍包装同一组原生字体。journal 为 journal_math → hand → hand_cn → hand_full → hand_cn_full → journal_check → journal_star，objects 为 round → round_cn → round_full → round_cn_full，magazine 正文为 editorial → editorial_full，数字前置 editorial_number。运行时每个主题文字字段按系统 fontScale、实际 dp×density 独立绘制到 ImageView，设置完整 contentDescription；名称超长省略但读屏保留全文，金额必要时按列宽缩小。位图高度按 `ascent/descent`（hhea 行高）计算，不用 `top/bottom`：后者取回退链首个字体的包围盒，journal_math 只有 0.22–0.28em 会把手账文字裁成细线，editorial/round_cn 又过大。`DesktopArtwork` 的像素密度字段命名为 `pxPerDp`，因为 `TextPaint.apply{}` 内的 `density` 会解析成 `TextPaint.density`（默认 1）。高于设计稿的尺寸（如 S24 Ultra 4×2 约 230dp、Pixel 4×3）把多出的高度平分给间隔与模板行。只保留大小两种布局并裁去文字尾部透明像素，不把整个小组件画成一张位图。装饰为 XML shape/vector 与小尺寸平铺位图；静态选择器预览用 magazine，Android 12+ 为 previewLayout、旧版为 previewImage。
 
-验证入口：JVM `WidgetBudgetTest` 五项覆盖正常（11 月 7 日含当天共 24 天）、未设预算、超支、未知预留、最小单位取整及负自由可花归零。仪器 `DesktopWidgetVisualTest` 默认只运行一次模板描述、失效提示与余额/模板点击绑定断言，使用独立内存仓库，不写真实账本；截图方法须显式开启 `visual=true`，用 `testLooks(this)` 选择主题/语言，`looks=all` 覆盖六组。固定日期 2026-11-07，直接展开生产 RemoteViews，宽版 356×180dp、小版 172×180dp，背景为桌面近似色；Android 12+ 直接使用渲染器单尺寸布局，避免 `apply` 自动选择映射分支。每组输出 normal 宽/小版、over、nobudget、unknown、edge（失效模板及长名称）、empty、unavailable，共八张；每主题另输出一张四个快捷方式图标的圆形遮罩拼图。
+验证入口：JVM `WidgetBudgetTest` 五项覆盖正常（11 月 7 日含当天共 24 天）、未设预算、超支、未知预留、最小单位取整及负自由可花归零。仪器 `DesktopWidgetVisualTest` 默认只运行一次模板描述、失效提示与余额/模板点击绑定断言，使用独立内存仓库，不写真实账本；截图方法须显式开启 `visual=true`，用 `testLooks(this)` 选择主题/语言，`looks=all` 覆盖六组。固定日期 2026-11-07，直接展开生产 RemoteViews，宽版 356×180dp、小版 172×180dp，背景为桌面近似色；Android 12+ 直接使用渲染器单尺寸布局，避免 `apply` 自动选择映射分支。每组输出 normal 宽/小版、over、nobudget、unknown、edge（失效模板及长名称）、one（仅一个模板）、empty、unavailable，共九张；每主题另输出一张四个快捷方式图标的圆形遮罩拼图。
 
 `connectedDebugAndroidTest` 结束后会卸载 app，截图和种子账本随之消失，因此先串行构建并安装两个 APK，再用 `am instrument` 运行。截图在 `getExternalFilesDir(null)/desktop-widget/`（开发包通常为 `/sdcard/Android/data/com.yohaku.expensetracker.dev/files/desktop-widget/`），文件名为 `{theme}-{language}-{state}.png` 和 `{theme}-shortcuts.png`：
 
@@ -282,9 +294,10 @@ adb shell settings put system font_scale 1.0
 
 行为、测试命令与完整验证记录统一见本文 [商户改造最终验收](#商户改造最终验收2026-11-10)。
 
-## 新商户记账位置与地图选点（2026-11-01 源码更新）
+## 记账位置与地图选点（2026-11-19 源码更新）
 
-- 账本开启定位时，今天新建的支出若非空商户名称在保存解析后仍未正式关联，保存时把那次定位（坐标、精度）存在这笔记录上；不自动建商户。选了已保存商户、补录、编辑旧记录都不存。改日期离开今天会丢掉暂存的定位；只打开记账页不输入，离开不提示未保存。
+- 账本开启定位时，今天新建的支出若非空商户名称在保存解析后仍未正式关联，保存时把那次定位（坐标、精度）存在这笔记录上；不自动建商户。已关联商户、补录或编辑旧记录时都不会新增这样的临时位置。改日期离开今天会丢掉暂存的定位；只打开记账页不输入，离开不提示未保存。
+- 今天新记支出时，若当前位置没有匹配地点，输入完整名称关联或选中既有商户后，可勾选「把这里记为该商户的地点」，填写地点名称。保存支出时会一并创建半径 100 米的商户地点。
 - 商户页从原名创建/归入、改名吸收或合并时，确认页显示相关临时位置；同一最终商户下100米内聚合，显示次数，默认名「YYYY-MM-DD 记账处」、半径100米，可明确放弃、改名或地图调整。关联与保留地点同事务写入，仅清除已明确处理的位置；云端等未处理的位置继续留在商户资料中待整理。
 - 地点编辑改为地图选点：MapLibre Android 13.7.1（OpenGL 版）+ OpenFreeMap Liberty 底图，不用密钥；请求带 `Yohaku/<版本> (Android; com.yohaku.expensetracker)` 标识，保留 OSM/OpenFreeMap 署名（ⓘ）。地图中央固定图钉，圈出匹配半径，下方显示坐标；「回到当前位置」不依赖地图。新地点打开时先定位当前位置，失败则显示日本全境。地图需要网络，加载失败会提示。旧的只有名称的地点仍可显示。
 - 三主题各自重绘底图颜色（地名/店名只显示当地写法，隐藏道路编号）：杂志是灰绿印刷底图、细线十字和方块图钉；手账是米色纸、胶带、红色虚线圈和红叉；小物是圆角窗口、柔和彩色和水滴图钉。

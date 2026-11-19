@@ -102,8 +102,10 @@ import java.time.*
         if(summary.next.isNotEmpty()) {
             YText(when{totals.predicted==0->word("平台已确认账单","返済先の確定請求");totals.confirmed==0->word("本地预测账单","ローカル予測");else->word("含已确认与本地预测","確定・予測を含みます")},12,color=LocalYohaku.current.accent)
             RecordFacts(listOf(word("待清偿本金","未返済元金") to financialAmount(c,totals.principalMinor),word("待清偿费用","未返済手数料") to financialAmount(c,totals.feeMinor),word("已付待确认","支払済み・確認待ち") to financialAmount(c,totals.pendingMinor),word("仍需备款","今後必要な資金") to financialAmount(c,totals.cashRequiredMinor)))
-            if(vm.repository.batchRevolvingCandidates(s,f,a.id,summary.nextDate!!).isNotEmpty())YButton(word("批量转为循环还款（リボ）","まとめてリボ"),{onBatchRevolving(summary.nextDate!!)},Modifier.testTag("finance-next-batch-revolving"))
-            YButton(word("查看该月账单","該当月の明細を見る"),{onStatement(summary.nextDate!!.take(7))},Modifier.testTag("finance-next-statement"))
+            YActionRow {
+                if(vm.repository.batchRevolvingCandidates(s,f,a.id,summary.nextDate!!).isNotEmpty())YButton(word("批量转为循环还款（リボ）","まとめてリボ"),{onBatchRevolving(summary.nextDate!!)},Modifier.testTag("finance-next-batch-revolving"))
+                YButton(word("查看该月账单","該当月の明細を見る"),{onStatement(summary.nextDate!!.take(7))},Modifier.testTag("finance-next-statement"))
+            }
         }
         }
     }else FundingContent()
@@ -112,7 +114,10 @@ import java.time.*
     deadlines.forEach{d->YText(financeLabel(d.changeType.name)+" · "+FinancialDisplayFacts.time(d.instant(),ZoneId.of(d.zoneId),LocalLanguage.current),12);if(d.instant()<vm.repository.clock.instant())YText(word("期限已过，需核查实际受理结果。","締切を過ぎています。実際の受付結果を確認してください。"),11,color=LocalYohaku.current.warm)}
     val candidates=summary.next.distinctBy{it.plan.id}.filter{r->r.plan.origin=="POOL"||r.plan.origin!="POOL_RETAINED"&&f.arrangements.none{it.originalPlanId==r.plan.id}}
     var choosing by androidx.compose.runtime.saveable.rememberSaveable(a.id){mutableStateOf(false)}
-    if(candidates.isNotEmpty())YButton(word("比较 / 更改付款方式","支払方法を比較・変更"),{choosing=true},Modifier.testTag("finance-overview-compare"))
+    YActionRow {
+        if(candidates.isNotEmpty())YButton(word("比较 / 更改付款方式","支払方法を比較・変更"),{choosing=true},Modifier.testTag("finance-overview-compare"))
+        YButton(word("查看 / 补齐用户规则","条件を確認・補完"),onRules,Modifier.testTag("finance-overview-rules"))
+    }
     if(choosing)YSheet(word("选择付款安排","支払予定を選択"),{choosing=false}) {
         candidates.forEach{r->FinancialCompactRow(r.plan.name,financialAmount(c,r.outstanding.totalMinor.takeUnless{!r.bill.confirmed&&r.plan.id in stale||r.bill.hasUnknownPredictedFee()}),r.bill.date,"finance-compare-candidate-${r.plan.id}"){choosing=false;onCompare(r.plan.id)}}
     }
@@ -128,7 +133,6 @@ import java.time.*
         summary.reconciliationRemainders.forEach{part->YText(word("上次重核仍未安排的来源本金：","前回の再確認で未予定の元金：")+Money(c,part.principalMinor).display()+" · "+f.plans.first{it.id==part.planId}.name,12,Modifier.testTag("finance-reconciliation-unassigned-${part.planId}"))}
         YButton(word("补齐计划与账单","予定・請求を補完"),onPlan,Modifier.testTag("finance-unplanned-open"))
     }
-    YButton(word("查看 / 补齐用户规则","条件を確認・補完"),onRules,Modifier.testTag("finance-overview-rules"))
     FinancialLoanModes(s,a,f,onPlan,onMovements)
 }
 

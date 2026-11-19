@@ -85,14 +85,14 @@ import java.time.YearMonth
         if(provisional>0)BudgetEstimateNote(provisional)
         if(projection.limitMinor==null)Box(Modifier.padding(top=15.dp)){YButton(word("设置月预算","月予算を設定"),onBudget,Modifier.testTag("home-set-budget"),primary=true)}
         Box(Modifier.padding(top=if(projection.limitMinor==null)5.dp else 9.dp)){HomeSpendContext(Money(currency,projection.allExpenseMinor).display(),Money(currency,projection.independentMinor).display())}
-        // Daily allowance sits next to the monthly figures so the first screen answers "how much can I spend".
+        // Templates come first so a habitual expense is one tap from the top of the home page.
+        HomeTemplates(s,onTemplate,{navigate("templates")})
+        statementDue()
         ThemeAuditPanel(word("给接下来的日常，留一点。","これからの日々に、少し。"),Modifier.testTag("home-daily-panel"),contentTopMargin=20){
             val days=month.lengthOfMonth()-today.dayOfMonth+1
             HomeDailyStats(days,projection.availableMinor?.let{Money(currency,it.coerceAtLeast(0)/days).display()} ?: "—",Money(currency,(entries.filter{it.date==today.toString()&&it.kind=="EXPENSE"}.sumOf{s.netExpense(it)}+s.visibleComponents().filter{it.date==today.toString()}.sumOf{it.baseMinor})).display())
             if(s.draft!=null)HomeResumeDraft(onResume)
         }
-        statementDue()
-        HomeTemplates(s,onTemplate,{navigate("templates")})
         FlowRow(Modifier.fillMaxWidth().testTag("home-shortcuts"),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
             YLink(word("预算与分类限额","予算とカテゴリの上限"),onBudget,arrow=true)
             if(s.templates.isEmpty())YLink(word("添加记账模板","記録テンプレートを追加"),{navigate("templates")},Modifier.testTag("home-add-template"),arrow=true)

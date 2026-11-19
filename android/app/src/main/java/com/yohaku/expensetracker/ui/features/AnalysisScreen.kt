@@ -116,7 +116,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     if(filtering)AnalysisFilterEditor(s,filter,vm,{filtering=false},{value->start=value.start;end=value.end;category=value.categoryId;merchant=value.merchantKey;activity=value.activityId;filtering=false})
     detail?.let{key->
         val selectedReport=comparisonPeriod?.let{period->val comparison=s.compareAnalysis(filter,today);if(period=="previous")comparison.previous else comparison.current}?:report
-        AnalysisDetail(s,selectedReport,key,onRecord,{detail=null;comparisonPeriod=null})
+        AnalysisDetail(s,selectedReport,key,onRecord,{detail=null;comparisonPeriod=null},comparisonPeriod,{comparisonPeriod=it})
     }
 }
 
@@ -162,16 +162,23 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     val activityCauses=analysisCauses(comparison.current.groups{it.activityId.orEmpty()},comparison.previous.groups{it.activityId.orEmpty()})
     if(categoryCauses.isEmpty()&&merchantCauses.isEmpty())YText(word("这个区间暂无净消费变化。","この期間の純支出に変化はありません。"),12)
     fun display(n:Long)=Money(currency,n).display()
-    @Composable fun cause(c:AnalysisCause,key:String,name:String) {
-        ComparisonCauseCard(key,name,display(c.before),display(c.after),signedMoney(currency,c.change),c.change>0,onDetail?.let{action->{action("current",key)}},onDetail?.let{action->{action("previous",key)}})
+    fun causes(list:List<AnalysisCause>,key:(AnalysisCause)->String,name:(AnalysisCause)->String)=list.take(5).map{c->ComparisonCause(key(c),name(c),display(c.before),display(c.after),signedMoney(currency,c.change),c.change>0)}
+    val open=onDetail?.let{action->{key:String->action("current",key)}}
+    val fees=word("明确费用","確定手数料");val noMerchant=word("未填写商户","お店未入力");val everyday=word("日常","日常")
+    if(categoryCauses.isNotEmpty()) {
+        ThemeSection(word("主要分类变化","主なカテゴリの変化"),"BY CATEGORY")
+        ComparisonCauseList("category",causes(categoryCauses,{if(it.key=="FEES")"fees"else"category:${it.key}"},{c->s.categories.find{it.id==c.key}?.name?:fees}),open)
     }
-    if(categoryCauses.isNotEmpty())ThemeSection(word("主要分类变化","主なカテゴリの変化"),"BY CATEGORY")
-    categoryCauses.take(5).forEach{c->cause(c,if(c.key=="FEES")"fees"else"category:${c.key}",s.categories.find{it.id==c.key}?.name?:word("明确费用","確定手数料"))}
-    if(merchantCauses.isNotEmpty())ThemeSection(word("主要商户变化","主なお店の変化"),"BY MERCHANT")
-    merchantCauses.take(5).forEach{c->cause(c,"merchant:${c.key}",s.merchantLabel(c.key).ifBlank{word("未填写商户","お店未入力")})}
-    if(activityCauses.isNotEmpty())ThemeSection(word("活动与日常的变化","シーンと日常の変化"),"BY SCENE")
-    activityCauses.take(5).forEach{c->cause(c,"activity:${c.key}",s.activities.find{it.id==c.key}?.name?:word("日常","日常"))}
-    YText(word("分类、商户和活动是同一批消费的不同视角，不将这些变化相加。","カテゴリ・お店・シーンは同じ支出の別の視点です。変化を合算しません。"),10,color=LocalYohaku.current.muted)
+    if(merchantCauses.isNotEmpty()) {
+        ThemeSection(word("主要商户变化","主なお店の変化"),"BY MERCHANT")
+        ComparisonCauseList("merchant",causes(merchantCauses,{"merchant:${it.key}"},{s.merchantLabel(it.key).ifBlank{noMerchant}}),open)
+    }
+    if(activityCauses.isNotEmpty()) {
+        ThemeSection(word("活动与日常的变化","シーンと日常の変化"),"BY SCENE")
+        ComparisonCauseList("activity",causes(activityCauses,{"activity:${it.key}"},{c->s.activities.find{it.id==c.key}?.name?:everyday}),open)
+    }
+    val drill=onDetail!=null&&(categoryCauses.isNotEmpty()||merchantCauses.isNotEmpty()||activityCauses.isNotEmpty())
+    YText((if(drill)word("点一行查看本期流水，明细里可切换到对照期间。","行をタップで今期の記録。明細で比較期間に切替できます。")else "")+word("分类、商户和活动是同一批消费的不同视角，不将这些变化相加。","カテゴリ・お店・シーンは同じ支出の別の視点です。変化を合算しません。"),10,color=LocalYohaku.current.muted)
 }
 /** Activity budgets cover the complete scene; the drill link retains analysis filters. */
 @Composable private fun AnalysisActivityModule(s:BookSnapshot,report:AnalysisReport,currency:Currency,onPeriod:((String)->Unit)?,onActivity:((String)->Unit)?) {
@@ -195,7 +202,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         if(onPeriod!=null)YLink(dailyLabel,{onPeriod("")},Modifier.testTag("analysis-activity-period-daily"),haptic=Haptic.Select)else YText(dailyLabel,12,Modifier.testTag("analysis-activity-period-daily"))
     }
 }
-@Composable private fun AnalysisDetail(s:BookSnapshot,report:AnalysisReport,key:String,onRecord:(EventEntity)->Unit,onDismiss:()->Unit) {
+@Composable private fun AnalysisDetail(s:BookSnapshot,report:AnalysisReport,key:String,onRecord:(EventEntity)->Unit,onDismiss:()->Unit,period:String?=null,onPeriod:(String)->Unit={}) {
     val facts=when {
         key.startsWith("category:")->report.facts.filter{it.categoryId==key.removePrefix("category:")||s.categories.any{c->c.id==it.categoryId&&c.parentId==key.removePrefix("category:")}}
         key.startsWith("merchant:")->report.facts.filter{it.merchantKey==key.removePrefix("merchant:")}
@@ -218,6 +225,8 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     val selectedTitle=when{child=="UNSPECIFIED"->title+" / "+unspecified;child!=null->s.path(child);key.startsWith("category:")->s.path(key.removePrefix("category:"));else->title}
     val tier=if(key.startsWith("category:"))when{child=="UNSPECIFIED"->unspecified;child!=null||s.categories.first{it.id==key.removePrefix("category:")}.parentId!=null->word("二级分类","子カテゴリ");else->word("一级汇总 · 含子分类","親カテゴリ合計・子を含む")}else null
     YSheet(selectedTitle,onDismiss) {
+        // Opened from a comparison row: the same sheet switches between the current and the comparison period.
+        if(period!=null)YTabs(listOf("current" to word("本期","今期"),"previous" to word("对照期间","比較期間")),period,onPeriod)
         AnalysisDetailCover(Money(currency,visible.total).display(),report.filter.start+" — "+report.filter.end+" · "+visible.events.size+word("笔记录 · 已扣除到账退款","件・入金済み返金を差引"),tier)
         RecordFacts(listOf(word("原消费","元の支出") to Money(currency,visible.gross).display(),word("已到账退款","入金済み返金") to Money(currency,visible.refunds).display(),word("明确费用","確定手数料") to Money(currency,visible.fees).display()))
         if(key.startsWith("category:")&&child==null) {
