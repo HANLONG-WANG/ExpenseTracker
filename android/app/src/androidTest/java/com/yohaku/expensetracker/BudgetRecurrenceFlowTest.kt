@@ -286,6 +286,11 @@ class BudgetRecurrenceFlowTest {
             sheetTarget(ui.onNodeWithTag("field-"+text("原币金额","原通貨額")+" · USD")).performClick().performTextReplacement("20")
             sheetTarget(ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")).performClick().performTextReplacement("2300")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
+            // 切换原币不改变入账状态（bug-reports-high #150）；按预计入账须由用户显式选择待确认。
+            val status=text("入账金额状态","計上額の状態")
+            sheetTarget(ui.onNodeWithTag("select-trigger-$status")).performClick()
+            sheetTarget(ui.onNodeWithTag("select-option-$status-1")).performClick()
+            ui.waitUntil(10000){vm.entry.value?.settlementConfirmed==false}
             ui.entryAction("entry-save-button").assert(hasText(text("记录消费并解除预留","支出を記録して予定を解除"),substring=true))
             shot("$theme-$language-recurring-estimated-payment-footer",true,false)
             ui.entryAction("entry-save-button").performClick()
