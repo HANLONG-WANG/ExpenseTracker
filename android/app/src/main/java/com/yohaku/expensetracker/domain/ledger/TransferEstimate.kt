@@ -29,6 +29,18 @@ fun estimateTransfer(d:EntryDraft,from:Currency,to:Currency,direction:String):En
     return if(d.referenceRates.any{it.base==from&&it.quote==to})value.copy(referenceExpectedFromMinor=Money.parse(value.amount,from).minor,referenceExpectedToMinor=Money.parse(value.toAmount,to).minor)else value
 }
 
+/** Editing a rate or included fee invalidates the dependent amount until it can be computed again. */
+fun refreshTransferEstimate(d:EntryDraft,from:Currency,to:Currency,direction:String):EntryDraft {
+    if(if(direction=="TO")d.toConfirmed else d.fromConfirmed)return d
+    return when(val result=transferEstimateResult(d,from,to,direction)){
+        is TransferEstimateResult.Ready->result.draft
+        is TransferEstimateResult.Incomplete->{
+            val pending=d.copy(estimateDirection=direction,referenceExpectedFromMinor=null,referenceExpectedToMinor=null)
+            if(direction=="TO")pending.copy(toAmount="") else pending.copy(amount="")
+        }
+    }
+}
+
 /** Form validation is an explicit result; callers keep the draft unchanged until estimation succeeds. */
 sealed interface TransferEstimateResult {
     data class Ready(val draft:EntryDraft):TransferEstimateResult

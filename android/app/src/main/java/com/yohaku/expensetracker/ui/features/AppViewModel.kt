@@ -93,7 +93,21 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         if(page in listOf("home","analysis","life","accounts"))backStack.clear() else backStack.add(route.value)
         route.value=page
     }
-    fun replaceRoute(page:String){route.value=page}
+    fun returnToRoute(page:String){
+        val index=backStack.indexOfLast{it==page}
+        if(index>=0)backStack.subList(index,backStack.size).clear() else backStack.clear()
+        route.value=page
+    }
+    private fun clearEntrySession(){
+        entry.value=null
+        entryBaseline=null
+        negativeBalanceReview.value=null
+        entryReview.value=null
+        reviewRefreshed.value=false
+        reviewSession=null
+    }
+    var reviewSession:String?=null
+        private set
     fun back(){route.value=if(backStack.isEmpty())"home" else backStack.removeAt(backStack.lastIndex)}
     // Loading appears only initially and for an explicit retry. A subscription restarted after the app returns
     // from the background (camera, another app) keeps the last state, so open sheets and page positions stay composed.
@@ -157,7 +171,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     val reminderBook=MutableStateFlow<String?>(null)
     val reminderTarget=MutableStateFlow<com.yohaku.expensetracker.domain.reminders.ReminderItem?>(null)
-    fun openReminderBook(bookId:String,itemJson:String?=null)=execute(onSuccess={entry.value=null;backStack.clear();route.value="home";reminderBook.value=bookId}) {
+    fun openReminderBook(bookId:String,itemJson:String?=null)=execute(onSuccess={clearEntrySession();returnToRoute("home");reminderBook.value=bookId}) {
         val book=repository.dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
         require(book.initialized)
         val item=itemJson?.let{repository.json.decodeFromString<com.yohaku.expensetracker.domain.reminders.ReminderItem>(it)}
@@ -168,13 +182,13 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     val desktopTemplateEditor=MutableStateFlow<String?>(null)
     fun desktopNotice(bookId:String,zh:String,ja:String) {notice.value=AppNotice(++noticeSequence,bookId,zh,ja,NoticeTone.ATTENTION)}
     fun openDesktopBook(target:com.yohaku.expensetracker.platform.desktop.DesktopTarget)=execute(onSuccess={
-        entry.value=null;backStack.clear();route.value="home";desktopTarget.value=target
+        clearEntrySession();returnToRoute("home");desktopTarget.value=target
     }) {
         val book=repository.dao.book(target.bookId)
         require(book!=null&&book.deletedAt==null){"账本不可用，请重新选择小组件账本 / 帳簿が利用できません。ウィジェットの帳簿を選び直してください"}
         preferences.select(book.id)
     }
-    fun selectBook(bookId:String)=execute({entry.value=null;backStack.clear();route.value="home"}) { require(repository.dao.book(bookId)!=null){"账本不可用 / 帳簿が利用できません"};preferences.select(bookId) }
+    fun selectBook(bookId:String)=execute({clearEntrySession();returnToRoute("home")}) { require(repository.dao.book(bookId)!=null){"账本不可用 / 帳簿が利用できません"};preferences.select(bookId) }
     val bookOperationReview=MutableStateFlow<BookLifecycleReview?>(null)
     val bookOperationRefreshed=MutableStateFlow(false)
     fun previewBookOperation(bookId:String,operation:BookOperation)=execute {
@@ -184,7 +198,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val review=bookOperationReview.value?:return
         var saved=false
         execute(onSuccess={
-            if(saved){haptic(when(review.operation){BookOperation.TRASH,BookOperation.PURGE->Haptic.Removed;BookOperation.RESTORE,BookOperation.UNARCHIVE->Haptic.Restored;BookOperation.ARCHIVE->Haptic.Done});bookOperationReview.value=null;entry.value=null;backStack.clear();route.value="book-management"}
+            if(saved){haptic(when(review.operation){BookOperation.TRASH,BookOperation.PURGE->Haptic.Removed;BookOperation.RESTORE,BookOperation.UNARCHIVE->Haptic.Restored;BookOperation.ARCHIVE->Haptic.Done});bookOperationReview.value=null;clearEntrySession();backStack.clear();route.value="book-management"}
         }) {
             saved=repository.commitBookOperation(review)
             if(!saved) {
@@ -206,10 +220,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val draft=entry.value
         execute(onSuccess=done@{
             if(entry.value?.mediaSession!=draft?.mediaSession)return@done
-            entry.value=null;entryBaseline=null;negativeBalanceReview.value=null;entryReview.value=null;reviewRefreshed.value=false
-            val previous=backStack.indexOfLast{it==target}
-            if(previous>=0)while(backStack.size>previous)backStack.removeAt(backStack.lastIndex) else backStack.clear()
-            route.value=target;onDone();if(!keep)execute{repository.collectUnusedMedia()}
+            clearEntrySession()
+            returnToRoute(target);onDone();if(!keep)execute{repository.collectUnusedMedia()}
         }) {
             if(entry.value?.mediaSession!=draft?.mediaSession)return@execute
             if(keep&&draft!=null) {
@@ -228,7 +240,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         navigate("category-picker");openDraft(snapshot.book.id)
         return true
     }
-    fun resumeEntry(snapshot:BookSnapshot) { entryBaseline=null;entryReturnRoute.value=route.value;entry.value=snapshot.draft?.let{snapshot.syncEditingMerchant(it)};route.value=if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry";persistDraft(snapshot.book.id) }
+    fun resumeEntry(snapshot:BookSnapshot) { entryBaseline=null;entryReturnRoute.value=route.value;entry.value=snapshot.draft?.let{snapshot.syncEditingMerchant(it)};navigate(if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry");persistDraft(snapshot.book.id) }
     fun editEntry(snapshot:BookSnapshot,event:EventEntity) {
         if(event.kind==EntryKind.TRANSFER.name){editTransfer(snapshot,event);return}
         entryReturnRoute.value=route.value
@@ -257,7 +269,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         if(next.date!=today&&next.merchantLocated&&!next.merchantManuallyEdited)next=next.copy(merchant="",merchantId=null,merchantLocated=false)
         if(next.date!=today||next.kind!=EntryKind.EXPENSE)next=next.copy(capturedPlace=null,merchantPlace=null)
         else if(next.merchantPlace?.merchantId!=next.merchantId&&next.merchantPlace!=null)next=next.copy(merchantPlace=null)
-        negativeBalanceReview.value=null;entry.value=next;persistDraft(bookId)
+        entryReview.value=null;negativeBalanceReview.value=null;entry.value=next;persistDraft(bookId)
     }
     fun switchEntryKind(snapshot:BookSnapshot,kind:EntryKind) {
         if(savingEntry)return
@@ -371,14 +383,9 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         navigate("entry");openDraft(snapshot.book.id)
     }
     fun changeTransferAmount(bookId:String,d:EntryDraft,from:Currency,to:Currency,direction:String) {
-        val confirmed=if(direction=="TO")d.toConfirmed else d.fromConfirmed
-        if(confirmed || from!=to&&d.manualRate.isBlank()){changeEntry(bookId,d);return}
-        val estimated=try {com.yohaku.expensetracker.domain.ledger.estimateTransfer(d,from,to,direction)}
-        catch(_:IllegalArgumentException){if(direction=="TO")d.copy(toAmount="")else d.copy(amount="")}
-        catch(_:IllegalStateException){if(direction=="TO")d.copy(toAmount="")else d.copy(amount="")}
-        catch(_:ArithmeticException){if(direction=="TO")d.copy(toAmount="")else d.copy(amount="")}
-        // Incomplete numeric input leaves the unconfirmed counterpart unknown, never an old estimate.
-        changeEntry(bookId,estimated)
+        val next=if(from!=to&&d.manualRate.isBlank())d.copy(estimateDirection=direction)
+            else com.yohaku.expensetracker.domain.ledger.refreshTransferEstimate(d,from,to,direction)
+        changeEntry(bookId,next)
     }
     fun startTransfer(snapshot:BookSnapshot,fromId:String?=null,toAccountId:String?=null) {
         entryReturnRoute.value=route.value
@@ -469,8 +476,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {
         haptic(Haptic.Saved)
-        negativeBalanceReview.value=null;entryBaseline=null;entryReview.value=null;reviewRefreshed.value=false
-        entry.value=null;backStack.clear();route.value=if(entryReturnRoute.value=="statements")"statements"else"ledger"
+        clearEntrySession();backStack.clear();route.value=if(entryReturnRoute.value=="statements")"statements"else"ledger"
         execute{repository.collectUnusedMedia()}
         notice.value=AppNotice(++noticeSequence,bookId,if(d.id==null)"记录已保存" else "修改已保存到原条目",if(d.id==null)"記録を保存しました" else "元の記録に変更を保存")
     }
@@ -487,7 +493,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         var review:LedgerChangeReview?=null
         var negative:PendingEntrySave?=null
         var stale=false
-        execute(onSuccess={if(saved)entrySaved(bookId,d)else {negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=stale;if(negative!=null||stale)haptic(Haptic.Warning)}},onComplete={savingEntry=false}) {
+        execute(onSuccess={if(saved)entrySaved(bookId,d)else if(entry.value?.mediaSession==d.mediaSession){reviewSession=d.mediaSession;negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=stale;if(negative!=null||stale)haptic(Haptic.Warning)}},onComplete={savingEntry=false}) {
+            if(entry.value?.mediaSession!=d.mediaSession)return@execute
             val account=repository.dao.account(bookId,d.accountId?:error("请选择账户 / 口座を選択してください"))?:error("账户不存在 / 口座がありません")
             val resolved=if(d.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))runCatching{d.resolveAmountExpression(Currency.valueOf(account.currency))}.getOrElse{haptic(Haptic.Error);return@execute}else d
             if(resolved!=d){d=resolved;entry.value=d;check(repository.saveDraft(bookId,d){entry.value==d}){"草稿已更新，请重试 / 下書きが更新されました。再試行してください"}}
@@ -504,26 +511,32 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun confirmNegativeBalance(bookId:String) {
         val pending=negativeBalanceReview.value?:return
         if(savingEntry)return
+        if(bookId!=pending.review.snapshot.book.id||entry.value?.mediaSession!=reviewSession)return
         if(pending.needsReview){negativeBalanceReview.value=null;entryReview.value=pending.review;reviewRefreshed.value=false;return}
         val d=entry.value?:return
         savingEntry=true
         var saved=false;var stale=false
         // A stale commit replays the normal save path, which reports Saved or a fresh Warning itself.
-        execute(onSuccess={negativeBalanceReview.value=null;if(saved)entrySaved(bookId,d)},onComplete={savingEntry=false;if(stale)saveEntry(bookId)}){saved=repository.commitEntryReview(bookId,pending.review)!=null;stale=!saved}
+        execute(onSuccess={negativeBalanceReview.value=null;if(saved)entrySaved(bookId,d)},onComplete={savingEntry=false;if(stale)saveEntry(bookId)}){
+            if(entry.value?.mediaSession!=d.mediaSession)return@execute
+            saved=repository.commitEntryReview(bookId,pending.review)!=null;stale=!saved
+        }
     }
     fun confirmEntryReview(bookId:String) {
         if(savingEntry)return
         val review=entryReview.value ?: return
+        if(bookId!=review.snapshot.book.id||entry.value?.mediaSession!=reviewSession)return
         val d=entry.value ?: return
         savingEntry=true
         var saved=false
         var refreshed:LedgerChangeReview?=null
-        execute(onSuccess={if(saved)entrySaved(bookId,d)else {haptic(Haptic.Warning);entryReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isEmpty()};negativeBalanceReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isNotEmpty()}?.let{PendingEntrySave(it,true)};reviewRefreshed.value=true}},onComplete={savingEntry=false}) {
+        execute(onSuccess={if(saved)entrySaved(bookId,d)else if(entry.value?.mediaSession==d.mediaSession){haptic(Haptic.Warning);entryReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isEmpty()};negativeBalanceReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isNotEmpty()}?.let{PendingEntrySave(it,true)};reviewRefreshed.value=true}},onComplete={savingEntry=false}) {
+            if(entry.value?.mediaSession!=d.mediaSession)return@execute
             saved=repository.commitEntryReview(bookId,review,merchantConflictConfirmed=true)!=null
             if(!saved)refreshed=repository.previewEntry(bookId,d)
         }
     }
-    fun discardEntry(bookId:String) =execute({haptic(Haptic.Removed);entry.value=null;route.value="home";execute{repository.collectUnusedMedia()}}) {repository.clearDraft(bookId)}
+    fun discardEntry(bookId:String) =execute({haptic(Haptic.Removed);clearEntrySession();returnToRoute("home");execute{repository.collectUnusedMedia()}}) {repository.clearDraft(bookId)}
     fun keepEntry(bookId:String) {leaveEntry(bookId,keep=true)}
     companion object {
         fun factory(application:YohakuApplication)=object:ViewModelProvider.Factory {

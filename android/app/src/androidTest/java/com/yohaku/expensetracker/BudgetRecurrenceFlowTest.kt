@@ -130,6 +130,13 @@ class BudgetRecurrenceFlowTest {
             ui.runOnIdle{vm.navigate("templates")}
             ui.onNodeWithTag("template-$template").assertExists()
             shot("$theme-$language-template-management",false)
+            ui.onNodeWithTag("edit-template-$template").performScrollTo().performClick()
+            val noteField=ui.onNodeWithTag("field-"+text("备注","メモ"))
+            noteField.performScrollTo().performTextReplacement("改訂")
+            restoration.emulateSavedInstanceStateRestore()
+            noteField.performScrollTo().assertTextEquals("改訂")
+            ui.onNodeWithTag("template-save").performScrollTo().performClick()
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.templates?.any{it.id==template&&it.note=="改訂"}==true}
         }
     }
     @Test fun homeAndRecurringOverviewUseTheSameBudgetAndFutureTasks() {

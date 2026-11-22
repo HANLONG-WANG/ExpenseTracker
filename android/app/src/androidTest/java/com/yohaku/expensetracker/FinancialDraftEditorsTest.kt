@@ -53,7 +53,7 @@ class FinancialDraftEditorsTest {
                     "MANUAL"->ManualFinancialPlanEditor(s,loan,vm,close,s.contracts.single())
                     "PREDICTION"->FinancialPredictionEditor(s,loan,f,null,vm,close,s.contracts.single())
                     "POOL"->FinancialPoolEditor(s,a,f,null,vm,close)
-                    "ARRANGEMENT"->FinancialArrangementEditor(s,a,f,plan,vm,close)
+                    "ARRANGEMENT"->FinancialArrangementEditor(s,a,f,plan,vm,close,{},{})
                     "BORROW"->FinancialBorrowingEditor(s,loan,vm,close)
                     "REPAY"->FinancialRepaymentEditor(s,a,f,vm,close)
                     "BILL"->FinancialBillConfirmationEditor(s,a.id,bill,Currency.JPY,vm,close)

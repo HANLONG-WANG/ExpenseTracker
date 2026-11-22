@@ -16,6 +16,14 @@ class TransferEstimateTest {
         assertEquals("1480.00",deducted.toAmount)
         try{estimateTransfer(d.copy(toConfirmed=true,toAmount="1400.00"),Currency.JPY,Currency.CNY,"TO");fail("Confirmed target overwritten")}catch(_:IllegalArgumentException){}
     }
+    @Test fun linkedAmountIsRecomputedOrClearedWhileConfirmedAmountSurvives() {
+        val draft=EntryDraft(amount="100",manualRate="160",toAmount="15000",fromConfirmed=true)
+        fun update(d:EntryDraft)=refreshTransferEstimate(d,Currency.USD,Currency.JPY,"TO")
+        assertEquals("16000",update(draft).toAmount)
+        assertEquals("15840",update(draft.copy(feeAmount="1")).toAmount)
+        assertEquals("",update(draft.copy(manualRate="")).toAmount)
+        assertEquals("15000",update(draft.copy(toConfirmed=true)).toAmount)
+    }
     @Test fun unfinishedFeeInputsReturnAnIssueUntilReferenceEstimationCanSucceed() {
         val quote=ReferenceRateSnapshot(Currency.JPY,Currency.CNY,"0.05","2026-10-14","2026-10-14T00:00:00Z")
         val partial=EntryDraft(kind=EntryKind.TRANSFER,amount="1",feeAmount="100",feeCurrency=Currency.JPY)

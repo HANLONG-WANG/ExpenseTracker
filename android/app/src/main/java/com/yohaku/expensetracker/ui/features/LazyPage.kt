@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.data.db.EventEntity
 import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.data.repository.accountEventPostings
+import com.yohaku.expensetracker.data.repository.netExpense
 import com.yohaku.expensetracker.data.repository.dailyExpense
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.theme.LocalYohaku
@@ -37,14 +38,30 @@ internal class PageChrome(val head:@Composable ()->Unit={},val top:@Composable (
 
 /** Rows of a [TransactionList] prepared once per snapshot and filter. */
 internal class TransactionRows(val days:List<Pair<String,List<EventEntity>>>,val rows:List<EventEntity>,val spent:Map<String,Long>,val byDay:Boolean)
+internal fun BookSnapshot.transactionRowDate(event:EventEntity,accountId:String?)=
+    accountId?.let{accountEventPostings(event,it).maxOfOrNull{p->p.date}}?:event.date
+
 @Composable internal fun rememberTransactionRows(s:BookSnapshot,entries:List<EventEntity>,accountId:String?,byDay:Boolean)=remember(s,entries,accountId,byDay) {
-    fun date(e:EventEntity)=if(accountId==null)e.date else s.accountEventPostings(e,accountId).maxOfOrNull{p->p.date}?:e.date
+    transactionRows(s,entries,accountId,byDay)
+}
+internal fun transactionRows(s:BookSnapshot,entries:List<EventEntity>,accountId:String?,byDay:Boolean):TransactionRows {
+    fun date(e:EventEntity)=s.transactionRowDate(e,accountId)
     val ordered=if(accountId==null)entries else entries.sortedByDescending{date(it)}
-    val spent=if(byDay)s.dailyExpense(entries)else emptyMap()
+
     val groups=if(byDay)ordered.groupBy{date(it)}else emptyMap()
+    val spent=when {
+        !byDay->emptyMap()
+        accountId==null->s.dailyExpense(entries)
+        else->{
+            val fees=s.expenseComponents.filter{it.confirmed&&it.accountId==accountId}.groupBy{it.eventId}
+            groups.mapValues{(_,events)->events.sumOf{e->
+                (if(e.accountId==accountId)s.netExpense(e) else 0L)+fees[e.id].orEmpty().sumOf{it.baseMinor}
+            }}
+        }
+    }
     // A confirmed fee can have its own date without a transaction starting on that day.
     val days=(groups.keys+spent.keys).sortedDescending().map{it to groups[it].orEmpty()}
-    TransactionRows(days,ordered,spent,byDay)
+    return TransactionRows(days,ordered,spent,byDay)
 }
 
 /** Lazy counterpart of [TransactionList]: one item per day (or per row), each carrying the list's own spacing. */

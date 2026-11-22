@@ -476,6 +476,15 @@ class CommandLedgerExecutionTest {
         assertTrue(snapshot(book).merchants.isEmpty())
         assertEquals(2,db.merchantHistoryDao().page(book,1000).size)
     }
+    @Test fun transferFeePatchCanRequestANewEstimate()=runBlocking<Unit> {
+        val (book,bank)=setup()
+        val target=r.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")
+        execute(book,listOf(step("transfer","entry.create","""{"kind":"TRANSFER","account":"$bank","toAccount":"$target","amount":{"currency":"JPY","minor":3000},"fromConfirmed":true}""")))
+        val id=snapshot(book).transfers.single().eventId
+        cycle(book,listOf(step("fee","entry.update","""{"targets":{"ids":["$id"]},"set":{"feeAmount":{"currency":"JPY","minor":100},"estimateDirection":"TO"}}"""))){_,s->
+            assertEquals(2900L,s.transfers.single().toMinor)
+        }
+    }
     @Test fun transferRefundForeignActualAndFullEdit()=runBlocking<Unit> {
         val (book,bank)=setup();val category=r.saveCategory(book,"食事",EntryKind.EXPENSE,null)
         val cash=r.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")

@@ -27,7 +27,7 @@ import java.lang.Math.subtractExact
     val physicalRefunds:List<PredictionRefundFact>,val unassignedOriginalMinor:Long,val verifiedBills:List<FinancialBillEntity> = emptyList())
 class ArrangementReconciliationReview internal constructor(internal val before:FinancialReviewState,val input:ArrangementReconciliationInput,
     val original:FinancialPlanEntity,val calculation:Calculation<Unit>,val record:ArrangementReconciliation?,val plans:List<FinancialPlanEntity>,
-    val adjustments:List<FinancialBillAdjustmentEntity>,val clearingChanges:List<ArrangementClearingChange>,val prediction:FinancialPredictionReview?,val poolPrediction:FinancialPredictionReview?=null)
+    val adjustments:List<FinancialBillAdjustmentEntity>,val clearingChanges:List<ArrangementClearingChange>,val prediction:FinancialPredictionReview?,val poolPrediction:FinancialPredictionReview?=null,val projectedLedger:BookSnapshot=before.ledger)
 
 internal fun FinancialGraph.reconciliationPool(target:FinancialPlanEntity):FinancialPlanEntity? {
     if(target.origin=="POOL_RETAINED")return plans.firstOrNull{it.origin=="POOL"&&it.active&&it.accountId==target.accountId&&it.mode==target.mode}
@@ -236,7 +236,7 @@ private fun LedgerRepository.prepareArrangementReconciliation(state:FinancialRev
         val finance=next.copy(plans=next.plans.map{when(it.id){old.id->original;target.id->final;else->it}})
         prepareFinancialPool(FinancialReviewState(s,finance,state.limits),accepted)
     }
-    return ArrangementReconciliationReview(state,input,target,Calculation.Ready(Unit),record,listOf(original,final),adjustments,changes,prediction,poolPrediction)
+    return ArrangementReconciliationReview(state,input,target,Calculation.Ready(Unit),record,listOf(original,final),adjustments,changes,prediction,poolPrediction,s)
 }
 
 suspend fun LedgerRepository.commitArrangementReconciliation(review:ArrangementReconciliationReview,confirmed:Boolean):String?=db.withTransaction {

@@ -40,7 +40,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 FinancialFullDetails {
                 r.bills.forEach{bill->Column(Modifier.testTag("prediction-review-period-${bill.number}"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     FinancialBillFacts(bill,currency)
-                    RecordFacts(listOf(word("实际清偿后本期待付","実返済後の当期残額") to Money(currency,r.before.ledger.billOutstanding(bill).totalMinor).display()))
+                    RecordFacts(listOf(word("实际清偿后本期待付","実返済後の当期残額") to financialAmount(currency,r.before.ledger.billOutstanding(bill).knownTotalMinor)))
                     calculation.value.firstOrNull{it.period.number==bill.number}?.let{FinancialProjectionFacts(it.basis,currency)}
                     if(bill.basisJson!=null)FinancialPredictionBasis(bill,r.before.finance,currency,vm,r.before.ledger,historical=bill.id in r.retainedOther.map{it.id})
                 }}

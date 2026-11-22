@@ -36,6 +36,7 @@ class StatementEntryDraftsTest {
     @Test fun supplementChecksDerivedSourceMoneyAndRetainsForeignOriginalFacts() {
         val s=BookSnapshot(book,listOf(bank),emptyList(),emptyList(),emptyList(),null)
         val seed=StatementSupplementSeed("b","bank",row("1000"),EntryKind.EXPENSE,date,date)
+        assertThrows(IllegalArgumentException::class.java){s.copy(accounts=listOf(bank.copy(active=false))).statementSupplementDraft(seed)}
         val draft=s.statementSupplementDraft(seed)
         s.requireStatementSupplementFacts(seed,draft)
         assertThrows(IllegalArgumentException::class.java){s.requireStatementSupplementFacts(seed,draft.copy(amount="2000",accountAmount="2000"))}

@@ -22,7 +22,7 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun HistoricalOpeningToggle(startDate:String,value:Boolean,onChange:(Boolean)->Unit){
     val label=word("历史补录：已包含在期初余额","履歴追加：期首残高に含まれる")
-    EntryOptionToggle(label,word("只补记录，不再次改变余额。账本开始日","記録のみ追加、残高を再変更しない。帳簿開始日")+" $startDate",
+    EntryOptionToggle(label,word("只补记录，不再次改变余额。账户期初日","記録のみ追加、残高を再変更しない。口座の期首日")+" $startDate",
         "toggle-$label","historical-opening-description",value,onChange=onChange)
 }
 

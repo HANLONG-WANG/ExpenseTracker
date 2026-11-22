@@ -66,9 +66,14 @@ class AccountManagementFlowTest {
                 val empty=repo.saveAccount(b,"整理用",AccountType.CASH,Currency.JPY,Money(Currency.JPY,300),"2026-10-01")
                 val c=repo.saveCategory(b,"食事",EntryKind.EXPENSE,null)
                 repo.saveEntry(b,EntryDraft(accountId=a,categoryId=c,amount="500",date="2026-10-16"))
+                val today=java.time.LocalDate.now(repo.clock)
+                val tomorrow=today.plusDays(1).toString()
+                val card=repo.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,1000),today.toString())
+                repo.saveEntry(b,EntryDraft(accountId=card,categoryId=c,amount="200",date=tomorrow,settlementDate=tomorrow))
                 prefs.select(b)
                 ui.waitUntil(10000){current()?.book?.id==b}
                 ui.runOnIdle{vm.navigate("accounts")}
+                ui.onNodeWithTag("account-$card").assert(hasText("¥1,000") or hasAnyDescendant(hasText("¥1,000")))
                 tap("account-$a");ui.revealOnPage("account-manage");tap("account-manage")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-account-operation").fetchSemanticsNodes().isNotEmpty()}
                 shot("$theme-$language-stop")
@@ -85,7 +90,7 @@ class AccountManagementFlowTest {
                 shot("$theme-$language-delete-empty")
                 tap("confirm-account-operation")
                 ui.waitUntil(10000){current()?.accounts?.none{it.id==empty}==true&&!vm.busy.value}
-                assertNull(repo.dao.account(b,empty));assertEquals(1,current()!!.events.size);assertNull(vm.error.value)
+                assertNull(repo.dao.account(b,empty));assertEquals(2,current()!!.events.size);assertNull(vm.error.value)
             }
         }finally{vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
     }

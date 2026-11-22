@@ -119,6 +119,10 @@ class FinancialPoolPaymentFlowTest {
             tapTag("select-trigger-"+text("办理费付款日 / 无费用可不选","手数料支払日・無料は未選択"))
             ui.onNode(hasText("2026-12-05") and hasAnyAncestor(hasTestTag("select-menu-frame"))).performClick()
             if(loan) {
+                tapTag("finance-flow-close")
+                tapTag("finance-tab-overview")
+                tapTag("financial-drafts-open")
+                tapTag("financial-draft-resume-POOL_PAYMENT")
                 tapTag("pool-payment-review-original");ui.onNodeWithTag("pool-opening").assertExists();tapTag("finance-flow-close")
                 textField(text("办理费 / 未知留空，无费用填0","変更手数料・不明は空欄、無料は0")+" · JPY","pool-payment-fee").assertTextContains("100")
             }
@@ -152,6 +156,7 @@ class FinancialPoolPaymentFlowTest {
             assertNull(runBlocking{db.financialDao().draft(book,FinancialDraftContext("POOL_PAYMENT",card,targetId=pool).slot())})
             if(loan) {
                 val bill=f.bills.first{it.active&&it.date=="2026-12-05"}
+                openFinancialPeriod(ui,vm,bill.id)
                 tapTag("prediction-basis-${bill.id}")
                 ui.onNodeWithTag("pool-payment-basis-${bill.id}").performScrollTo();shot("$theme-$language-payment-basis")
                 ui.onNodeWithTag("prediction-additional-fee-${bill.id}").assertExists()

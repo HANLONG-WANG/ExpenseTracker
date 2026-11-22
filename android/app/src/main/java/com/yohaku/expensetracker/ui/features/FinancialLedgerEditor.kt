@@ -118,7 +118,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             input.allocations.forEach{a->
                 a.billId?.let{id->r.before.finance.bills.first{it.id==id}.let{b->
                     YText(r.before.finance.plans.first{it.id==b.planId}.name+" · "+word("第${b.number}期","第${b.number}回")+" · "+b.date,12)
-                    RecordFacts(listOf(word("账单待付","請求残額") to (value(r.before.ledger.billOutstanding(b).totalMinor)+" → "+value(r.after.billOutstanding(b).totalMinor))))
+                    RecordFacts(listOf(word("账单待付","請求残額") to (value(r.before.ledger.billOutstanding(b).knownTotalMinor)+" → "+value(r.after.billOutstanding(b).knownTotalMinor))))
                 }}
                 a.contractId?.let{id->r.before.finance.contracts.first{it.id==id}.let{c->
                     YText(c.name,12)

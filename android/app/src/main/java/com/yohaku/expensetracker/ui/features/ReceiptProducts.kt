@@ -116,6 +116,7 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
 @Composable private fun ReceiptItemEditor(s:BookSnapshot,document:ReceiptItemDocumentEntity,original:ReceiptItemsRecord,vm:AppViewModel,onClose:()->Unit) {
     val baseRevision=rememberSaveable(document.receiptId){document.revision}
     var raw by rememberSaveable(document.receiptId){mutableStateOf(FileProtocols.json.encodeToString(original))}
+    var rebound by rememberSaveable(document.receiptId){mutableStateOf(false)}
     val edited=remember(raw){FileProtocols.json.decodeFromString<ReceiptItemsRecord>(raw)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     fun update(record:ReceiptItemsRecord){raw=FileProtocols.json.encodeToString(record)}
@@ -123,7 +124,25 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
     YSheet(word("编辑买过的东西","買ったものを編集"),{if(!busy)onClose()}) {
         YText("ITEMS / PERSONAL NOTES",8,color=LocalYohaku.current.muted)
         YText(word("修改商品信息，不改变整单金额或分类；留空表示未知。","商品情報のみ編集。記録金額・カテゴリは変更しません。空欄は不明として保持します。"),10,color=LocalYohaku.current.muted)
+        val images=s.entryReceiptImages(edited.record_id)
+        val receipt=s.receipts.first{it.id==document.receiptId}
+        val event=s.eventById.getValue(edited.record_id)
+        val currentIds=images.map{it.id}
+        if(currentIds.isNotEmpty()&&(edited.image_ids!=currentIds||edited.receipt_revision!=receipt.revision||edited.record_revision!=event.revision)){
+            images.forEach{MediaThumbnail(vm.repository,it)}
+            if(event.currency!=edited.currency)YText(word("记账币种已从 ${edited.currency} 改为 ${event.currency}，请逐项核对金额。","記録通貨は ${edited.currency} から ${event.currency} に変更されました。各金額を確認してください。"),11,color=LocalYohaku.current.warm)
+            YButton(word("已核对，以当前图片作为来源","確認した現在の画像を出典にする"),{
+                update(edited.copy(image_ids=currentIds,record_revision=event.revision,receipt_revision=receipt.revision,currency=event.currency,
+                    items=edited.items.map{item->item.copy(image_ids=item.image_ids.filter{it in currentIds})}))
+                rebound=true
+            },Modifier.testTag("receipt-rebind-images"),enabled=!busy)
+        }
         edited.items.forEachIndexed { index,item -> key(item.item_id){ ReceiptEditorItem(index,{update(edited.copy(items=edited.items.filterIndexed{i,_->i!=index}))},!busy) {
+            if(rebound&&edited.receipt_revision==receipt.revision)images.forEachIndexed{imageIndex,image->
+                YToggle(word("来源图 ${imageIndex+1}","出典画像 ${imageIndex+1}"),image.id in item.image_ids,{checked->
+                    updateItem(index){it.copy(image_ids=if(checked)it.image_ids+image.id else it.image_ids-image.id)}
+                })
+            }
             YField(word("商品名","商品名"),item.name.orEmpty(),{v->updateItem(index){it.copy(name=v.ifBlank{null})}})
             val narrow=androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp<=360
             @Composable fun quantity(modifier:Modifier){YField(word("数量","数量"),item.quantity.orEmpty(),{v->updateItem(index){it.copy(quantity=v.ifBlank{null})}},modifier,numeric=true)}
@@ -148,7 +167,7 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
         YField(word("待确认说明（每行一项）","確認事項（1行1件）"),edited.issues.joinToString("\n"),{update(edited.copy(issues=it.lines().filter{line->line.isNotBlank()}))},multiline=true)
         YToggle(word("明细已补全","明細を補完済み"),edited.complete,{update(edited.copy(complete=it))})
         YActionRow {
-            YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose()}){if(baseRevision==0)vm.repository.saveDirectReceiptItems(s.book.id,document.receiptId,null,edited)else vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
+            YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose()}){if(baseRevision==0||rebound)vm.repository.saveDirectReceiptItems(s.book.id,document.receiptId,baseRevision.takeIf{it!=0},edited)else vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
             YButton(word("取消修改","変更を取消"),onClose,enabled=!busy)
         }
     }

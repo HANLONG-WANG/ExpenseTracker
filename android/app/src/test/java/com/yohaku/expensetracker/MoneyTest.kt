@@ -5,6 +5,8 @@ import org.junit.Test
 class MoneyTest {
     @Test fun decimalAmountPreservesMinorUnits() {
         assertEquals(1234L,Money.parse("12.34",Currency.CNY).minor)
+        assertEquals(-1234L,Money.parseSigned("-12.34",Currency.CNY).minor)
+        assertThrows(IllegalArgumentException::class.java){Money.parse("-12.34",Currency.CNY)}
         assertEquals(680L,Money.parse("680",Currency.JPY).minor)
         assertEquals("CN¥12.34",Money(Currency.CNY,1234).display())
         assertEquals("US$12.34",Money(Currency.USD,1234).display())

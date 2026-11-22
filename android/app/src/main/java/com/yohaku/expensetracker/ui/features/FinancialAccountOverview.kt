@@ -35,6 +35,7 @@ import java.time.*
     val rates by produceState<List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot>>(emptyList(),s,f,rateRevision){value=vm.referenceRates.store.referenceRateCache().rates;value=cashReferenceRates(s,f,vm.referenceRates)}
     val through=maxOf(date,summary.nextDate?.let(LocalDate::parse)?:date)
     val timeline=s.cashTimeline(f,date,through,stale,rates)
+    val risks=timeline.accountRisks().associateBy{it.opening.account.id}
     if(a.type==AccountType.LOAN.name) {
         FinancialLoanNext(s,a,f,summary,limits?.effectiveTotalMinor,stale,onStatement)
         YButton(word("额度与恢复","利用枠と回復"),onLimits,Modifier.testTag("finance-overview-limits"),inline=true)
@@ -70,10 +71,13 @@ import java.time.*
                 val fundingFacts=listOf(word("当前实际资金","現在の実資金") to Money(bc,current).display(),word("本次需备款","今回必要な資金") to ((if(c!=bc&&need!=null)"≈ "else"")+financialAmount(bc,need)),word("当前备款缺口","現在の資金不足") to ((if(c!=bc&&need!=null)"≈ "else"")+financialAmount(bc,currentGap)))
                 RecordFacts(if(a.type==AccountType.CREDIT.name)fundingFacts.take(1)else fundingFacts)
                 if(a.type!=AccountType.CREDIT.name)YText(word("扣款日资金预测","引落日の予測"),14)
-                RecordFacts(listOf((if(a.type==AccountType.CREDIT.name)word("不含预计收入，扣款后","見込み収入なしの支払後")else word("基础情景","基本シナリオ")) to ((if(after?.baselineEstimated==true)"≈ "else"")+financialAmount(bc,after?.baselineAfterMinor)),word("含预计收入","収入見込みあり") to ((if(after?.includingEstimated==true)"≈ "else"")+financialAmount(bc,after?.includingIncomeAfterMinor))))
+                RecordFacts(listOf(word("期末余额 · 不含预计收入","期末残高・見込み収入なし") to ((if(after?.baselineEstimated==true)"≈ "else"")+financialAmount(bc,after?.baselineAfterMinor)),word("含预计收入","収入見込みあり") to ((if(after?.includingEstimated==true)"≈ "else"")+financialAmount(bc,after?.includingIncomeAfterMinor))))
                 if(a.type==AccountType.CREDIT.name)RecordFacts(fundingFacts.drop(1))
                 if(currentGap?.let{it>0}==true)YText(word("现在：该付款账户资金不足。其他账户资金不等于已转入。","現在：この引落口座の資金が不足。他口座の残高は振替済み資金ではありません。"),12,color=LocalYohaku.current.warm)
-                if(after?.baselineAfterMinor?.let{it<0}==true)YText(word("基础情景预计本账户不足；未到账收入不消除基础风险。","基本シナリオではこの口座が不足する見込み。未入金の収入で基本リスクは消えません。"),12,color=LocalYohaku.current.warm)
+                risks[id]?.let{risk->risk.firstRiskDate?.let{first->
+                    val gap=(if(risk.estimated&&risk.maximumGapMinor!=null)"≈ "else "")+financialAmount(bc,risk.maximumGapMinor)
+                    YText(word("基础情景首次不足：$first · 最大缺口：$gap","基本シナリオの初回不足日：$first・最大不足額：$gap"),12,color=LocalYohaku.current.warm)
+                }}
                 YText(word("含其他账单、周期、在途及主动预留；金额或折算缺失时保持未知。","他の請求・定期予定・振替途中・資金確保を含み、不明な金額・換算は不明のまま表示します。"),11)
                 val other=s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt&&it.id!=bank.id}.sortedByDescending{it.currency==bank.currency}.firstOrNull()
                 if(other!=null&&onFund!=null)YButton(word("安排账户转入","口座への振替を記録"),{onFund?.invoke(other.id,bank.id)},Modifier.testTag("finance-fund-transfer-${bank.id}"),haptic=Haptic.Compose)
@@ -98,7 +102,7 @@ import java.time.*
         YText(word("本期账单组成","当期請求の内訳"),14)
 
         YText(summary.nextDate?:word("尚无已知待付日期","既知の支払日はありません"),12)
-        YText(if(summary.next.isEmpty())"—"else if(summary.next.any{!it.bill.confirmed&&it.plan.id in stale})word("待核对","要確認")else Money(c,totals.totalMinor).display(),19,Modifier.testTag("finance-overview-amount"),number=true)
+        YText(if(summary.next.isEmpty())"—"else if(summary.next.any{!it.bill.confirmed&&it.plan.id in stale})word("待核对","要確認")else financialAmount(c,totals.totalMinor),19,Modifier.testTag("finance-overview-amount"),number=true)
         if(summary.next.isNotEmpty()) {
             YText(when{totals.predicted==0->word("平台已确认账单","返済先の確定請求");totals.confirmed==0->word("本地预测账单","ローカル予測");else->word("含已确认与本地预测","確定・予測を含みます")},12,color=LocalYohaku.current.accent)
             RecordFacts(listOf(word("待清偿本金","未返済元金") to financialAmount(c,totals.principalMinor),word("待清偿费用","未返済手数料") to financialAmount(c,totals.feeMinor),word("已付待确认","支払済み・確認待ち") to financialAmount(c,totals.pendingMinor),word("仍需备款","今後必要な資金") to financialAmount(c,totals.cashRequiredMinor)))
@@ -149,7 +153,7 @@ import java.time.*
     val rows=summary.rows.filter{it.bill.date.startsWith(month)};val total=rows.statementTotals()
     ThemeAuditPanel(month,Modifier.testTag("finance-statement-total")) {
         val known=rows.isNotEmpty()&&rows.none{!it.bill.confirmed&&it.plan.id in stale}
-        YText(if(rows.isEmpty())"—"else if(!known)word("待核对","要確認")else Money(c,total.totalMinor).display(),34,Modifier.testTag("finance-statement-amount"),number=known)
+        YText(if(rows.isEmpty())"—"else if(!known)word("待核对","要確認")else financialAmount(c,total.totalMinor),34,Modifier.testTag("finance-statement-amount"),number=known)
         YText(word("按有效扣款日期归属，不按消费月份筛选。","適用された引落日で集計し、利用月では絞り込みません。"),11)
         if(rows.isNotEmpty())RecordFacts(listOf(word("待清偿本金","未返済元金") to financialAmount(c,total.principalMinor),word("待清偿费用","未返済手数料") to financialAmount(c,total.feeMinor),word("已确认 / 预测期数","確定・予測の回数") to "${total.confirmed} / ${total.predicted}",word("仍需备款","今後必要な資金") to financialAmount(c,total.cashRequiredMinor)))
         else YText(word("该月没有已保存账单；不代表没有尚未安排的债务。","この月に保存済みの請求はありません。予定未補完の債務がないことは意味しません。"),12)
@@ -158,7 +162,7 @@ import java.time.*
         val totals=bills.statementTotals()
         ThemeAuditPanel(date,Modifier.testTag("statement-date-$date")) {
             val known=bills.none{!it.bill.confirmed&&it.plan.id in stale||it.bill.hasUnknownPredictedFee()}
-            YText(if(known)Money(c,totals.totalMinor).display()else word("待核对","要確認"),24,number=known)
+            YText(if(known)financialAmount(c,totals.totalMinor)else word("待核对","要確認"),24,number=known)
             RecordFacts(listOf(word("已确认 / 预测笔数","確定・予測の件数") to "${totals.confirmed} / ${totals.predicted}",
                 word("已付待确认","支払済み・確認待ち") to financialAmount(c,totals.pendingMinor),
                 word("仍需备款","今後必要な資金") to financialAmount(c,totals.cashRequiredMinor),

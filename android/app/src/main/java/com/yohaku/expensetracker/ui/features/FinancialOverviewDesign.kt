@@ -117,7 +117,7 @@ import com.yohaku.expensetracker.ui.theme.*
                         YText(row.bill.date.take(7).replace('-','.'),size,Modifier.width(dateWidth),number=true)
                         for(value in values.getValue(row.bill.id))YText(amount(value),size,Modifier.weight(1f),number=value!=null,textAlign=TextAlign.End)
                     }
-                    YText(row.bill.date+" · "+word("待付合计 ","未払合計 ")+Money(currency,row.outstanding.totalMinor).display()+" · "+
+                    YText(row.bill.date+" · "+word("待付合计 ","未払合計 ")+financialAmount(currency,row.outstanding.knownTotalMinor)+" · "+
                         when{!row.bill.confirmed&&planId in stale->word("原预测待核对","元予測・要確認");row.bill.confirmed->word("平台已确认","返済先確定");else->word("本地预测","ローカル予測")},if(journal)11 else 9,color=t.muted)
                 }
             }
@@ -155,7 +155,7 @@ import com.yohaku.expensetracker.ui.theme.*
             val banks=summary.next.map{r->s.accounts.firstOrNull{it.id==r.bill.paymentAccountId}?.let{it.name+" · "+it.currency}?:word("付款账户未定","引落口座未定")}.distinct()
             YText(banks.joinToString(" / "),if(journal)11 else 9,color=t.muted)
         }
-        val amount=when{summary.next.isEmpty()->"—";summary.next.any{!it.bill.confirmed&&it.plan.id in stale}->word("待核对","要確認");else->Money(currency,totals.totalMinor).display()}
+        val amount=when{summary.next.isEmpty()->"—";summary.next.any{!it.bill.confirmed&&it.plan.id in stale}->word("待核对","要確認");else->financialAmount(currency,totals.totalMinor)}
         YText(amount,if(compact)14 else 18,Modifier.testTag("finance-overview-amount"),number=summary.next.isNotEmpty())
     }
     var details by androidx.compose.runtime.saveable.rememberSaveable(a.id){mutableStateOf(false)}

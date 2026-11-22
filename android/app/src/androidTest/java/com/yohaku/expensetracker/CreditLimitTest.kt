@@ -88,6 +88,10 @@ class CreditLimitTest {
             val group=repo.previewCreditLimitGroup(b,CreditLimitGroupInput("共通枠",Currency.JPY,12000,3000,"2026-10-15",listOf(a,other)))
             assertTrue(repo.commitCreditLimit(group))
             val id=group.group!!.id
+            val state=repo.snapshot(repo.dao.book(b)!!).first()
+            val finance=db.financialDao().graph(b).first()!!
+            val limits=db.creditLimitDao().graph(b).first()!!.copy(configs=emptyList())
+            assertEquals(id,accountCreditLimit(state,finance,limits,a,"2026-10-15").groupId)
             val category=repo.saveCategory(b,"生活",EntryKind.EXPENSE,null)
             repo.saveEntry(b,EntryDraft(accountId=a,categoryId=category,amount="2000",date="2026-10-15"))
             assertEquals(8000L,value(repo,b,a).total.availableMinor);assertEquals(7000L,value(repo,b,a).effectiveTotalMinor);assertEquals(7000L,value(repo,b,other).effectiveTotalMinor)

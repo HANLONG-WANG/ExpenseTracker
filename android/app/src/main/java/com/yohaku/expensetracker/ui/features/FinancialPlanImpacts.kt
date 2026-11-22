@@ -22,7 +22,7 @@ import com.yohaku.expensetracker.ui.theme.*
         val currency=Currency.valueOf(impact.original.currency)
         val before=impact.originalBills.filter{it.active}
         val after=impact.nextBills
-        fun total(rows:List<FinancialBillEntity>,s:BookSnapshot)=rows.fold(0L){sum,b->Math.addExact(sum,s.billOutstanding(b).totalMinor)}
+        fun total(rows:List<FinancialBillEntity>,s:BookSnapshot)=rows.map{s.billOutstanding(it).knownTotalMinor}.knownTotal()
         fun fees(rows:List<FinancialBillEntity>,s:BookSnapshot):Long? {
             if(rows.any{s.billOutstanding(it).feeMinor==null})return null
             return rows.fold(0L){sum,b->Math.addExact(sum,s.billOutstanding(b).feeMinor!!)}
@@ -49,7 +49,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 RecordFacts(listOf(word("日期","日付") to ((old?.date?:"—")+" → "+(next?.date?:"—")),
                     word("本金","元金") to ((old?.let{amount(it.principalMinor)}?:"—")+" → "+(next?.let{amount(it.principalMinor)}?:"—")),
                     word("利息 / 费用","利息・手数料") to ((old?.let{amount(it.feeMinor)}?:"—")+" → "+(next?.let{amount(it.feeMinor)}?:"—")),
-                    word("实际分配后待付","実充当後の請求残額") to (amount(old?.let{r.before.ledger.billOutstanding(it).totalMinor}?:0)+" → "+amount(next?.let{r.after.billOutstanding(it).totalMinor}?:0))))
+                    word("实际分配后待付","実充当後の請求残額") to (amount(if(old==null)0L else r.before.ledger.billOutstanding(old).knownTotalMinor)+" → "+amount(if(next==null)0L else r.after.billOutstanding(next).knownTotalMinor))))
             }
         }
         }

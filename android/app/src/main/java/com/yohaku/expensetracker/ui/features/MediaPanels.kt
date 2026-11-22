@@ -59,8 +59,8 @@ import kotlinx.coroutines.withContext
     val progress by vm.mediaImportProgress.collectAsStateWithLifecycle()
     val preserveOriginal=option?.takeIf{it.session==d.mediaSession}?.preserveOriginal?:defaultOriginal
     LaunchedEffect(d.mediaSession,defaultOriginal){if(option?.session!=d.mediaSession)defaultOriginal?.let{vm.setMediaImportOption(d.mediaSession,it)}}
-    val attachments=rememberLauncherForActivityResult(MediaPickerContract("*/*","选择附件应用 / 添付ファイルを選ぶアプリ")){uris->vm.importFiles(context,s.book.id,uris,false)}
-    val receipts=rememberLauncherForActivityResult(MediaPickerContract("image/*","选择小票图片应用 / レシート画像を選ぶアプリ")){uris->vm.importFiles(context,s.book.id,uris,true)}
+    val attachments=rememberLauncherForActivityResult(MediaPickerContract("*/*",word("选择附件应用","添付ファイルを選ぶアプリ"))){uris->vm.importFiles(context,s.book.id,uris,false)}
+    val receipts=rememberLauncherForActivityResult(MediaPickerContract("image/*",word("选择小票图片应用","レシート画像を選ぶアプリ"))){uris->vm.importFiles(context,s.book.id,uris,true)}
     var preview by rememberSaveable(d.mediaSession){mutableStateOf<String?>(null)}
     ThemeSection(word("普通附件","添付ファイル"),"ATTACHMENTS")
     progress?.takeIf{it.session==d.mediaSession}?.let{YText(word("正在导入 ${it.current}/${it.total}","取り込み中 ${it.current}/${it.total}"),12,Modifier.testTag("media-import-progress"))}
@@ -214,7 +214,7 @@ private class ReceiptCameraController(val launch:(String,ReceiptTarget)->Unit,va
     val context=LocalContext.current
     val busy by vm.busy.collectAsStateWithLifecycle()
     val progress by vm.mediaImportProgress.collectAsStateWithLifecycle()
-    val picker=rememberLauncherForActivityResult(MediaPickerContract("image/*","选择小票图片应用 / レシート画像を選ぶアプリ")){uris->vm.importRecordReceipts(context,s.book.id,event.id,uris)}
+    val picker=rememberLauncherForActivityResult(MediaPickerContract("image/*",word("选择小票图片应用","レシート画像を選ぶアプリ"))){uris->vm.importRecordReceipts(context,s.book.id,event.id,uris)}
     val camera=LocalReceiptCamera.current
     ThemeSection(word("小票图片","レシート画像"),"RECEIPT IMAGES")
     progress?.takeIf{it.session==event.id}?.let{YText(word("正在导入 ${it.current}/${it.total}","取り込み中 ${it.current}/${it.total}"),12,Modifier.testTag("media-import-progress"))}

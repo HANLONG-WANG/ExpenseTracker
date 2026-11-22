@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.features
 
+import com.yohaku.expensetracker.data.repository.hasUnknownPredictedFee
 import com.yohaku.expensetracker.data.repository.FinancialStatementRow
 import com.yohaku.expensetracker.domain.finance.FinancialCalculationBasis
 import kotlinx.serialization.Serializable
@@ -20,7 +21,17 @@ internal fun repaymentSuggestion(row:FinancialStatementRow,stale:Boolean):Repaym
     val charges=row.outstanding.feeMinor?.let{f->row.pendingFeeMinor?.let{f-it}}?.takeIf{it>=0}
     // The charge is interest unless a calculation lists an additional fee; interest and fee are summed everywhere downstream.
     val basis=row.bill.basisJson?.let{Json.decodeFromString<FinancialCalculationBasis>(it)}
-    val fee=charges?.let{c->if(basis==null)0L else basis.additionalFeeMinor.coerceAtMost(c).takeUnless{basis.additionalFeeUnknown&&c>0}}
+    val fee=charges?.let{remaining->
+        row.pendingPlatformFeeMinor?.let{pending->
+            val additional=(basis?.additionalFeeMinor?:0L)-row.outstanding.paidPlatformFeeMinor-pending
+            val adjusted=row.bill.feeMinor?.minus(row.outstanding.paidFeeMinor)!=row.outstanding.feeMinor
+            when {
+                remaining==0L->0L
+                basis?.additionalFeeUnknown==true||adjusted&&additional>0->null
+                else->additional.takeIf{it in 0L..remaining}
+            }
+        }
+    }
     return RepaymentSuggestion(paid,principal,fee?.let{charges!!-it},fee)
 }
 private fun Long.plain(currency:Currency)=Money(currency,this).decimal.toPlainString()
@@ -33,21 +44,21 @@ private fun Long.plain(currency:Currency)=Money(currency,this).decimal.toPlainSt
     // Typed interest is kept; otherwise it follows received − principal − fee.
     val interestManual:Boolean=false,
     // null denotes a legacy draft: retain independently entered allocations.
-    val singleTarget:Boolean?=null
+    val singleTarget:Boolean?=null,val interestDerived:Boolean=false
 ) {
     fun withPaid(value:String,suggestion:RepaymentSuggestion?,currency:Currency):RepaymentDraft {
         if(value==paid||singleTarget!=true||suggestion?.paid==null||value.trim().toBigDecimalOrNull()==null)return copy(paid=value)
-        return if(suggestion.differsFromPaid(value,currency))copy(paid=value,principal="").withSingleAllocation()
+        return if(suggestion.differsFromPaid(value,currency))copy(paid=value,principal="",interest=if(interestManual)interest else "",interestDerived=false).withSingleAllocation()
         else copy(paid=value,principal=suggestion.principal?.plain(currency).orEmpty(),
-            interest=suggestion.interest?.plain(currency)?:interest,fee=suggestion.fee?.plain(currency)?:fee).withSingleAllocation()
+            interest=if(interestManual)interest else suggestion.interest?.plain(currency).orEmpty(),interestDerived=false,fee=suggestion.fee?.plain(currency)?:fee).withSingleAllocation()
     }
-    /** [sameCurrency]: paid minus payment-side fee is what the platform received. Unknown inputs leave interest as is. */
+    /** Clear a derived value when its evidence disappears. Preserve separately entered or suggested interest. */
     fun withDerivedInterest(currency:Currency,sameCurrency:Boolean):RepaymentDraft {
         if(interestManual)return this
         fun minor(v:String)=runCatching{Money.parse(v,currency).minor}.getOrNull()
-        val got=if(received.isNotBlank())minor(received)else if(sameCurrency)minor(paid)?.let{p->(if(sourceFee.isBlank())0L else minor(sourceFee))?.let{p-it}}else null
-        val value=got?.let{r->minor(principal)?.let{p->minor(fee)?.let{f->r-p-f}}}?:return this
-        return copy(interest=if(value>=0)value.plain(currency)else"")
+        val got=if(received.isNotBlank())minor(received)else if(sameCurrency)minor(paid)?.let{p->minor(sourceFee)?.let{p-it}}else null
+        val value=got?.let{r->minor(principal)?.let{p->minor(fee)?.let{f->r-p-f}}}?:return if(interestDerived)copy(interest="",interestDerived=false)else this
+        return copy(interest=if(value>=0)value.plain(currency)else"",interestDerived=true)
     }
     fun canShareComposition():Boolean=rows.isEmpty()||rows.singleOrNull()?.let{it.principal==principal&&it.interest==interest&&it.fee==fee}==true
     fun withSingleAllocation():RepaymentDraft=if(singleTarget==true)copy(rows=rows.map{it.copy(principal=principal,interest=interest,fee=fee)})else this

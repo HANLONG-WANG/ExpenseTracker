@@ -130,6 +130,13 @@ class ExpectedIncomeFlowTest {
             assertEquals(1450L,snapshot.balance(snapshot.accounts.first{it.id==bank}));assertEquals(1,snapshot.events.size);assertEquals(450L,snapshot.events.single().baseMinor);assertEquals(0L,snapshot.monthExpense("2026-10"));assertEquals(10000L,snapshot.budgetLimit("2026-10"))
             ui.waitUntil(10000){ui.onAllNodesWithTag("cash-bill:$bill").fetchSemanticsNodes().isNotEmpty()&&ui.onAllNodesWithTag("cash-gap-bill:$bill").fetchSemanticsNodes().isEmpty()}
             ui.onNodeWithTag("cash-bill:$bill").performScrollTo();shot("$theme-$language-income-arrived")
+            runBlocking{repo.deleteEntry(book,snapshot.events.single().id)}
+            tapTag("expected-arrive-$id")
+            val actualField=textField(text("实际到账金额","実入金額")+" · JPY")
+            actualField.performScrollTo().performTextReplacement("420")
+            tapTag("sheet-close");tapTag("financial-drafts-open");tapTag("financial-draft-resume-EXPECTED")
+            actualField.assertTextEquals("420")
+            tapTag("financial-draft-discard")
             tapTag("cash-open-bill:$bill")
             ui.onNodeWithTag("finance-bill-$bill").assertExists()
             ui.onNodeWithTag("finance-tab-plans").assertIsSelected()

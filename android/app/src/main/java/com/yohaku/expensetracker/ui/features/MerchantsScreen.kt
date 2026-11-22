@@ -99,7 +99,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
             YText(l.name,18)
             YText(l.latitude?.let{"$it, ${l.longitude} · ${l.radiusMeters}m"}?:word("仅地点名称，未填写坐标","場所名のみ・座標未入力"),11)
             YActionRow {
-                YButton(word("编辑地点","場所を編集"),{locationId=l.id;locationFor=merchant.id})
+                YButton(word("编辑地点","場所を編集"),{locationId=l.id;locationFor=merchant.id},Modifier.testTag("merchant-location-edit-"+l.id))
                 YLink(word("移除保存地点","保存した場所を削除"),{vm.execute{vm.repository.removeMerchantLocation(s.book.id,l.id);vm.haptic(Haptic.Removed)}})
             }
         }}
@@ -254,10 +254,10 @@ private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(word("保存商户地点","お店の場所を保存"),onDismiss) {
         YField(word("地点名称","場所の名前"),name,{name=it})
-        PlacePicker(vm,latitude,longitude,radius,{radius=it}){lat,lon->latitude=lat;longitude=lon}
+        PlacePicker(vm,latitude,longitude,radius,{radius=it},autoLocate=old==null){lat,lon->latitude=lat;longitude=lon}
         YButton(word("保存地点","場所を保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onDismiss()}){
-            vm.repository.saveMerchantLocation(s.book.id,merchantId,name,requireNotNull(latitude),requireNotNull(longitude),radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"),old?.id)
-        }},Modifier.testTag("merchant-location-save"),primary=true,enabled=!busy&&latitude!=null&&longitude!=null)
+            vm.repository.saveMerchantLocation(s.book.id,merchantId,name,latitude,longitude,radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"),old?.id)
+        }},Modifier.testTag("merchant-location-save"),primary=true,enabled=!busy&&name.isNotBlank())
     }
 }
 

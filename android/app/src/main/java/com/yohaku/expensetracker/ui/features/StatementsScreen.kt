@@ -3,6 +3,7 @@ package com.yohaku.expensetracker.ui.features
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,12 +26,13 @@ import com.yohaku.expensetracker.ui.theme.*
 import com.yohaku.expensetracker.ui.haptics.Haptic
 
 @Composable internal fun StatementsScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,
-    onSupplement:(StatementSupplementSeed)->Unit,onActual:(String,String,StatementRow,String,String)->Unit,onFinancial:(String)->Unit) {
+    onSupplement:(StatementSupplementSeed)->Unit,onActual:(String,String,StatementRow,String,String)->Unit,onFinancial:(String)->Unit,modifier:Modifier,chrome:PageChrome) {
     val context=LocalContext.current
     val busy by vm.busy.collectAsStateWithLifecycle()
     val batches by remember(s.book.id){vm.repository.db.fileWorkflowDao().statements(s.book.id)}.collectAsStateWithLifecycle(emptyList())
     val decisions by remember(s.book.id){vm.repository.db.fileWorkflowDao().decisions(s.book.id)}.collectAsStateWithLifecycle(emptyList())
     val selected by vm.selectedStatementBatch.collectAsStateWithLifecycle()
+    val postings=remember(s){s.reconciliationPostings().associateBy{it.postingId}}
     val projections=remember(s,batches,decisions){s.reviewStatements(batches,decisions)}
     val active=projections.find{it.batch.id==selected}?:projections.lastOrNull()
     var rowId by rememberSaveable(active?.batch?.id){mutableStateOf<String?>(null)}
@@ -50,75 +52,96 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
             writeNewTreeDocument(context,uri,"yohaku-statement-${batch.id}.json","application/json"){it.write(batch.originalJson.toByteArray(Charsets.UTF_8))}
         }
     }
-    YTitle(word("核对，心里更有数。","照合して、確かめる。"),"CHECK, DON’T DUPLICATE",word("流水独立保存，手动账目始终为准。","明細は別に保存。手動記録が基準です。"),pageFlow=true)
-    Box(Modifier.heightIn(min=44.dp).testTag("statement-import-entry").clickable(enabled=!busy){vm.navigate("statement-import")},contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
-        YText(word("＋ 交给云端转换流水","＋ クラウドで明細を変換"),10,Modifier.border(1.dp,LocalYohaku.current.line,RoundedCornerShape(20.dp)).padding(horizontal=12.dp,vertical=8.dp),color=LocalYohaku.current.muted)
-    }
-    if(projections.isEmpty())YEmpty(word("还没有核对资料。把原始流水交给云端转换，结果确认后会出现在这里。","照合資料はまだありません。元明細をクラウドで変換し、確認した結果がここに並びます。"))
-    if(projections.size>1)YSelect(word("核对批次","照合バッチ"),active?.batch?.id,projections.map{it.batch.id as String? to ((s.accounts.find{a->a.id==it.batch.accountId}?.name?:"")+" · "+it.file.from+" / "+it.file.rows.size)},{vm.selectedStatementBatch.value=it},Modifier.testTag("statement-batch"))
-    active?.let { p->
-        val file=p.file
-        val account=s.accounts.first{it.id==file.account_id}
-        val overlaps=projections.filter{it.batch.id!=p.batch.id&&it.file.account_id==file.account_id&&it.file.from<=file.to&&it.file.to>=file.from}
-        ThemeAuditPanel(account.name,Modifier.testTag("statement-summary")) {
-            RecordFacts(listOf(word("文件区间","明細期間") to "${file.from} — ${file.to}",
-                word("完全匹配 / 待确认 / 仅流水","完全一致・要確認・明細のみ") to "${p.result.exact.size} / ${p.result.differences.size+p.decisions.size} / ${p.result.statementOnly.size}",
-                word("匹配日期语义","照合する日付") to if(file.date_basis=="posted_date")word("实际入账日","実計上日")else word("发生日","利用日")))
-            if(!file.complete)YText(word("这份流水不完整。","この明細は一部のみです。"),12,color=LocalYohaku.current.warm)
-            file.issues.forEach{YText(it,11,color=LocalYohaku.current.warm)}
-            if(overlaps.isNotEmpty())YText(word("与 ${overlaps.size} 份已导入流水的区间重叠。","取込済みの明細 ${overlaps.size} 件と期間が重なっています。"),12,color=LocalYohaku.current.warm)
+    val activeAccount=s.accounts.firstOrNull{it.id==active?.file?.account_id}
+    val exactByRow=remember(active){active?.result?.exact.orEmpty().associateBy{it.rowId}}
+    val decisionsByRow=remember(active){active?.decisions.orEmpty().associateBy{it.saved.rowId}}
+    val differences=remember(active){active?.result?.differences.orEmpty().map{it.rowId}.toSet()}
+    val (settledRows,openRows)=remember(active){active?.file?.rows.orEmpty().partition{it.row_id in exactByRow||decisionsByRow[it.row_id]?.active==true}}
+    @Composable fun StatementRowView(row:StatementRow) {
+        val exact=exactByRow[row.row_id]
+        val manual=decisionsByRow[row.row_id]
+        val line=LocalYohaku.current.line
+        Column(Modifier.fillMaxWidth().testTag("statement-row-${row.row_id}").drawBehind{drawLine(line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}.padding(vertical=18.dp),verticalArrangement=Arrangement.spacedBy(9.dp)) {
+            YText(row.date+" · "+(if(row.direction=="in")"+"else "−")+receiptCurrencyText(row.settlement.amount,row.settlement.currency),13,bold=true)
+            YText(row.summary,12)
+            val status=when {
+                exact!=null->word("已匹配","一致")
+                manual?.active==true->word("已确认差异","差異確認済み")
+                manual!=null->word("记账已改动，需重新核对","記録が変わったため再照合")
+                row.row_id in differences->word("待确认差异","差異の確認待ち")
+                else->word("没有对应的记账","対応する記録なし")
+            }
+            YText(status,if(LocalYohaku.current.id=="journal")12 else 10,color=if(exact!=null)LocalYohaku.current.accent else LocalYohaku.current.warm,modifier=Modifier.fillMaxWidth().background(LocalYohaku.current.soft,RoundedCornerShape(4.dp)).padding(horizontal=7.dp,vertical=4.dp).testTag("statement-status-${row.row_id}"))
+            val postingId=exact?.postingId?:manual?.saved?.postingId
+            val posting=postings[postingId]
+            val event=posting?.let{post->s.visibleById[post.eventId]}
+            if(event!=null)YLink(word("对应记账：","対応記録：")+event.merchant.ifBlank{event.date},{onRecord(event)},Modifier.testTag("statement-open-record-${row.row_id}"))
+            if(exact==null) {
+                YActionRow {
+                    YButton(word("查看候选与差异","候補と差異を見る"),{rowId=row.row_id},Modifier.testTag("statement-candidates-${row.row_id}"),enabled=!busy)
+                    if(activeAccount?.active==true)YLink(word("选择类型补记","種類を選んで記録"),{supplement=row.row_id},Modifier.testTag("statement-supplement-${row.row_id}"))
+                }
+            }
+            row.source_ref?.let{YText(word("来源行：","元の行：")+it,10,color=LocalYohaku.current.muted)}
         }
-        // Matched rows need nothing; keep them folded so the rows still to handle stand out.
-        val settled=file.rows.filter{row->p.result.exact.any{it.rowId==row.row_id}||p.decisions.any{it.active&&it.saved.rowId==row.row_id}}.toSet()
-        @Composable fun StatementRowView(row:StatementRow) {
-            val exact=p.result.exact.firstOrNull{it.rowId==row.row_id}
-            val manual=p.decisions.firstOrNull{it.saved.rowId==row.row_id}
-            val line=LocalYohaku.current.line
-            Column(Modifier.fillMaxWidth().testTag("statement-row-${row.row_id}").drawBehind{drawLine(line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}.padding(vertical=18.dp),verticalArrangement=Arrangement.spacedBy(9.dp)) {
-                YText(row.date+" · "+(if(row.direction=="in")"+"else "−")+receiptCurrencyText(row.settlement.amount,row.settlement.currency),13,bold=true)
-                YText(row.summary,12)
-                val status=when {
-                    exact!=null->word("已匹配","一致")
-                    manual?.active==true->word("已确认差异","差異確認済み")
-                    manual!=null->word("记账已改动，需重新核对","記録が変わったため再照合")
-                    p.result.differences.any{it.rowId==row.row_id}->word("待确认差异","差異の確認待ち")
-                    else->word("没有对应的记账","対応する記録なし")
-                }
-                YText(status,if(LocalYohaku.current.id=="journal")12 else 10,color=if(exact!=null)LocalYohaku.current.accent else LocalYohaku.current.warm,modifier=Modifier.fillMaxWidth().background(LocalYohaku.current.soft,RoundedCornerShape(4.dp)).padding(horizontal=7.dp,vertical=4.dp).testTag("statement-status-${row.row_id}"))
-                val postingId=exact?.postingId?:manual?.saved?.postingId
-                val posting=s.reconciliationPostings().firstOrNull{it.postingId==postingId}
-                val event=posting?.let{post->s.visibleEvents.find{it.id==post.eventId}}
-                if(event!=null)YLink(word("对应记账：","対応記録：")+event.merchant.ifBlank{event.date},{onRecord(event)},Modifier.testTag("statement-open-record-${row.row_id}"))
-                if(exact==null) {
-                    YActionRow {
-                        YButton(word("查看候选与差异","候補と差異を見る"),{rowId=row.row_id},Modifier.testTag("statement-candidates-${row.row_id}"),enabled=!busy)
-                        YLink(word("选择类型补记","種類を選んで記録"),{supplement=row.row_id},Modifier.testTag("statement-supplement-${row.row_id}"))
-                    }
-                }
-                row.source_ref?.let{YText(word("来源行：","元の行：")+it,10,color=LocalYohaku.current.muted)}
+    }
+    LazyPage(chrome,s.book.id,modifier,top={
+        YTitle(word("核对，心里更有数。","照合して、確かめる。"),"CHECK, DON’T DUPLICATE",word("流水独立保存，手动账目始终为准。","明細は別に保存。手動記録が基準です。"),pageFlow=true)
+        Box(Modifier.heightIn(min=44.dp).testTag("statement-import-entry").clickable(enabled=!busy){vm.navigate("statement-import")},contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
+            YText(word("＋ 交给云端转换流水","＋ クラウドで明細を変換"),10,Modifier.border(1.dp,LocalYohaku.current.line,RoundedCornerShape(20.dp)).padding(horizontal=12.dp,vertical=8.dp),color=LocalYohaku.current.muted)
+        }
+        if(projections.isEmpty())YEmpty(word("还没有核对资料。把原始流水交给云端转换，结果确认后会出现在这里。","照合資料はまだありません。元明細をクラウドで変換し、確認した結果がここに並びます。"))
+        if(projections.size>1)YSelect(word("核对批次","照合バッチ"),active?.batch?.id,projections.map{it.batch.id as String? to ((s.accounts.find{a->a.id==it.batch.accountId}?.name?:"")+" · "+it.file.from+" / "+it.file.rows.size)},{vm.selectedStatementBatch.value=it},Modifier.testTag("statement-batch"))
+        active?.let { p->
+            val file=p.file
+            val account=s.accounts.first{it.id==file.account_id}
+            val overlaps=projections.filter{it.batch.id!=p.batch.id&&it.file.account_id==file.account_id&&it.file.from<=file.to&&it.file.to>=file.from}
+            ThemeAuditPanel(account.name,Modifier.testTag("statement-summary")) {
+                RecordFacts(listOf(word("文件区间","明細期間") to "${file.from} — ${file.to}",
+                    word("完全匹配 / 待确认 / 仅流水","完全一致・要確認・明細のみ") to "${p.result.exact.size} / ${p.result.differences.size+p.decisions.count{!it.active}} / ${p.result.statementOnly.size}",
+                    word("匹配日期语义","照合する日付") to if(file.date_basis=="posted_date")word("实际入账日","実計上日")else word("发生日","利用日")))
+                if(!account.active)YText(word("此账户已停用。补记前请先启用账户。","この口座は停止中です。追加記録するには口座を有効にしてください。"),12,color=LocalYohaku.current.warm)
+                if(!file.complete)YText(word("这份流水不完整。","この明細は一部のみです。"),12,color=LocalYohaku.current.warm)
+                file.issues.forEach{YText(it,11,color=LocalYohaku.current.warm)}
+                if(overlaps.isNotEmpty())YText(word("与 ${overlaps.size} 份已导入流水的区间重叠。","取込済みの明細 ${overlaps.size} 件と期間が重なっています。"),12,color=LocalYohaku.current.warm)
             }
         }
-        file.rows.filterNot{it in settled}.forEach{StatementRowView(it)}
-        if(settled.isNotEmpty()) {
-            RecurringProcessedHeader(word("已匹配","一致済み"),word("${settled.size} 笔","${settled.size} 件"),matchedOpen,"statement-matched-toggle"){matchedOpen=!matchedOpen}
-            if(matchedOpen)file.rows.filter{it in settled}.forEach{StatementRowView(it)}
+    }) {
+        active?.let{p->
+            items(openRows,key={"row-"+it.row_id}){StatementItem{StatementRowView(it)}}
+            if(settledRows.isNotEmpty()) {
+                item{StatementItem{RecurringProcessedHeader(word("已匹配","一致済み"),word("${settledRows.size} 笔","${settledRows.size} 件"),matchedOpen,"statement-matched-toggle"){matchedOpen=!matchedOpen}}}
+                if(matchedOpen)items(settledRows,key={"row-"+it.row_id}){StatementItem{StatementRowView(it)}}
+            }
+            if(p.result.ledgerOnly.isNotEmpty()) {
+                item{StatementItem{ThemeSection(word("流水里没有的记账","明細にない記録"),"REVIEW")}}
+                items(p.result.ledgerOnly,key={"ledgerOnly-"+it}){id->StatementItem{StatementPostingLink(s,postings[id],onRecord)}}
+            }
+            if(p.result.uncovered.isNotEmpty()) {
+                item{StatementItem{ThemeSection(word("未覆盖 / 待核对","未確認・照合待ち"),"NOT COVERED")}}
+                items(p.result.uncovered,key={"uncovered-"+it}){id->StatementItem{StatementPostingLink(s,postings[id],onRecord)}}
+            }
+            item{StatementItem{
+                val file=p.file
+                file.statement_info?.let{info->ThemeAuditPanel(word("账单补充资料","請求補足資料")) {
+                    StatementInfoFacts(info)
+                    YButton(word("选择正式账单并预览确认","正式な請求を選び確認"),{billChooser=true},Modifier.testTag("statement-confirm-bill-info"),enabled=!busy)
+                }}
+                YButton(word("保存完整原文件副本","元ファイル全体のコピーを保存"),{export.launch(null)},Modifier.testTag("statement-export-original"),enabled=!busy)
+                YLink(word("删除此核对资料","この照合資料を削除"),{deleting=true},Modifier.testTag("statement-delete"))
+            }}
         }
-        if(p.result.ledgerOnly.isNotEmpty()) {
-            ThemeSection(word("流水里没有的记账","明細にない記録"),"REVIEW")
-            p.result.ledgerOnly.forEach{id->StatementPostingLink(s,id,onRecord)}
-        }
-        if(p.result.uncovered.isNotEmpty()) {
-            ThemeSection(word("未覆盖 / 待核对","未確認・照合待ち"),"NOT COVERED")
-            p.result.uncovered.forEach{id->StatementPostingLink(s,id,onRecord)}
-        }
-        file.statement_info?.let{info->ThemeAuditPanel(word("账单补充资料","請求補足資料")) {
-            StatementInfoFacts(info)
-            YButton(word("选择正式账单并预览确认","正式な請求を選び確認"),{billChooser=true},Modifier.testTag("statement-confirm-bill-info"),enabled=!busy)
+        item{StatementItem{
+            ThemeAuditPanel(word("转账，两端各核对一次","振替は両側を照合")) {
+                YLink(word("查看转账 / 还款两端关联","振替・返済の両側の関連を見る"),{showSides=true},Modifier.testTag("statement-sides"))
+            }
         }}
-        YButton(word("保存完整原文件副本","元ファイル全体のコピーを保存"),{export.launch(null)},Modifier.testTag("statement-export-original"),enabled=!busy)
-        YLink(word("删除此核对资料","この照合資料を削除"),{deleting=true},Modifier.testTag("statement-delete"))
+    }
+    active?.let{p->
+        val file=p.file
+        val account=requireNotNull(activeAccount)
         rowId?.let{id->file.rows.find{it.row_id==id}?.let { row-> StatementDifferenceSheet(s,p,projections,row,vm,{rowId=null},{eventId,postedDate,postingId->rowId=null;onActual(eventId,file.account_id,row,postedDate,postingId)},{event->rowId=null;onRecord(event)}) } }
-        supplement?.let{id->file.rows.find{it.row_id==id}?.let{row->StatementSupplementSheet(s,file,row,vm,{supplement=null},{seed->supplement=null;onSupplement(seed)},{kind,debt->supplement=null;financialAccount=debt;financialKind=kind})}}
+        if(account.active)supplement?.let{id->file.rows.find{it.row_id==id}?.let{row->StatementSupplementSheet(s,file,row,vm,{supplement=null},{seed->supplement=null;onSupplement(seed)},{kind,debt->supplement=null;financialAccount=debt;financialKind=kind})}}
         if(deleting)YSheet(word("删除核对资料","照合資料を削除"),{deleting=false}) {
             YText(word("只移除本批原文件和核对关联，不删除或修改手动账目。","このバッチの元ファイルと照合関連だけを削除し、手動記録は削除・変更しません。"),13)
             YButton(word("确认删除资料","資料の削除を確認"),{vm.execute(onSuccess={deleting=false}){vm.repository.deleteStatement(s.book.id,p.batch.id);vm.haptic(Haptic.Removed)}},Modifier.testTag("statement-delete-confirm"),primary=true,enabled=!busy)
@@ -131,9 +154,6 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
                 initial=KnownBillDraft(info?.payment_date?:bill.date,value(info?.total),value(info?.principal),value(info?.fees),bill.paymentAccountId))
         } }
     }
-    ThemeAuditPanel(word("转账，两端各核对一次","振替は両側を照合")) {
-        YLink(word("查看转账 / 还款两端关联","振替・返済の両側の関連を見る"),{showSides=true},Modifier.testTag("statement-sides"))
-    }
     if(showSides)YSheet(word("同一交易，两端各核对","同じ取引の両側を照合"),{showSides=false}) {
         val events=s.visibleEvents.filter{it.kind in listOf(EntryKind.TRANSFER.name,EntryKind.REPAYMENT.name)}
         if(events.isEmpty())YEmpty(word("尚无转账或还款记录。","振替・返済記録はありません。"))
@@ -144,9 +164,13 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
     if(financialKind==EntryKind.BORROWING.name&&debt!=null)FinancialBorrowingEditor(s,debt,vm,{financialKind=null;financialAccount=null})
 }
 
-@Composable private fun StatementPostingLink(s:BookSnapshot,id:String,onRecord:(EventEntity)->Unit) {
-    val posting=s.reconciliationPostings().firstOrNull{it.postingId==id}?:return
-    val event=s.visibleEvents.firstOrNull{it.id==posting.eventId}?:return
+@Composable private fun StatementItem(content:@Composable ColumnScope.()->Unit) {
+    Column(Modifier.fillMaxWidth().padding(pageContentPadding()).padding(top=15.dp),verticalArrangement=Arrangement.spacedBy(15.dp),content=content)
+}
+
+@Composable private fun StatementPostingLink(s:BookSnapshot,posting:com.yohaku.expensetracker.domain.reconcile.ReconcilePosting?,onRecord:(EventEntity)->Unit) {
+    if(posting==null)return
+    val event=s.visibleById[posting.eventId]?:return
     YLink(posting.postedDate+" · "+event.merchant+" · "+receiptCurrencyText(posting.amount.toPlainString(),posting.currency),{onRecord(event)})
 }
 @Composable internal fun StatementSideFacts(s:BookSnapshot,event:EventEntity,projections:List<StatementReviewProjection>) {

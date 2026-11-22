@@ -181,7 +181,7 @@ private sealed interface DraftRowsRead {
     }
 }
 
-@Composable internal fun FinancialDraftResume(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,context:FinancialDraftContext,vm:AppViewModel,onClose:()->Unit,onBill:((String)->Unit)?=null,onParent:((String)->Unit)?=null,onLimits:(()->Unit)?=null,onPlanSaved:((String,String?)->Unit)?=null,onPool:((String?)->Unit)?=null) {
+@Composable internal fun FinancialDraftResume(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,context:FinancialDraftContext,vm:AppViewModel,onClose:()->Unit,onOpenAdjustment:(FinancialDraftContext)->Unit,onBill:((String)->Unit)?=null,onParent:((String)->Unit)?=null,onLimits:(()->Unit)?=null,onPlanSaved:((String,String?)->Unit)?=null,onPool:((String?)->Unit)?=null) {
     val plan=f.plans.firstOrNull{it.id==context.targetId&&it.accountId==a.id&&(it.active||context.kind=="ARRANGEMENT_REVIEW")}
     val contract=f.contracts.firstOrNull{it.id==context.contractId&&it.accountId==a.id}
     val event=s.visibleEvents.firstOrNull{it.id==context.targetId}
@@ -213,8 +213,7 @@ private sealed interface DraftRowsRead {
         "PREDICTION"->FinancialPredictionEditor(s,a,f,plan,vm,onClose,onSaved=onPlanSaved)
         "POOL"->FinancialPoolEditor(s,a,f,plan,vm,onClose,onBill)
         "BATCH_REVOLVING"->BatchRevolvingEditor(s,a,f,requireNotNull(context.targetId),vm,onClose,onPool)
-        "POOL_PAYMENT"->FinancialPoolPaymentEditor(s,a,f,requireNotNull(plan),vm,onClose)
-        "ARRANGEMENT"->FinancialArrangementEditor(s,a,f,requireNotNull(plan),vm,onClose)
+        "POOL_PAYMENT","ARRANGEMENT"->LaunchedEffect(context){onOpenAdjustment(context)}
         "ARRANGEMENT_REVIEW"->FinancialReconciliationEditor(s,a,f,requireNotNull(plan),vm,onClose,onBill,onParent)
         "BORROW"->FinancialBorrowingEditor(s,a,vm,onClose,context.opening,contract,context.targetId)
         "REPAY"->FinancialRepaymentEditor(s,a,f,vm,onClose,context.targetId,context.billId,context.contractId,context.paymentDate)

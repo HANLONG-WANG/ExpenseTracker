@@ -12,7 +12,8 @@ data class StatementSupplementSeed(val bookId:String,val accountId:String,val ro
 fun BookSnapshot.statementSupplementDraft(seed:StatementSupplementSeed):EntryDraft {
     val s=this
     require(seed.bookId==s.book.id)
-    val account=s.accounts.first{it.id==seed.accountId&&it.active}
+    val account=s.accounts.first{it.id==seed.accountId}
+    require(account.active){"补记前请先启用账户 / 追加記録するには口座を有効にしてください"}
     val row=seed.row
     require(account.currency==row.settlement.currency)
     java.time.LocalDate.parse(seed.occurredDate);java.time.LocalDate.parse(seed.postedDate)

@@ -166,6 +166,8 @@ class FinancialRepaymentFlowTest {
             paid.performScrollTo().performTextReplacement("1100")
             textField(text("清偿本金","返済元金")+" · JPY").assertTextEquals("")
             textField(text("清偿本金","返済元金")+" · JPY").performScrollTo().performTextReplacement("1050")
+            textField(text("实付利息","実支払利息")+" · JPY").assertTextEquals("")
+            textField(text("总扣款内含付款端费用","実出金総額に含む出金側手数料")+" · JPY").performScrollTo().performTextReplacement("0")
             textField(text("实付利息","実支払利息")+" · JPY").assertTextEquals("50")
             if(visualEnabled())showSection("finance-repay-details");shot("$theme-$language-repayment-derived-interest")
             textField(text("清偿本金","返済元金")+" · JPY").performScrollTo().performTextReplacement("1000")

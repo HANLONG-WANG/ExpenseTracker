@@ -436,9 +436,15 @@ class MerchantFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.any{it.name=="北门"}==true&&!vm.busy.value}
             val savedPlace=runBlocking{repo.snapshot(repo.dao.book(book)!!).first().merchantLocations.single()}
             assertNotNull(savedPlace.latitude);assertNotNull(savedPlace.longitude)
-            // Legacy name-only places remain readable; new UI saves always include a map center.
-            runBlocking{repo.saveMerchantLocation(book,merchant,"只保存名字",null,null)}
+            // A name-only place can coexist with the manually positioned place.
+            val nameOnly=runBlocking{repo.saveMerchantLocation(book,merchant,"只保存名字",null,null)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==2}
+            ui.onNodeWithTag("merchant-location-edit-$nameOnly").performScrollTo().performClick()
+            clearHeader(ui.onNodeWithTag("field-"+text("地点名称","場所の名前"))).performTextReplacement("改名")
+            clearHeader(ui.onNodeWithTag("merchant-location-save")).performClick()
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.any{it.id==nameOnly&&it.name=="改名"}==true}
+            val renamed=runBlocking{repo.snapshot(repo.dao.book(book)!!).first().merchantLocations.single{it.id==nameOnly}}
+            assertNull(renamed.latitude);assertNull(renamed.longitude)
             val old=EntryDraft(accountId=account,categoryId=category,amount="77",merchant="旧草稿",date="2026-10-14")
             runBlocking{repo.saveDraft(book,old)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.draft?.mediaSession==old.mediaSession}
@@ -486,7 +492,7 @@ class MerchantFlowTest {
             assertTrue(after.events.filter{it.kind==EntryKind.EXPENSE.name}.all{it.merchant=="新资料名"})
             ui.onNodeWithTag("event-$event").assertTextContains("新资料名",substring=true)
             assertEquals(2,after.merchantLocations.size);assertEquals(merchant,after.merchantCandidates(35.66130,139.66790).single().merchant.id)
-            assertNull(after.merchantLocations.first{it.name=="只保存名字"}.latitude)
+            assertNull(after.merchantLocations.first{it.id==nameOnly}.latitude)
             val editingDraft=after.editingEntryDraft(after.events.first{it.id!=event&&it.kind==EntryKind.EXPENSE.name})
             ui.runOnIdle{vm.entry.value=editingDraft}
             ui.onNodeWithTag("merchant-delete").performScrollTo().performClick()

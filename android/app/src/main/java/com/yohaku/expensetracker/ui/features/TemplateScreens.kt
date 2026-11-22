@@ -83,7 +83,10 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable private fun TemplateEditor(s:BookSnapshot,t:EntryTemplateEntity?,vm:AppViewModel,onClose:()->Unit) {
     var name by rememberSaveable(t?.id){mutableStateOf(t?.name.orEmpty())}
-    var d by remember(t?.id){mutableStateOf(EntryDraft(kind=t?.kind?.let{EntryKind.valueOf(it)}?:EntryKind.EXPENSE,categoryId=t?.categoryId,
+    val saver=remember(vm){androidx.compose.runtime.saveable.Saver<EntryDraft,String>(
+        save={vm.repository.json.encodeToString(EntryDraft.serializer(),it)},
+        restore={vm.repository.json.decodeFromString<EntryDraft>(it)})}
+    var d by rememberSaveable(s.book.id,t?.id,stateSaver=saver){mutableStateOf(EntryDraft(kind=t?.kind?.let{EntryKind.valueOf(it)}?:EntryKind.EXPENSE,categoryId=t?.categoryId,
         accountId=t?.accountId?:s.defaultEntryAccount(EntryKind.EXPENSE),amount=t?.amountMinor?.let{Money(Currency.valueOf(t.currency),it).decimal.toPlainString()}.orEmpty(),
         merchant=t?.merchant.orEmpty(),merchantId=t?.merchantId,merchantBaseline=t?.let{MerchantBaseline(it.merchant,it.merchantId)},note=t?.note.orEmpty(),budgetExcluded=t?.budgetExcluded?:false,cardPaymentChoice=t?.cardPaymentChoice,cardPaymentPeriods=t?.cardPaymentPeriods?.toString().orEmpty(),activityId=t?.activityId))}
     LaunchedEffect(t?.merchant,t?.merchantId,s.merchants){if(t!=null)d=d.syncMerchantFields(MerchantBaseline(t.merchant,t.merchantId),s.merchants).clearMissingMerchant(s.merchants)}

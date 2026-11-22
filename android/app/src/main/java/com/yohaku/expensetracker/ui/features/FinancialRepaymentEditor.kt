@@ -77,7 +77,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
         val next=suggestion(targetBill)
         val payer=d.source?:bills.firstOrNull{it.id==targetBill}?.paymentAccountId
         val currency=s.accounts.firstOrNull{it.id==payer}?.currency
-        update(d.copy(source=payer,paid=amount(currency?:account.currency,next?.paid?.takeIf{currency==account.currency}),principal=amount(account.currency,next?.principal),interest=amount(account.currency,next?.interest),fee=amount(account.currency,next?.fee),interestManual=false,rows=if(value==null)emptyList()else listOf(AllocationDraft(targetBill,targetContract))))
+        update(d.copy(source=payer,paid=amount(currency?:account.currency,next?.paid?.takeIf{currency==account.currency}),principal=amount(account.currency,next?.principal),interest=if(d.interestManual)d.interest else amount(account.currency,next?.interest),fee=amount(account.currency,next?.fee),interestDerived=false,rows=if(value==null)emptyList()else listOf(AllocationDraft(targetBill,targetContract))))
         if(next?.split!=true||currency!=account.currency)details=true
     }
     val r=review?.takeIf{it.repaymentInput?.debtAccountId==account.id&&it.before.ledger.book.id==s.book.id}
@@ -134,7 +134,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             YText(word("未知留空，已知为零填 0。修改付款金额不会按比例猜测清偿组成。账单未单列平台费用时按 0 计；利息按实收减本金和平台费用自动计算，手动填写后不再覆盖。","不明は空欄、既知のゼロは0を入力。支払額の変更から返済内訳を比例推定しません。請求に返済先手数料の内訳がなければ0とし、利息は受取額から元金と返済先手数料を引いて自動計算します。手入力後は上書きしません。"),11)
             YField(word("平台实际收到","返済先の実受取額")+" · "+account.currency,d.received,{update(d.copy(received=it))},numeric=true)
             YField(word("清偿本金","返済元金")+" · "+account.currency,d.principal,{update(d.copy(principal=it))},numeric=true)
-            YField(word("实付利息","実支払利息")+" · "+account.currency,d.interest,{update(d.copy(interest=it,interestManual=true))},numeric=true)
+            YField(word("实付利息","実支払利息")+" · "+account.currency,d.interest,{update(d.copy(interest=it,interestManual=true,interestDerived=false))},numeric=true)
             YField(word("平台费用","返済先手数料")+" · "+account.currency,d.fee,{update(d.copy(fee=it))},numeric=true)
             if(account.currency!=s.book.currency)YField(word("利息及平台费用统计合计","利息・返済先手数料の集計合計")+" · "+s.book.currency,d.feeBase,{update(d.copy(feeBase=it))},numeric=true)
             YField(word("总扣款内含付款端费用","実出金総額に含む出金側手数料")+" · "+sourceCurrency,d.sourceFee,{update(d.copy(sourceFee=it))},numeric=true)

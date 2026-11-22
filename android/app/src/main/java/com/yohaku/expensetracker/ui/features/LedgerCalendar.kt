@@ -39,6 +39,8 @@ import com.yohaku.expensetracker.data.repository.visibleComponents
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import java.math.RoundingMode
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -52,27 +54,27 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
     val t=LocalYohaku.current
     val tabs=listOf(false to (word("列表","リスト") to "LIST"),true to (word("日历","カレンダー") to "CALENDAR"))
     when(t.id){
-        "journal"->Row(Modifier.fillMaxWidth().testTag("ledger-view-tabs"),horizontalArrangement=Arrangement.spacedBy(10.dp)){
+        "journal"->Row(Modifier.fillMaxWidth().selectableGroup().testTag("ledger-view-tabs"),horizontalArrangement=Arrangement.spacedBy(10.dp)){
             tabs.forEach{(value,label)->
                 val on=value==calendar;val shape=RoundedCornerShape(3.dp,5.dp,2.dp,4.dp)
                 YText(label.first,13,Modifier.testTag("ledger-view-"+label.second.lowercase()).rotate(if(on)-2f else 0f)
                     .then(if(on)Modifier.background(Color(0x6be8be6e),shape) else Modifier.drawBehind{drawRoundRect(t.line,cornerRadius=CornerRadius(3.dp.toPx()),style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))})
-                    .clickable(role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}.padding(horizontal=13.dp,vertical=4.dp),color=if(on)t.ink else t.muted,lineHeightMultiplier=20f/13,cssLineBox=true)
+                    .selectable(selected=on,role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}.padding(horizontal=13.dp,vertical=4.dp),color=if(on)t.ink else t.muted,lineHeightMultiplier=20f/13,cssLineBox=true)
             }
         }
-        "objects"->Row(Modifier.fillMaxWidth().testTag("ledger-view-tabs").background(t.soft,RoundedCornerShape(16.dp)).padding(4.dp)){
+        "objects"->Row(Modifier.fillMaxWidth().selectableGroup().testTag("ledger-view-tabs").background(t.soft,RoundedCornerShape(16.dp)).padding(4.dp)){
             tabs.forEach{(value,label)->
                 val on=value==calendar;val shape=RoundedCornerShape(12.dp)
                 Box(Modifier.weight(1f).testTag("ledger-view-"+label.second.lowercase()).then(if(on)Modifier.background(Color(0xff8f4c34),shape).padding(bottom=3.dp).background(t.accent,shape) else Modifier)
-                    .clickable(role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}.padding(vertical=9.dp),contentAlignment=Alignment.Center){
+                    .selectable(selected=on,role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}.padding(vertical=9.dp),contentAlignment=Alignment.Center){
                     YText(label.first,12,color=if(on)Color.White else t.muted,weight=if(on)FontWeight.Medium else FontWeight.Normal,lineHeightMultiplier=17f/12,cssLineBox=true)
                 }
             }
         }
-        else->Row(Modifier.fillMaxWidth().testTag("ledger-view-tabs").drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())},horizontalArrangement=Arrangement.spacedBy(22.dp)){
+        else->Row(Modifier.fillMaxWidth().selectableGroup().testTag("ledger-view-tabs").drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())},horizontalArrangement=Arrangement.spacedBy(22.dp)){
             tabs.forEach{(value,label)->
                 val on=value==calendar
-                Row(Modifier.testTag("ledger-view-"+label.second.lowercase()).clickable(role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}
+                Row(Modifier.testTag("ledger-view-"+label.second.lowercase()).selectable(selected=on,role=Role.Tab){if(value!=calendar)haptics.perform(Haptic.TabSwitch);onChange(value)}
                     .then(if(on)Modifier.drawBehind{drawLine(t.ink,Offset(0f,size.height-1.dp.toPx()),Offset(size.width,size.height-1.dp.toPx()),2.dp.toPx())} else Modifier).padding(bottom=9.dp),verticalAlignment=Alignment.Bottom){
                     YText(label.first,12,color=if(on)t.ink else t.muted,lineHeightMultiplier=17f/12,cssLineBox=true)
                     YText(label.second,7,Modifier.padding(start=5.dp,bottom=2.dp),color=t.muted,letterSpacing=1.6f,lineHeightMultiplier=10f/7,cssLineBox=true)
@@ -98,20 +100,22 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
     val dailyBudget=limit?.takeIf{it>0}?.let{it.toDouble()/month.lengthOfMonth()}
     val monthDays=(1..month.lengthOfMonth()).map{month.atDay(it)}
     val amounts=monthDays.associateWith{spent[it.toString()]?:0L}
-    val total=amounts.values.sum()
-    val budgetTotal=monthDays.sumOf{budgetSpent[it.toString()]?:0L}
-    val max=amounts.values.maxOrNull()?.takeIf{it>0}
+    val elapsedAmounts=amounts.filterKeys{it<=today}
+    val total=elapsedAmounts.values.sum()
+    val budgetTotal=elapsedAmounts.keys.sumOf{budgetSpent[it.toString()]?:0L}
+    val max=elapsedAmounts.values.maxOrNull()?.takeIf{it>0}
     val days=monthDays.map{d->
         val n=amounts.getValue(d)
-        val compared=if(limit!=null)budgetSpent[d.toString()]?:0L else n
+        val compared=if(d>today)0L else if(limit!=null)budgetSpent[d.toString()]?:0L else n
         val ratio=if(compared<=0)0.0 else if(limit!=null)dailyBudget?.let{compared/it}?:Double.POSITIVE_INFINITY else n.toDouble()/max!!
         val level=when{compared<=0->0;limit!=null->if(ratio<.6)1 else if(ratio<=1)2 else 3;ratio<.34->1;ratio<.67->2;else->3}
-        CalendarDay(d,n,level,limit!=null&&ratio>1,ratio.coerceAtMost(1.0).toFloat(),limit==null&&max!=null&&n==max)
+        CalendarDay(d,n,level,limit!=null&&ratio>1,ratio.coerceAtMost(1.0).toFloat(),d<=today&&limit==null&&max!=null&&n==max)
     }
     val elapsed=when{month<current->month.lengthOfMonth();month==current->today.dayOfMonth;else->0}
     val average=if(elapsed>0)total/elapsed else 0L
     Column(Modifier.fillMaxWidth().testTag("ledger-calendar")){
         CalendarMonthHeader(month,month<current,{changeMonth(month.minusMonths(1))},{changeMonth(month.plusMonths(1))})
+        if(amounts.any{(date,amount)->date>today&&amount!=0L})YText(word("统计截至 ","集計基準日 ")+today,11,color=t.muted)
         CalendarSummary(currency,total,average,limit?.let{it-budgetTotal},days.filter{it.most}.firstOrNull()?.takeIf{limit==null},budgetEnabled&&limit!=null,budgetTotal)
         val sundayFirst=LocalLanguage.current=="ja"
         val weekdays=if(sundayFirst)listOf(DayOfWeek.SUNDAY)+DayOfWeek.entries.dropLast(1) else DayOfWeek.entries
@@ -130,7 +134,7 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
                 }
             }
         }
-        CalendarLegend(dailyBudget?.let{Money(currency,it.toLong()).display()})
+        CalendarLegend(dailyBudget?.let{Money(currency,it.toLong()).display()},limit==0L)
         selectedText?.let{LocalDate.parse(it)}?.takeIf{YearMonth.from(it)==month}?.let{day->
             val feeEvents=s.visibleComponents().filter{it.date==day.toString()}.map{it.eventId}.toSet()
             CalendarDayPanel(s,day,events.filter{it.date==day.toString()||it.id in feeEvents},Money(currency,amounts[day]?:0L),onSelect,{onStartOn(day.toString())})
@@ -304,25 +308,25 @@ private fun compactAmount(currency:Currency,minor:Long):String {
     }
 }
 
-@Composable private fun CalendarLegend(dailyBudget:String?) {
+@Composable private fun CalendarLegend(dailyBudget:String?,zeroBudget:Boolean) {
     val t=LocalYohaku.current
     val size=when(t.id){"journal"->11;"objects"->9;else->8}
     Row(Modifier.fillMaxWidth().padding(top=if(t.id=="objects")12.dp else 10.dp).testTag("calendar-legend"),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically){
         when(t.id){
             "journal"->{
                 YText("★ "+word("今天","今日"),size,color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)
-                if(dailyBudget!=null)YText("◯ "+word("超出日均 ","1日平均超え ")+dailyBudget,size,color=t.warm,lineHeightMultiplier=1.4f,cssLineBox=true)
+                if(zeroBudget)YText(word("零预算 · 正支出即超出","予算ゼロ・支出があれば超過"),size,color=t.warm) else if(dailyBudget!=null)YText("◯ "+word("超出日均 ","1日平均超え ")+dailyBudget,size,color=t.warm,lineHeightMultiplier=1.4f,cssLineBox=true)
                 YText(word("胶带＝正在看的那天","テープ＝表示中の日"),size,color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)
             }
             "objects"->{
-                listOf(Color(0xfffbf0de) to word("少","少"),Color(0xfff5e0bf) to word("中","中"),Color(0xffeccaa0) to (if(dailyBudget!=null)word("超出日均 ","1日平均超え ")+dailyBudget else word("多","多"))).forEach{(color,label)->
+                listOf(Color(0xfffbf0de) to word("少","少"),Color(0xfff5e0bf) to word("中","中"),Color(0xffeccaa0) to (if(zeroBudget)word("正支出即超出","支出があれば超過") else if(dailyBudget!=null)word("超出日均 ","1日平均超え ")+dailyBudget else word("多","多"))).forEach{(color,label)->
                     Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(12.dp).background(color,RoundedCornerShape(4.dp)).border(1.dp,t.line,RoundedCornerShape(4.dp)));YText(label,size,Modifier.padding(start=4.dp),color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)}
                 }
             }
             else->{
                 Row(verticalAlignment=Alignment.CenterVertically){
                     Box(Modifier.size(22.dp,4.dp).background(t.ink.copy(alpha=.09f)).border(.5.dp,t.ink.copy(alpha=.22f))){Box(Modifier.fillMaxWidth(.55f).fillMaxHeight().background(t.ink))}
-                    YText(if(dailyBudget!=null)word("满格＝日均预算 ","満タン＝1日の予算 ")+dailyBudget else word("满格＝本月最多的一天","満タン＝今月最多の日"),size,Modifier.padding(start=5.dp),color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)
+                    YText(if(zeroBudget)word("零预算 · 正支出即满格超出","予算ゼロ・支出があれば満タンで超過")else if(dailyBudget!=null)word("满格＝日均预算 ","満タン＝1日の予算 ")+dailyBudget else word("满格＝本月最多的一天","満タン＝今月最多の日"),size,Modifier.padding(start=5.dp),color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)
                 }
                 if(dailyBudget!=null)Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(22.dp,4.dp).background(t.warm));YText(word("超出","超過"),size,Modifier.padding(start=5.dp),color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)}
             }

@@ -27,6 +27,11 @@ import com.yohaku.expensetracker.ui.haptics.*
     val currentFeeCurrency=Currency.valueOf(when(d.feePosition){TransferFeePosition.INCLUDED_FROM->source.name;TransferFeePosition.DEDUCTED_TO->target.name;TransferFeePosition.SEPARATE->s.accounts.find{it.id==d.feeAccountId}?.currency?:source.name})
     val preservedFeeCurrency=if(d.feeAmount.isBlank())d.feeCurrency else d.feeCurrency?:currentFeeCurrency
     fun change(value:EntryDraft)=vm.changeEntry(s.book.id,value)
+    fun changeEstimateInput(next:EntryDraft){
+        val direction=when{next.fromConfirmed->"TO";next.toConfirmed->"FROM";else->next.estimateDirection}
+        val linked=knownPair&&(!different||next.manualRate.isNotBlank()||d.manualRate.isNotBlank())
+        change(if(linked)refreshTransferEstimate(next,source,target,direction)else next)
+    }
     var estimateError by remember(d){mutableStateOf<String?>(null)}
     val resultHaptic=LocalResultHaptic.current
     fun acceptEstimate(result:TransferEstimateResult,notifyError:Boolean=false) {
@@ -70,7 +75,7 @@ import com.yohaku.expensetracker.ui.haptics.*
                 }},onUse={q->acceptEstimate(transferEstimateResult(d,source,target,referenceDirection,q),notifyError=true)},
                 useLabel=if(referenceDirection=="TO")word("按参考值估算到账额","参考値で入金額を見積もる")else word("按参考值反推转出额","参考値で出金額を逆算"))
             CurrencyEntryNote {
-                YField(word("手填汇率","手入力レート")+" · 1 ${source.name} = ${target.name}",d.manualRate,{change(d.copy(manualRate=it,rateSource="manual",rateDate=d.referenceQueryDate?:d.date,referenceExpectedFromMinor=null,referenceExpectedToMinor=null,referenceRates=emptyList()))},numeric=true)
+                YField(word("手填汇率","手入力レート")+" · 1 ${source.name} = ${target.name}",d.manualRate,{changeEstimateInput(d.copy(manualRate=it,rateSource="manual",rateDate=d.referenceQueryDate?:d.date,referenceExpectedFromMinor=null,referenceExpectedToMinor=null,referenceRates=emptyList()))},numeric=true)
                 YText(word("手填汇率只联动尚未确认的一端。实际金额不被估算覆盖。","手入力レートは未確認の側だけ連動。実額は見積もりで上書きしません。"),11,color=LocalYohaku.current.muted)
                 val ratio=runCatching{exchangeRate(Money.parse(d.amount,source),Money.parse(d.toAmount,target))}.getOrNull()
                 YText((if(d.fromConfirmed&&d.toConfirmed)word("综合到账汇率","総合入金レート")else word("预计两端比率","両側の金額の見込み比率"))+" · "+(ratio?.let{"1 ${source.name} = ${it.toPlainString()} ${target.name}"}?:"—"),16,number=true)
@@ -86,13 +91,13 @@ import com.yohaku.expensetracker.ui.haptics.*
             val payer=when(d.feePosition){TransferFeePosition.INCLUDED_FROM->from;TransferFeePosition.DEDUCTED_TO->to;TransferFeePosition.SEPARATE->feeAccounts.find{it.id==d.feeAccountId}}
             val feeCurrency=d.feeCurrency?:Currency.valueOf(payer?.currency?:source.name)
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
-                YField(word("明确收取的手续费 / 可留空","確定手数料・空欄可")+" · "+feeCurrency.name,d.feeAmount,{change(d.copy(feeAmount=it))},Modifier.weight(1f),numeric=true)
-                YSelect(word("费用币种","手数料通貨"),feeCurrency.name,Currency.entries.map{it.name as String? to it.name},{change(d.copy(feeCurrency=Currency.valueOf(it!!),feeAccountAmount="",feeBaseAmount=""))},Modifier.weight(1f))
+                YField(word("明确收取的手续费 / 可留空","確定手数料・空欄可")+" · "+feeCurrency.name,d.feeAmount,{changeEstimateInput(d.copy(feeAmount=it))},Modifier.weight(1f),numeric=true)
+                YSelect(word("费用币种","手数料通貨"),feeCurrency.name,Currency.entries.map{it.name as String? to it.name},{changeEstimateInput(d.copy(feeCurrency=Currency.valueOf(it!!),feeAccountAmount="",feeBaseAmount=""))},Modifier.weight(1f))
             }
-            YSelect(word("手续费如何扣收","手数料の扱い"),d.feePosition.name,TransferFeePosition.entries.map{it.name as String? to feePositionName(it)},{change(d.copy(feePosition=TransferFeePosition.valueOf(it!!),feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))})
-            if(d.feePosition==TransferFeePosition.SEPARATE)YSelect(word("另扣手续费的账户","別途手数料の口座"),payer?.id,feeAccounts.map{it.id as String? to it.name},{change(d.copy(feeAccountId=it,feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))},columns=2)
+            YSelect(word("手续费如何扣收","手数料の扱い"),d.feePosition.name,TransferFeePosition.entries.map{it.name as String? to feePositionName(it)},{changeEstimateInput(d.copy(feePosition=TransferFeePosition.valueOf(it!!),feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))})
+            if(d.feePosition==TransferFeePosition.SEPARATE)YSelect(word("另扣手续费的账户","別途手数料の口座"),payer?.id,feeAccounts.map{it.id as String? to it.name},{changeEstimateInput(d.copy(feeAccountId=it,feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))},columns=2)
             if(d.feeAmount.isNotBlank()&&payer!=null) {
-                if(feeCurrency.name!=payer.currency)YField(word("费用在账户中的金额","口座通貨での手数料額")+" · "+payer.currency,d.feeAccountAmount,{change(d.copy(feeAccountAmount=it))},numeric=true)
+                if(feeCurrency.name!=payer.currency)YField(word("费用在账户中的金额","口座通貨での手数料額")+" · "+payer.currency,d.feeAccountAmount,{changeEstimateInput(d.copy(feeAccountAmount=it))},numeric=true)
                 if(payer.currency!=s.book.currency)YField(word("手续费本位币统计金额","手数料の基準通貨集計額")+" · "+s.book.currency,d.feeBaseAmount,{change(d.copy(feeBaseAmount=it))},numeric=true)
             }
             YText(word("已包含的费用计入支出，但不再次扣余额；没有明确费用时留空，不从汇差猜手续费。","含まれる費用は支出へ、残高から再控除しません。不明なら空欄にし、差額から手数料を推定しません。"),if(LocalYohaku.current.id=="journal")11 else 9,color=LocalYohaku.current.muted)

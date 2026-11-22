@@ -131,6 +131,15 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
     if("merchant" in input&&"merchantId" !in input)d=s.merchantInput(d,requireNotNull(v.merchant))
     if(!allowIncomplete&&"merchantId" in input&&v.merchantId!=null)
         resolveMerchant(s.book.id,kind,d.merchantId,v.merchant.takeIf{"merchant" in input},s.merchants).merchantOrThrow()
+    if(kind==EntryKind.TRANSFER&&!v.useReferenceRates&&targetCurrency!=null&&v.estimateDirection!=null){
+        if(v.manualRate!=null)d=d.copy(rateSource=v.rateSource?:"manual",rateDate=v.rateDate?:d.date,
+            referenceRates=emptyList(),referenceExpectedFromMinor=null,referenceExpectedToMinor=null)
+        val direction=v.estimateDirection
+        val supplied=if(direction=="TO")v.toAmount!=null else v.amount!=null
+        val confirmed=if(direction=="TO")d.toConfirmed else d.fromConfirmed
+        if(!supplied&&!confirmed)d=if(allowIncomplete)refreshTransferEstimate(d,accountCurrency,targetCurrency,direction)
+            else estimateTransfer(d,accountCurrency,targetCurrency,direction)
+    }
     if(allowIncomplete)return d
     if(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))d=d.resolveAmountExpression(accountCurrency)
     // Same-currency amounts are exact. Foreign amounts require explicit settlement/base or an

@@ -21,7 +21,11 @@ import java.time.format.DateTimeFormatter
 @Serializable private data class ReconciliationBillProof(val revision:Int,val principal:Long?,val fee:Long?,val total:Long,val paidPrincipal:Long,val paidFee:Long)
 @Serializable private data class ReconciliationBillDraft(val id:String,val principal:String,val fee:String,val keep:Boolean,val billRevision:Int?=null,val basis:ReconciliationBillProof?=null)
 @Serializable private data class ReconciliationRefundDraft(val id:String,val target:String="",val bills:Map<String,String> = emptyMap())
-@Serializable private data class ReconciliationMoveDraft(val id:String,val billId:String?,val principal:String,val interest:String,val fee:String)
+@Serializable internal data class ReconciliationMoveDraft(val id:String,val billId:String?,val principal:String,val interest:String,val fee:String)
+internal fun refreshClearingMoves(saved:List<ReconciliationMoveDraft>,current:List<ReconciliationMoveDraft>):List<ReconciliationMoveDraft> {
+    val parts=saved.groupBy{it.id}
+    return current.flatMap{parts[it.id]?:listOf(it)}
+}
 
 @Composable internal fun FinancialReconciliationEditor(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,target:FinancialPlanEntity,vm:AppViewModel,onClose:()->Unit,onBill:((String)->Unit)?=null,onParent:((String)->Unit)?=null) {
     FinancialDraftHost(s,FinancialDraftContext("ARRANGEMENT_REVIEW",a.id,targetId=target.id),vm,onClose) {
@@ -67,7 +71,8 @@ import java.time.format.DateTimeFormatter
         val old=target.reconciliation()?.refunds?.firstOrNull{it.fact==fact}
         ReconciliationRefundDraft(fact.eventId,old?.let{value(it.targetMinor)}.orEmpty(),old?.bills?.associate{it.billId to value(it.principalMinor)}.orEmpty())
     })}
-    var moveJson by financialField("moves"){vm.repository.json.encodeToString(clearings.map{ReconciliationMoveDraft(it.id,it.billId,value(it.principalMinor),value(it.interestMinor),value(it.feeMinor))})}
+    val currentMoves=clearings.map{ReconciliationMoveDraft(it.id,it.billId,value(it.principalMinor),value(it.interestMinor),value(it.feeMinor))}
+    var moveJson by financialField("moves"){vm.repository.json.encodeToString(currentMoves)}
     val savedBills=vm.repository.json.decodeFromString<List<ReconciliationBillDraft>>(billJson)
     val changedBills=allBills.filter{b->savedBills.any{it.id==b.id&&changed(it,b)}}
     val bills=allBills.map{b->val saved=savedBills.firstOrNull{it.id==b.id}
@@ -93,7 +98,7 @@ import java.time.format.DateTimeFormatter
                 val rows=bills.filter{row->val b=allBills.first{it.id==row.id};row.keep||mandatoryBill(b,principal.toBigDecimalOrNull()?.signum()==0)}.map{ReconciledBillObligation(it.id,it.principal.takeIf{v->v.isNotBlank()}?.let{v->Money.parse(v,c).minor},it.fee.takeIf{v->v.isNotBlank()}?.let{v->Money.parse(v,c).minor})}
                 val allocations=moves.map{ReconciledClearingMove(it.id,it.billId,Money.parse(it.principal,c).minor,Money.parse(it.interest,c).minor,Money.parse(it.fee,c).minor)}
                 val refundParts=refunds.map{fact->val row=shares.first{it.id==fact.eventId};ReconciledRefundShare(fact.eventId,if(fact.date<=effective)0 else Money.parse(row.target,c).minor,row.bills.filterValues{it.isNotBlank()}.map{ReconciledRefundBill(it.key,Money.parse(it.value,c).minor)})}
-                review=vm.repository.previewArrangementReconciliation(s.book.id,ArrangementReconciliationInput(target.id,effective,principal.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},rows,refundParts,allocations,if(source.sourceEventId==null&&f.arrangements.none{it.targetPlanId==source.id})Money.parse(opening,c).minor else null,complete,note,limitDelta.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},sourcePool?.let{PoolSourceDate.valueOf(poolDate)},sourcePool?.let{poolShares.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,c).minor}}))
+                review=vm.repository.previewArrangementReconciliation(s.book.id,ArrangementReconciliationInput(target.id,effective,principal.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},rows,refundParts,allocations,if(source.sourceEventId==null&&f.arrangements.none{it.targetPlanId==source.id})Money.parse(opening,c).minor else null,complete,note,limitDelta.takeIf{it.isNotBlank()}?.let{Money.parseSigned(it,c).minor},sourcePool?.let{PoolSourceDate.valueOf(poolDate)},sourcePool?.let{poolShares.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,c).minor}}))
                 confirmed=false
             }},Modifier.testTag("reconciliation-preview"),primary=true,enabled=!busy)
             }else if(r.calculation is Calculation.Ready) {
@@ -141,7 +146,7 @@ import java.time.format.DateTimeFormatter
                     YButton(word("移除失效归属","無効な割当てを除外"),{poolSharesJson=vm.repository.json.encodeToString(poolShares-id)})
                 }
             }
-            if(a.type==AccountType.LOAN.name)YField(word("本次核对的循环占用变动 / 未知留空","今回確認した循環枠利用の変動・不明は空欄")+" · "+a.currency,limitDelta,{limitDelta=it},Modifier.testTag("reconciliation-limit"),numeric=true)
+            if(a.type==AccountType.LOAN.name)YField(word("本次核对的循环占用变动 / 未知留空","今回確認した循環枠利用の変動・不明は空欄")+" · "+a.currency,limitDelta,{limitDelta=it},Modifier.testTag("reconciliation-limit"))
             YText(word("以下填写已记录清偿之后仍待付的金额；本金与费用分别核对，恢复已取消部分也会留版本。","以下は記録済み返済後の未払額です。元金・手数料を別々に確認し、取消分を戻す場合も履歴を保持します。"),11)
             bills.forEach{row->val b=allBills.first{it.id==row.id};val required=mandatoryBill(b,principal.toBigDecimalOrNull()?.signum()==0)
                 Panel(Modifier.testTag("reconciliation-bill-${b.id}")) {
@@ -152,7 +157,7 @@ import java.time.format.DateTimeFormatter
                         YField(word("仍待付费用 / 不明可留空","未払手数料・不明は空欄")+" · "+a.currency,row.fee,{bill(row.copy(fee=it))},Modifier.testTag("reconciliation-bill-fee-${b.id}"),numeric=true)
                     }else YText(word("未确认的未来金额按新基准重算，缺项则保留原预测并提示。","未確定の将来額は新基準で再計算し、情報不足なら元の予測を保持して通知します。"),11)
                     val current=s.billOutstanding(b)
-                    YText(word("当前待付合计：","現在の未払合計：")+Money(c,current.totalMinor).display(),12)
+                    YText(word("当前待付合计：","現在の未払合計：")+financialAmount(c,current.knownTotalMinor),12)
                     if(current.principalMinor==null||current.feeMinor==null)YText(word("未知拆分留空保留；调整合计或补充已知拆分，请先核对原账单。","不明な内訳は空欄のまま保持します。合計の修正・判明した内訳の入力は元の請求で確認してください。"),11)
                     if(onBill!=null)YButton(word("查看 / 核对原账单","元の請求を確認"),{onBill(b.id)},Modifier.testTag("reconciliation-open-bill-${b.id}"))
                 }
@@ -179,7 +184,7 @@ import java.time.format.DateTimeFormatter
                     }
                 }
             }
-            if(moves.any{m->clearings.none{it.id==m.id}})YButton(word("清偿已变化，重新读取分配行","返済情報が変わりました。充当行を再読込"),{moveJson=vm.repository.json.encodeToString(clearings.map{ReconciliationMoveDraft(it.id,it.billId,value(it.principalMinor),value(it.interestMinor),value(it.feeMinor))})})
+            if(moves.map{it.id}.toSet()!=clearings.map{it.id}.toSet())YButton(word("清偿已变化，重新读取分配行","返済情報が変わりました。充当行を再読込"),{moveJson=vm.repository.json.encodeToString(refreshClearingMoves(moves,currentMoves))})
             YField(word("核对依据 / 可留空","確認の根拠・空欄可"),note,{note=it})
             if(refreshed)FinanceRefreshed()
 
@@ -229,8 +234,8 @@ import java.time.format.DateTimeFormatter
             YText((if(r.before.finance.reconciliationPool(r.original)!=null&&original.planId!=r.before.finance.arrangements.first{it.targetPlanId==r.original.id}.originalPlanId)word("循环还款计划","共同支払循環返済プラン")else if(original.planId==r.original.id)word("已办理安排","手続き済み予定")else word("原安排","元の予定"))+" · "+original.date+" / "+original.number,12)
             val unknown=word("未知","不明")
             fun amount(n:Long?)=n?.let{Money(c,it).display()}?:unknown
-            val current=r.before.ledger.copy(billAdjustments=r.before.ledger.billAdjustments+r.adjustments).billOutstanding(original)
-            RecordFacts(listOf(word("本期待付本金 / 费用","当期の未払元金・手数料") to (amount(bill.principalMinor)+" / "+amount(bill.feeMinor)),word("待付合计","未払合計") to Money(c,current.totalMinor).display()))
+            val current=r.projectedLedger.billOutstanding(original)
+            RecordFacts(listOf(word("本期待付本金 / 费用","当期の未払元金・手数料") to (amount(bill.principalMinor)+" / "+amount(bill.feeMinor)),word("待付合计","未払合計") to financialAmount(c,current.knownTotalMinor)))
         }}
         }
         val poolSource=r.record?.baseline?.pool!=null

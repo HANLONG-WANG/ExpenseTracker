@@ -13,6 +13,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
+import com.yohaku.expensetracker.data.files.ReceiptItemsRecord
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.features.*
@@ -139,6 +140,26 @@ class ReceiptWorkbenchFlowTest {
             assertEquals(listOf(second),after.entryReceiptImages(event).map{it.id})
             assertEquals(2,after.receipts.single().revision);assertEquals(1,after.events.size);assertEquals(9000L,after.balance(after.accounts.single()))
             assertTrue(after.files.all{repo.mediaFile(it).isFile})
+            val replacement=runBlocking {
+                val d=after.editingEntryDraft(after.events.single()).copy(mediaInitialized=true,receiptFileIds=listOf(second))
+                repo.saveDraft(book,d)
+                val imported=repo.importMediaResult(book,d.mediaSession,"replacement.png","image/png",receipt=true,replaceReceiptId=second){picture("REPLACEMENT").inputStream()}
+                repo.saveEntry(book,repo.snapshot(repo.dao.book(book)!!).first().draft!!)
+                imported.blob.id
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.receipts?.single()?.revision==3}
+            ui.onNodeWithTag("receipt-tab-ALL").performScrollTo().performClick()
+            ui.onNodeWithTag("receipt-open-$receipt").performScrollTo().performClick()
+            clearHeader(ui.onNodeWithTag("receipt-edit-items")).performClick()
+            clearHeader(ui.onNodeWithTag("receipt-rebind-images")).performClick()
+            clearHeader(ui.onNodeWithTag(if(language=="ja")"toggle-出典画像 1"else "toggle-来源图 1")).performClick()
+            clearHeader(ui.onNodeWithTag("receipt-save-item-edits")).performClick()
+            ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("receipt-save-item-edits").fetchSemanticsNodes().isEmpty()}
+            val updated=runBlocking{db.fileWorkflowDao().itemsForReceipt(book,receipt)!!}
+            val record=repo.json.decodeFromString<ReceiptItemsRecord>(updated.recordJson)
+            assertEquals(2,updated.revision);assertEquals(3,record.receipt_revision)
+            assertEquals(listOf(replacement),record.image_ids);assertEquals(record.image_ids,record.items.single().image_ids)
+            ui.onNodeWithTag("sheet-close").performClick()
         }
     }
     @Test fun mediaEditOrderingRemovalCancellationAndSaveKeepTheOriginalRecordAndFiles(){

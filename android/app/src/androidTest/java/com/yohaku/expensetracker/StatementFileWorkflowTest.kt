@@ -72,6 +72,10 @@ class StatementFileWorkflowTest {
         }
         systemClick(folder)
     }
+    private fun pageClick(tag:String) {
+        ui.revealOnPage(tag)
+        click(tag)
+    }
     private fun click(tag:String) {
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNodeWithTag(tag);node.performScrollTo();ui.waitForIdle()
@@ -122,7 +126,7 @@ class StatementFileWorkflowTest {
             val result=state().reviewStatements(runBlocking{db.fileWorkflowDao().statements(book).first()},emptyList()).single()
             assertEquals(2,result.result.exact.size);assertEquals(2,result.result.exact.map{it.postingId}.distinct().size)
             val diff=source.rows[2]
-            click("statement-candidates-${diff.row_id}");click("statement-posting-candidate")
+            pageClick("statement-candidates-${diff.row_id}");click("statement-posting-candidate")
             click("select-option-"+text("实际资金端候选","実際の資金側の候補")+"-1")
             click("statement-preview-difference")
             assertTrue(runBlocking{db.fileWorkflowDao().decisions(book).first().isEmpty()})
@@ -133,10 +137,11 @@ class StatementFileWorkflowTest {
             assertEquals(listOf(Triple(theme,Haptic.Done,1f)),recorder.calls.toList())
             // Settled rows fold into the matched group until it is opened.
             ui.waitUntil(10000){ui.onAllNodesWithTag("statement-status-${diff.row_id}").fetchSemanticsNodes().isEmpty()}
-            click("statement-matched-toggle")
-            ui.onNodeWithTag("statement-status-${diff.row_id}").assertTextEquals(text("已确认差异","差異確認済み"))
+            ui.revealOnPage("statement-summary").assert(hasAnyDescendant(hasText("2 / 0 / 1")))
+            pageClick("statement-matched-toggle")
+            ui.revealOnPage("statement-status-${diff.row_id}").assertTextEquals(text("已确认差异","差異確認済み"))
             val missing=source.rows[3]
-            click("statement-supplement-${missing.row_id}");click("statement-supplement-kind")
+            pageClick("statement-supplement-${missing.row_id}");click("statement-supplement-kind")
             click("select-option-"+text("补记类型","記録の種類")+"-1");click("statement-start-supplement")
             ui.waitUntil(10000){vm.entry.value!=null&&vm.route.value=="category-picker"}
             assertEquals(3,state().events.size);assertEquals("500",vm.entry.value!!.amount)
@@ -151,15 +156,14 @@ class StatementFileWorkflowTest {
             assertEquals(batch,runBlocking{repo.previewStatement(book,raw)}.duplicateBatchId)
             assertEquals(1,runBlocking{db.fileWorkflowDao().statements(book).first().size})
             if(theme=="objects"&&language=="ja") {
-                click("statement-export-original");openFolder(folder);systemClick("Use this folder");systemClick("Allow")
+                pageClick("statement-export-original");openFolder(folder);systemClick("Use this folder");systemClick("Allow")
                 val exported="/sdcard/Download/$folder/yohaku-statement-${source.file_id}.json"
                 ui.waitUntil(15000){!vm.busy.value&&shell("cat $exported").toString(Charsets.UTF_8)==FileProtocols.json.encodeToString(source)}
                 val decision=runBlocking{db.fileWorkflowDao().decisions(book).first().single()}
                 val original=after.events.first{e->after.storedPostings.any{it.id==decision.postingId&&it.eventId==e.id}}
                 runBlocking{repo.saveEntry(book,EntryDraft(id=original.id,accountId=account.account_id,categoryId=original.categoryId,amount="1300",date=original.date,merchant=original.merchant))}
-                ui.waitUntil(10000){ui.onAllNodesWithTag("statement-status-${diff.row_id}").fetchSemanticsNodes().isNotEmpty()}
-                ui.onNodeWithTag("statement-status-${diff.row_id}").assertTextEquals("記録が変わったため再照合")
-                click("statement-candidates-${diff.row_id}");shot("objects-ja-changed-decision")
+                ui.revealOnPage("statement-status-${diff.row_id}").assertTextEquals("記録が変わったため再照合")
+                pageClick("statement-candidates-${diff.row_id}");shot("objects-ja-changed-decision")
                 click("statement-unlink-difference")
                 runBlocking{repo.saveEntry(book,EntryDraft(id=original.id,accountId=account.account_id,categoryId=original.categoryId,amount="1200",date=original.date,merchant=original.merchant))}
                 val partial=source.copy(file_id=repo.id(),complete=false,issues=listOf("转换缺行・要確認"),rows=listOf(source.rows.last().copy(row_id=repo.id(),settlement=FileMoney("JPY","999"))))
@@ -169,11 +173,11 @@ class StatementFileWorkflowTest {
                 ui.runOnIdle{vm.selectedStatementBatch.value=partialBatch}
                 val partialReview=state().reviewStatements(runBlocking{db.fileWorkflowDao().statements(book).first()},runBlocking{db.fileWorkflowDao().decisions(book).first()}).first{it.file.file_id==partial.file_id}
                 assertTrue(partialReview.result.ledgerOnly.isEmpty());assertTrue(partialReview.result.uncovered.isNotEmpty())
-                click("statement-delete");click("statement-delete-confirm")
+                pageClick("statement-delete");click("statement-delete-confirm")
                 ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.fileWorkflowDao().statements(book).first().size==1}}
                 ui.runOnIdle{vm.selectedStatementBatch.value=source.file_id}
             }
-            click("statement-delete");recorder.clear();click("statement-delete-confirm")
+            pageClick("statement-delete");recorder.clear();click("statement-delete-confirm")
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.fileWorkflowDao().statements(book).first().isEmpty()}}
             ui.waitUntil(10000){recorder.calls.isNotEmpty()}
             assertEquals(listOf(Triple(theme,Haptic.Removed,1f)),recorder.calls.toList())
@@ -207,7 +211,7 @@ class StatementFileWorkflowTest {
             runBlocking{repo.saveStatement(book,repo.previewStatement(book,FileProtocols.json.encodeToString(file)))}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.selectedStatementBatch.value=file.file_id;vm.navigate("statements")}
-            click("statement-candidates-${row.row_id}")
+            pageClick("statement-candidates-${row.row_id}")
             ui.onNodeWithTag("statement-confirm-actual-$event").assertExists()
             shot("$theme-$language-separate-fee-candidates")
             click("statement-confirm-actual-$event-fee")
@@ -244,7 +248,7 @@ class StatementFileWorkflowTest {
         val row=StatementRow(repo.id(),"2026-10-15","out",FileMoney("JPY","2150"),"外貨購入",original=FileMoney("CNY","100.00"),occurred_date="2026-10-14",posted_date="2026-10-15")
         val file=source(bank,row);save(file)
         ui.runOnIdle{vm.selectedStatementBatch.value=file.file_id;vm.navigate("statements")}
-        click("statement-candidates-${row.row_id}");click("statement-confirm-actual-$fx")
+        pageClick("statement-candidates-${row.row_id}");click("statement-confirm-actual-$fx")
         ui.waitUntil(10000){vm.entry.value?.id==fx}
         assertFalse(state().settlements.single().confirmed);assertEquals(10000L,state().balance(state().accounts.first{it.id==bank}))
         ui.entryAction("entry-save-button").performClick()
@@ -261,7 +265,7 @@ class StatementFileWorkflowTest {
         val arrival=StatementRow(repo.id(),"2026-10-16","in",FileMoney("JPY","1000"),"振替入金",occurred_date="2026-10-14",posted_date="2026-10-16",event_hint="transfer")
         val transferFile=source(target,arrival);save(transferFile)
         ui.runOnIdle{vm.selectedStatementBatch.value=transferFile.file_id}
-        click("statement-candidates-${arrival.row_id}");click("statement-confirm-actual-$transfer")
+        pageClick("statement-candidates-${arrival.row_id}");click("statement-confirm-actual-$transfer")
         ui.onNode(hasText("振替の変更を保存")and hasClickAction()).performScrollTo().performClick();confirmNormalEntryReview()
         snapshot=state()
         assertEquals(2,snapshot.events.size);assertEquals(6850L,snapshot.balance(snapshot.accounts.first{it.id==bank}));assertEquals(1000L,snapshot.balance(snapshot.accounts.first{it.id==target}))
@@ -276,7 +280,7 @@ class StatementFileWorkflowTest {
         val billFile=source(card,null,StatementInfo(FileMoney("JPY","1000"),FileMoney("JPY","50"),FileMoney("JPY","1050"),"2026-11-28"));save(billFile)
         assertEquals(1000L,runBlocking{db.financialDao().bills(book,plan).single().totalMinor})
         ui.runOnIdle{vm.selectedStatementBatch.value=billFile.file_id}
-        click("statement-confirm-bill-info");click("statement-bill-${bill.id}");click("finance-bill-preview")
+        pageClick("statement-confirm-bill-info");click("statement-bill-${bill.id}");click("finance-bill-preview")
         ui.waitUntil(10000){!vm.busy.value&&vm.financialBillReview.value!=null}
         assertEquals(1050L,vm.financialBillReview.value!!.bill.totalMinor)
         assertEquals(1000L,runBlocking{db.financialDao().bills(book,plan).single().totalMinor})
@@ -308,7 +312,7 @@ class StatementFileWorkflowTest {
         runBlocking{repo.saveStatement(book,repo.previewStatement(book,FileProtocols.json.encodeToString(file)));repo.saveDraft(book,EntryDraft(amount="77",merchant="残した下書き"))}
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.draft!=null}
         ui.runOnIdle{vm.selectedStatementBatch.value=file.file_id;vm.navigate("statements")}
-        fun choose(row:StatementRow,index:Int) {click("statement-supplement-${row.row_id}");click("statement-supplement-kind");click("select-option-記録の種類-$index")}
+        fun choose(row:StatementRow,index:Int) {pageClick("statement-supplement-${row.row_id}");click("statement-supplement-kind");click("select-option-記録の種類-$index")}
         choose(outgoing,2);click("statement-start-supplement")
         ui.onNode(hasText("既存の下書きを続ける")and hasClickAction()).assertExists()
         assertEquals("77",state().draft!!.amount);assertEquals(1,state().events.size)
@@ -331,6 +335,12 @@ class StatementFileWorkflowTest {
         ui.onNodeWithTag("finance-flow").assertIsDisplayed()
         ui.onNodeWithText("返済を記録").assertExists();shot("journal-ja-repayment-handoff")
         assertEquals(1,state().events.size);assertEquals(9500L,state().balance(state().accounts.first{it.id==ids[1]}))
+        ui.onNodeWithTag("finance-flow-close").performClick()
+        runBlocking{repo.commitAccountOperation(repo.previewAccountOperation(book,ids[1],AccountOperation.DEACTIVATE))}
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.accounts?.firstOrNull{it.id==ids[1]}?.active==false}
+        ui.revealOnPage("statement-row-${outgoing.row_id}")
+        ui.onNodeWithTag("statement-supplement-${outgoing.row_id}").assertDoesNotExist()
+        ui.onNodeWithTag("statement-candidates-${outgoing.row_id}").assertExists()
         println("Statement typed handoffs passed: existing draft explicitly retained/discarded; transfer/refund normal unsaved forms; repayment financial draft host; no automatic facts")
     }
 

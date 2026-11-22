@@ -47,6 +47,7 @@ class ExpectedIncomeTest {
             assertTrue(s.cashTimeline(db.financialDao().graph(b).first(),LocalDate.parse("2026-10-15"),LocalDate.parse("2026-10-31")).steps.none{it.item.kind=="EXPECTED_INCOME"})
             repo.deleteEntry(b,event)
             s=repo.snapshot(repo.dao.book(b)!!).first();assertTrue(s.expectedIncomeNeedsReview(s.expectedIncomes.single()));assertEquals(1000L,s.balance(s.accounts.single()))
+            assertTrue(s.canEditExpectedIncome(s.expectedIncomes.single()))
             repo.restoreEntry(b,event)
             val second=repo.commitExpectedIncome(repo.previewExpectedIncome(b,ExpectedIncomeInput("追加見込み",Money(Currency.JPY,300),"2026-10-20",bank)))!!
             assertThrows(IllegalArgumentException::class.java){runBlocking{repo.previewExpectedIncomeArrival(b,second,existingEventId=event)}}

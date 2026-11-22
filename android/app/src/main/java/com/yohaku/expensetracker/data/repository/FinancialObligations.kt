@@ -8,8 +8,10 @@ fun BookSnapshot.appliedRepaymentAllocations(excludeEventId:String?=null):List<F
     val ids=repayments.filter{it.platformConfirmed&&it.eventId!=excludeEventId&&visibleEvents.any{e->e.id==it.eventId}}.map{it.eventId}.toSet()
     return repaymentAllocations.filter{it.eventId in ids}
 }
-data class FinancialBillOutstanding(val bill:FinancialBillEntity,val principalMinor:Long?,val feeMinor:Long?,val totalMinor:Long,val paidPrincipalMinor:Long,val paidFeeMinor:Long) {
-    val settled:Boolean get()=totalMinor<=0
+data class FinancialBillOutstanding(val bill:FinancialBillEntity,val principalMinor:Long?,val feeMinor:Long?,val totalMinor:Long,val paidPrincipalMinor:Long,val paidFeeMinor:Long,val paidPlatformFeeMinor:Long) {
+    val knownTotalMinor:Long?=totalMinor.takeUnless{bill.hasUnknownPredictedFee()}
+    val hasUnpaidObligation:Boolean get()=knownTotalMinor?.let{it>0}?:true
+    val settled:Boolean get()=!hasUnpaidObligation
 }
 fun BookSnapshot.billOutstanding(bill:FinancialBillEntity,excludeEventId:String?=null):FinancialBillOutstanding {
     val payments=appliedRepaymentAllocations(excludeEventId).filter{it.billId==bill.id}
@@ -18,7 +20,7 @@ fun BookSnapshot.billOutstanding(bill:FinancialBillEntity,excludeEventId:String?
     val adjustments=billAdjustments.filter{it.billId==bill.id}
     val moved=adjustments.fold(0L){sum,a->addExact(sum,a.principalMinor)}
     val cancelled=adjustments.fold(0L){sum,a->addExact(sum,a.feeMinor)}
-    return FinancialBillOutstanding(bill,bill.principalMinor?.let{subtractExact(subtractExact(it,principal),moved)},bill.feeMinor?.let{subtractExact(subtractExact(it,fee),cancelled)},subtractExact(bill.totalMinor,addExact(addExact(principal,fee),addExact(moved,cancelled))),principal,fee)
+    return FinancialBillOutstanding(bill,bill.principalMinor?.let{subtractExact(subtractExact(it,principal),moved)},bill.feeMinor?.let{subtractExact(subtractExact(it,fee),cancelled)},subtractExact(bill.totalMinor,addExact(addExact(principal,fee),addExact(moved,cancelled))),principal,fee,payments.sumOf{it.feeMinor!!})
 }
 fun BookSnapshot.contractRemaining(contract:DebtContractEntity,excludeEventId:String?=null):Long =
     appliedRepaymentAllocations(excludeEventId).filter{it.contractId==contract.id}.fold(contract.principalMinor){left,p->subtractExact(left,p.principalMinor!!)}

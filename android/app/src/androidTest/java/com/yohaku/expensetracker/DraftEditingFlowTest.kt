@@ -214,6 +214,29 @@ class DraftEditingFlowTest {
         val kept=requireNotNull(snapshot(a).draft)
         assertNull(kept.categoryId);assertEquals("100",kept.amount)
     }
+    @Test fun resumedDraftReturnsThroughDetailAndLedger() {
+        runBlocking{repo.saveDraft(a,EntryDraft(accountId=account,categoryId=category,amount="42"))}
+        ui.runOnIdle{vm.navigate("ledger");vm.navigate("detail");vm.resumeEntry(snapshot(a))}
+        ui.runOnIdle{vm.leaveEntry(a,true,"detail")}
+        ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+        ui.runOnIdle{
+            assertEquals("detail",vm.route.value)
+            vm.back();assertEquals("ledger",vm.route.value)
+            vm.navigate("detail");vm.returnToRoute("ledger")
+            vm.back();assertEquals("home",vm.route.value)
+        }
+    }
+    @Test fun notificationSwitchClearsNegativeBalanceConfirmation() {
+        ui.runOnIdle{
+            vm.editEntry(snapshot(a),snapshot(a).events.single())
+            vm.changeEntry(a,vm.entry.value!!.copy(amount="20000"))
+            vm.saveEntry(a)
+        }
+        ui.waitUntil(10000){vm.negativeBalanceReview.value!=null}
+        ui.runOnIdle{vm.openReminderBook(b)}
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==b&&!vm.busy.value}
+        assertNull(vm.entry.value);assertNull(vm.entryReview.value);assertNull(vm.negativeBalanceReview.value)
+    }
     @Test fun editSurvivesThemeAndLanguageSwitchAndCancelKeepsOriginal() {
         tap("喫茶と余白")
         tap("↺ 编辑记录")

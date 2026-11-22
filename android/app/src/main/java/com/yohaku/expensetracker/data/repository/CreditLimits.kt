@@ -141,8 +141,9 @@ private fun amount(capacity:Long?,used:Long?)=LimitAmount(capacity,used,if(capac
 private fun plus(basis:Long?,change:Long?)=if(basis==null||change==null)null else addExact(basis,change)
 private fun constrained(a:LimitAmount,total:LimitAmount):LimitAmount=a.copy(availableMinor=if(a.availableMinor==null||total.availableMinor==null)null else minOf(a.availableMinor,total.availableMinor))
 fun accountCreditLimit(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,accountId:String,asOf:String):AccountCreditLimit {
+    val groupId=l.members.firstOrNull{it.accountId==accountId}?.groupId
     val config=l.currentConfig(accountId,asOf)
-    if(config==null)return AccountCreditLimit(null,amount(null,null),amount(null,null),amount(null,null),listOf("limit.config"),null,null)
+    if(config==null)return AccountCreditLimit(null,amount(null,null),amount(null,null),amount(null,null),listOf("limit.config"),groupId,null)
     val movements=creditLimitMovements(s,f,l,accountId,asOf,config.recovery,config.usageStart,config.recoveryDelayDays)
     val anchor=Json.decodeFromString<LimitAnchor>(config.basisJson)
     val change=delta(anchor.movements,movements,config.basisDate)
@@ -160,7 +161,6 @@ fun accountCreditLimit(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,accoun
     val joint=amount(config.combinedMinor,if(splitUsed==null||revoUsed==null||splitUsed<0||revoUsed<0)null else addExact(splitUsed,revoUsed))
     val split=when(config.sharing){CreditLimitSharing.TOTAL_ONLY.name->total;CreditLimitSharing.SHARED_SUBPOOL.name->constrained(joint,total);CreditLimitSharing.SEPARATE_CAPS.name->constrained(amount(config.installmentMinor,splitUsed?.takeIf{it>=0}),total);else->amount(null,splitUsed)}
     val revo=when(config.sharing){CreditLimitSharing.TOTAL_ONLY.name->total;CreditLimitSharing.SHARED_SUBPOOL.name->constrained(joint,total);CreditLimitSharing.SEPARATE_CAPS.name->constrained(amount(config.revolvingMinor,revoUsed?.takeIf{it>=0}),total);else->amount(null,revoUsed)}
-    val groupId=l.members.firstOrNull{it.accountId==accountId}?.groupId
     val shared=groupId?.let{groupCreditLimit(s,f,l,it,asOf).total.availableMinor}
     val effective=if(groupId==null)total.availableMinor else if(shared==null||total.availableMinor==null)null else minOf(shared,total.availableMinor)
     fun sharedConstraint(value:LimitAmount)=if(groupId==null)value else value.copy(availableMinor=if(shared==null||value.availableMinor==null)null else minOf(shared,value.availableMinor))

@@ -28,6 +28,7 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
     // Lookups are built once per snapshot; per-event scans over thousands of records made every screen quadratic.
     val visibleEvents by lazy{events.filter{it.deletedAt==null}}
     internal val eventById by lazy{events.associateBy{it.id}}
+    internal val statementPostings by lazy{buildReconciliationPostings()}
     internal val visibleById by lazy{visibleEvents.associateBy{it.id}}
     internal val settlementByEvent by lazy{settlements.associateBy{it.eventId}}
     internal val transferByEvent by lazy{transfers.associateBy{it.eventId}}

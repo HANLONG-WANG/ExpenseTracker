@@ -108,13 +108,13 @@ import kotlinx.serialization.encodeToString
     val busy by vm.busy.collectAsStateWithLifecycle()
     ThemeSection(word("手动预计收入","手入力の収入予定"),"EXPECTED, NOT RECEIVED")
     FinancialDraftList(s,null,vm,{resumed=vm.repository.json.encodeToString(it)})
-    s.expectedIncomes.filter{showHistory||it.status=="PENDING"||s.expectedIncomeNeedsReview(it)}.sortedBy{it.date}.forEach{income->Panel(Modifier.testTag("expected-item-${income.id}")) {
+    s.expectedIncomes.filter{showHistory||s.canEditExpectedIncome(it)}.sortedBy{it.date}.forEach{income->Panel(Modifier.testTag("expected-item-${income.id}")) {
         YText(income.name,16)
         RecordFacts(listOf(word("预计金额 / 日期","予定額・日付") to (Money(Currency.valueOf(income.currency),income.amountMinor).display()+" · "+income.date),word("到账账户","入金口座") to s.accounts.first{it.id==income.accountId}.name))
         val actual=s.expectedIncomeArrival(income)
         YText(when{actual!=null->word("已关联实际收入","実収入に関連付け済み");s.expectedIncomeNeedsReview(income)->word("实际收入已删除或改变，请核对关联","実収入が削除・変更されています。関連を確認してください");income.status=="CANCELLED"->word("已取消","取消済み");else->word("未到账 · 仅参与收入情景","未入金・収入シナリオのみ")},12,color=LocalYohaku.current.warm)
         if(actual!=null)YButton(word("查看实际收入","実収入を見る"),{onRecord(actual)},enabled=!busy)
-        else if(income.status!="CANCELLED") {
+        else if(s.canEditExpectedIncome(income)) {
             YActionRow {
                 YButton(word("确认到账","入金を確認"),{editor=income.id;arriving=true},Modifier.testTag("expected-arrive-${income.id}"),enabled=!busy)
                 YButton(word("修改预计项","予定を編集"),{editor=income.id;arriving=false},Modifier.testTag("expected-edit-${income.id}"),enabled=!busy)
@@ -130,7 +130,7 @@ import kotlinx.serialization.encodeToString
     resumed?.let{encoded->
         val context=vm.repository.json.decodeFromString<FinancialDraftContext>(encoded)
         val old=s.expectedIncomes.firstOrNull{it.id==context.targetId}
-        if(context.targetId==null||old?.status=="PENDING")ExpectedIncomeEditor(s,old,context.mode=="ARRIVAL",vm,{resumed=null})
+        if(context.targetId==null||old!=null&&s.canEditExpectedIncome(old))ExpectedIncomeEditor(s,old,context.mode=="ARRIVAL",vm,{resumed=null})
         else YSheet(word("原资料待核对","元の情報を要確認"),{resumed=null}) {
             YText(word("草稿仍保留，原预计收入已取消或到账，请先核对原记录。","下書きは保持しています。元の収入予定は取消・入金済みです。元の記録を確認してください。"),12)
             YButton(word("放弃这份草稿","この下書きを破棄"),{vm.execute(onSuccess={resumed=null}){discardFinancialDraft(vm,s.book.id,context)}})

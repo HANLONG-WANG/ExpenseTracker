@@ -54,7 +54,9 @@ private sealed interface HistoryRead{
                 fun field(label:String,before:String,after:String){fields+=label to (before.ifBlank{"—"}+" → "+after.ifBlank{"—"})}
                 if(b.kind!=a.kind)field(word("类型","種類"),entryKindName(EntryKind.valueOf(b.kind)),entryKindName(EntryKind.valueOf(a.kind)))
                 if(b.amountMinor!=a.amountMinor||b.currency!=a.currency)field(word("金额","金額"),Money(Currency.valueOf(b.currency),b.amountMinor).display(),Money(Currency.valueOf(a.currency),a.amountMinor).display())
-                if(b.baseMinor!=a.baseMinor&&(b.currency!=s.book.currency||a.currency!=s.book.currency))field(word("本位币统计","基準通貨集計"),Money(Currency.valueOf(s.book.currency),b.baseMinor).display(),Money(Currency.valueOf(s.book.currency),a.baseMinor).display())
+                // A base amount that merely mirrors a book-currency amount is already shown by the amount row.
+                val baseMirrorsAmount=b.currency==s.book.currency&&a.currency==s.book.currency&&b.baseMinor==b.amountMinor&&a.baseMinor==a.amountMinor
+                if(b.baseMinor!=a.baseMinor&&!baseMirrorsAmount)field(word("本位币统计","基準通貨集計"),Money(Currency.valueOf(s.book.currency),b.baseMinor).display(),Money(Currency.valueOf(s.book.currency),a.baseMinor).display())
                 if(b.accountId!=a.accountId)field(word("账户","口座"),s.accounts.find{it.id==b.accountId}?.name ?: word("已移除账户","削除済みの口座"),s.accounts.find{it.id==a.accountId}?.name ?: word("已移除账户","削除済みの口座"))
                 if(b.categoryId!=a.categoryId)field(word("分类","カテゴリ"),s.path(b.categoryId),s.path(a.categoryId))
                 if(b.date!=a.date)field(word("日期","日付"),b.date,a.date)
@@ -95,9 +97,36 @@ private sealed interface HistoryRead{
                     if(bt.toConfirmed!=dt.toConfirmed)field(word("到账状态","入金の状態"),if(bt.toConfirmed)word("已到账","入金済")else word("待到账","未入金"),if(dt.toConfirmed)word("已到账","入金済")else word("待到账","未入金"))
                     if(bt.toDate!=dt.toDate)field(word("到账日期","入金日"),bt.toDate,dt.toDate)
                 }
+                val old=change.beforeDetails
+                val new=change.afterDetails
+                fun activity(id:String?)=s.activities.firstOrNull{it.id==id}?.name?:id.orEmpty()
+                if(old?.activityId!=new?.activityId)field(word("所属活动","シーン"),activity(old?.activityId),activity(new?.activityId))
+                fun baseMoney(n:Long)=Money(Currency.valueOf(s.book.currency),n).display()
+                fun uses(details:LedgerDetails?)=details?.reserveUses.orEmpty().sortedBy{it.reserveId}.joinToString("、"){use->
+                    (s.reserves.firstOrNull{it.id==use.reserveId}?.name?:use.reserveId)+" · "+baseMoney(use.amountMinor)
+                }
+                if(uses(old)!=uses(new))field(word("使用预留","使用した取り置き"),uses(old),uses(new))
+                val self=word("自己","自分")
+                fun friend(id:String?)=s.friends.firstOrNull{it.id==id}?.name?:id?:self
+                val modes=mapOf("EQUAL" to word("均分","均等"),"AMOUNTS" to word("指定金额","金額指定"),"PERCENT" to word("指定比例","割合指定"))
+                val tailLabel=word("尾差归属","端数の受取人")
+                fun participant(key:String)=if(key=="ME")self else friend(key)
+                fun shares(details:LedgerDetails?):String {
+                    val treat=details?.treat?:return ""
+                    val weights=vm.repository.json.decodeFromString<Map<String,String>>(treat.weightsJson)
+                    val basis=weights.toSortedMap().entries.joinToString("、"){(key,value)->
+                        if(key=="__tail")tailLabel+" "+participant(value) else participant(key)+" "+value
+                    }
+                    return listOf(friend(treat.payerFriendId),modes.getValue(treat.mode),basis).filter{it.isNotEmpty()}.joinToString(" · ")+" · "+details.allocations.sortedBy{it.participant}.joinToString("、"){
+                        friend(it.friendId)+" "+Money(Currency.valueOf(treat.currency),it.amountMinor).display()+" / "+baseMoney(it.baseMinor)
+                    }
+                }
+                val oldShares=shares(old);val newShares=shares(new)
+                if(oldShares!=newShares)field(word("互请分配","おごりの分担"),oldShares,newShares)
                 val beforeFees=change.beforeDetails?.components.orEmpty();val afterFees=change.afterDetails?.components.orEmpty()
                 val unknown=word("未知","不明")
-                fun feeSummary(values:List<ExpenseComponentEntity>)=values.joinToString("; "){Money(Currency.valueOf(it.originalCurrency),it.originalMinor).display()+" · "+it.date+if(it.originalCurrency!=s.book.currency)" ("+Money(Currency.valueOf(s.book.currency),it.baseMinor).display()+")"else ""}
+                val charged=word("已扣收","引落済み");val pending=word("未扣收","未引落")
+                fun feeSummary(values:List<ExpenseComponentEntity>)=values.joinToString("; "){Money(Currency.valueOf(it.originalCurrency),it.originalMinor).display()+" · "+it.date+" · "+(s.accounts.firstOrNull{a->a.id==it.accountId}?.name?:it.accountId)+" "+Money(Currency.valueOf(it.currency),it.amountMinor).display()+" / "+baseMoney(it.baseMinor)+" · "+(if(it.confirmed)charged else pending)}
                 for(position in (beforeFees+afterFees).map{it.position}.distinct()) {
                     val before=beforeFees.filter{it.position==position};val after=afterFees.filter{it.position==position}
                     if(before!=after)field(financialFeePositionName(position),feeSummary(before),feeSummary(after))

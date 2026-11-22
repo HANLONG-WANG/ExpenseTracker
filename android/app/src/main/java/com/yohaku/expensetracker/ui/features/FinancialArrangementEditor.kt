@@ -26,11 +26,11 @@ import java.time.*
 @Serializable private data class PoolTransferDraft(val billId:String,val principal:String="",val cancelFee:String="")
 @Serializable private data class ClearingMoveDraft(val allocationId:String,val destination:String?=null,val principal:String="0",val interest:String="0",val fee:String="0")
 
-@Composable internal fun FinancialArrangementEditor(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,old:FinancialPlanEntity,vm:AppViewModel,onClose:()->Unit,onPoolReview:((String)->Unit)?=null,onPoolBill:((String)->Unit)?=null) {
+@Composable internal fun FinancialArrangementEditor(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,old:FinancialPlanEntity,vm:AppViewModel,onClose:()->Unit,onPoolReview:(String)->Unit,onPoolBill:(String)->Unit) {
     FinancialDraftHost(s,FinancialDraftContext("ARRANGEMENT",account.id,targetId=old.id),vm,onClose){FinancialArrangementEditorContent(s,account,finance,old,vm,onClose,onPoolReview,onPoolBill)}
 }
 
-@Composable private fun FinancialArrangementEditorContent(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,old:FinancialPlanEntity,vm:AppViewModel,onClose:()->Unit,onPoolReview:((String)->Unit)?=null,onPoolBill:((String)->Unit)?=null) {
+@Composable private fun FinancialArrangementEditorContent(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,old:FinancialPlanEntity,vm:AppViewModel,onClose:()->Unit,onPoolReview:(String)->Unit,onPoolBill:(String)->Unit) {
     val draftSession=requireNotNull(LocalFinancialDraft.current)
     val currency=Currency.valueOf(account.currency)
     val today=LocalDate.now(vm.repository.clock).toString()
@@ -90,7 +90,7 @@ import java.time.*
                 val moves=clearingMoves.map{move->require(move.destination!=null){"请选择每部分的清偿归属 / 各部分の返済先を選択してください"};ArrangementClearingMove(move.allocationId,if(move.destination=="ORIGINAL"||move.destination.startsWith("POOL:"))null else move.destination.toInt(),Money.parse(move.principal,currency).minor,Money.parse(move.interest,currency).minor,Money.parse(move.fee,currency).minor,move.destination.takeIf{it.startsWith("POOL:")}?.removePrefix("POOL:"))}
                 val paymentRows=if(merging)mergeRows else rows
                 val input=FinancialArrangementInput(old.id,name,selected,FinancialScheduleTerms(effective,paymentRows.map{it.date},if(revolving&&!manual)paymentRows.map{AccrualWindow(it.start,it.end)}else emptyList(),firstPeriodNumber=if(merging)destinationInput!!.terms.firstPeriodNumber else if(selected==FinanceMode.SINGLE||manual)1 else firstPeriod.toIntOrNull()?:0),if(merging)destinationInput?.paymentAccountId else bank,treatment?.let{OriginalFeeTreatment.valueOf(it)},fee.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor},clearingMoves=moves,
-                    mergePoolId=destinationPool?.id?.takeIf{merging},mergeFeeDate=mergeFeeDate.takeIf{merging},mergeFeeIncludedInRetained=merging&&mergeIncluded,loanLimitDeltaMinor=loanLimitDelta.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor},
+                    mergePoolId=destinationPool?.id?.takeIf{merging},mergeFeeDate=mergeFeeDate.takeIf{merging},mergeFeeIncludedInRetained=merging&&mergeIncluded,loanLimitDeltaMinor=loanLimitDelta.takeIf{it.isNotBlank()}?.let{Money.parseSigned(it,currency).minor},
                     manualPeriods=if(manual&&!merging)rows.map{r->KnownBillInput(r.date,Money.parse(r.total,currency).minor,r.principal.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor},r.fee.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor},bank)}else null,manualComplete=manualComplete,
                     poolSelection=if(old.origin=="POOL")PoolArrangementSelection(poolParts.map{part->PoolBillTransfer(part.billId,Money.parse(part.principal,currency).minor,if(treatment==OriginalFeeTreatment.CANCELLED_BY_PLATFORM.name)part.cancelFee.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor}else null)},unbilled.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency).minor}?:0)else null)
                 vm.financialReviewRefreshed.value=false;vm.financialArrangementReview.value=vm.repository.previewFinancialArrangement(s.book.id,input.copy(referenceRates=cashReferenceRates(s,finance,vm.referenceRates)))
@@ -151,8 +151,8 @@ import java.time.*
                 YSelect(word("办理费计入的付款日 / 费用0时可不选","変更手数料を含む支払日・無料は未選択可"),mergeFeeDate,listOf(null to word("请选择","選択してください"))+mergeRows.map{it.date as String? to it.date},{mergeFeeDate=it;mergeIncluded=false},Modifier.testTag("arrangement-merge-fee-date"))
                 YToggle(word("该期已确认费用包含本次办理费","当期の確定費用に今回の変更手数料を含む"),mergeIncluded,{mergeIncluded=it},Modifier.testTag("arrangement-merge-fee-included"))
                 YText(word("已确认或有付款关联的原循环还款计划账单不会自动改写。若本期新增费用未包含，请先核对原循环还款计划账单，再明确勾选；金额不足时仍不能办理。","確定・支払関連の元請求は自動変更しません。新しい費用が未反映なら元の請求を先に確認し、含むことを明示してください。金額が不足する場合は手続きできません。"),11)
-                finance.bills.filter{it.active&&it.date==mergeFeeDate&&(it.planId==destinationPool.id||destinationInput?.pool?.facts?.retained?.any{r->r.bill.id==it.id}==true)}.forEach{bill->YButton(word("核对原循环还款计划本期账单","元の循環返済プランの当期請求を確認")+" · "+bill.date,{if(onPoolBill!=null)onPoolBill(bill.id)else onClose()},Modifier.testTag("arrangement-merge-bill-${bill.id}"))}
-                YButton(word("查看 / 重算原循环还款计划，保留本次输入","元の循環返済プランを確認・再計算して入力を保持"),{if(onPoolReview!=null)onPoolReview(destinationPool.id)else onClose()},Modifier.testTag("arrangement-merge-open-pool"))
+                finance.bills.filter{it.active&&it.date==mergeFeeDate&&(it.planId==destinationPool.id||destinationInput?.pool?.facts?.retained?.any{r->r.bill.id==it.id}==true)}.forEach{bill->YButton(word("核对原循环还款计划本期账单","元の循環返済プランの当期請求を確認")+" · "+bill.date,{onPoolBill(bill.id)},Modifier.testTag("arrangement-merge-bill-${bill.id}"))}
+                YButton(word("查看 / 重算原循环还款计划，保留本次输入","元の循環返済プランを確認・再計算して入力を保持"),{onPoolReview(destinationPool.id)},Modifier.testTag("arrangement-merge-open-pool"))
             }
             if(destinationPool==null)YSelect(word("新付款账户","新しい引落口座"),bank,listOf(null to word("按规则 / 未确定","条件から取得・未定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to (it.name+" · "+it.currency)},{bank=it},columns=2)
             YSelect(word("原方案剩余费用如何处理","元の予定の残手数料の扱い"),treatment,listOf(null to word("请选择明确条件","明確な条件を選択"),OriginalFeeTreatment.RETAIN.name to word("保留原费用","元の手数料を保持"),OriginalFeeTreatment.CANCELLED_BY_PLATFORM.name to word("平台取消原费用","返済先が元の手数料を取消")),{treatment=it})
@@ -178,7 +178,7 @@ import java.time.*
             }
             YField(word("另列变更费用 / 未知留空，已知无费用填0","別途変更手数料・不明は空欄、無料は0")+" · "+account.currency,fee,{fee=it},numeric=true)
             if(account.type==AccountType.LOAN.name) {
-                YField(word("循环额度占用变动 / 未知留空，增加为正，释放为负","循環枠の利用額変動・不明は空欄、増加は正、解放は負")+" · "+account.currency,loanLimitDelta,{loanLimitDelta=it},Modifier.testTag("arrangement-loan-limit-delta"),numeric=true)
+                YField(word("循环额度占用变动 / 未知留空，增加为正，释放为负","循環枠の利用額変動・不明は空欄、増加は正、解放は負")+" · "+account.currency,loanLimitDelta,{loanLimitDelta=it},Modifier.testTag("arrangement-loan-limit-delta"))
                 YText(word("不因切换还款方式就假定释放额度。留空时额度预测待核对，也可按平台已确认的占用/可用额重新设定基准。","返済方式の変更だけで枠が解放されると仮定しません。空欄は枠予測が要確認となり、返済先の確定利用額・可能額で基準を再設定できます。"),11)
             }
             if(destinationPool==null)YButton(word("生成逐期日期","各回の日付を作成"),{vm.execute {

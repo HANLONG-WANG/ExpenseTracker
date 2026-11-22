@@ -15,8 +15,12 @@ data class Money(val currency: Currency, val minor: Long) {
     fun display(): String = currency.symbol + digits()
     companion object {
         fun parse(text: String, currency: Currency): Money {
+            return parseSigned(text,currency).also {
+                require(it.minor >= 0) { "金额不能为负 / 金額は0以上にしてください" }
+            }
+        }
+        fun parseSigned(text: String, currency: Currency): Money {
             val decimal = text.trim().toBigDecimalOrNull() ?: error("请输入有效金额 / 有効な金額を入力してください")
-            require(decimal >= BigDecimal.ZERO) { "金额不能为负 / 金額は0以上にしてください" }
             return Money(currency, decimal.setScale(currency.scale, RoundingMode.UNNECESSARY).movePointRight(currency.scale).longValueExact())
         }
     }

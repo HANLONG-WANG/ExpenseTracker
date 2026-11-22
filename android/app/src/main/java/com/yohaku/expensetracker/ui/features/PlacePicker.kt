@@ -26,7 +26,7 @@ import org.maplibre.android.maps.Style
 // Read-only semantics let device tests verify the selected center without waiting for map tiles.
 internal val PlacePickerCoordinates=SemanticsPropertyKey<Pair<Double,Double>>("PlacePickerCoordinates")
 
-@Composable internal fun PlacePicker(vm:AppViewModel,latitude:Double?,longitude:Double?,radius:String,onRadius:(String)->Unit,onCenter:(Double,Double)->Unit) {
+@Composable internal fun PlacePicker(vm:AppViewModel,latitude:Double?,longitude:Double?,radius:String,onRadius:(String)->Unit,autoLocate:Boolean=false,onCenter:(Double,Double)->Unit) {
     val context=LocalContext.current;val owner=LocalLifecycleOwner.current;val theme=LocalYohaku.current
     val initial=remember{latitude?.let{LatLng(it,longitude!!)}}
     // The picker lives in a scrolling sheet: claim the whole gesture so panning moves the map, not the sheet.
@@ -67,10 +67,16 @@ internal val PlacePickerCoordinates=SemanticsPropertyKey<Pair<Double,Double>>("P
                     ready.cameraPosition.target?.let{center=it;metersPerPixel=ready.projection.getMetersPerPixelAtLatitude(it.latitude)}
                 }
                 ready.addOnCameraMoveListener{update()}
-                ready.addOnCameraIdleListener{update();centerChanged(center.latitude,center.longitude)}
+                var gesture=false
+                ready.addOnCameraMoveStartedListener{reason->gesture=reason==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE}
+                ready.addOnCameraIdleListener{
+                    update()
+                    if(gesture)centerChanged(center.latitude,center.longitude)
+                    gesture=false
+                }
                 val target=requestedCenter?:initial
                 ready.moveCamera(CameraUpdateFactory.newLatLngZoom(target?:center,if(target==null)4.5 else 17.0))
-                update();centerChanged(center.latitude,center.longitude)
+                update()
             }
         }
         onDispose {
@@ -86,8 +92,9 @@ internal val PlacePickerCoordinates=SemanticsPropertyKey<Pair<Double,Double>>("P
         if(failed)YText(word("地图加载失败，请检查网络后重试","地図を読み込めません。通信環境を確認して再試行してください"),11,
             Modifier.align(Alignment.TopCenter).padding(top=10.dp).background(theme.surface).padding(horizontal=10.dp,vertical=6.dp),color=theme.muted)
     }
-    PlaceCoordinates(center.latitude,center.longitude,radius)
-    CapturePlaceLocation(vm,autoLocate=initial==null){fix->
+    if(latitude!=null&&longitude!=null)PlaceCoordinates(latitude,longitude,radius)
+    else YText(word("尚未设置坐标，可只保存名称。","座標は未設定です。名前だけでも保存できます。"),11,color=theme.muted)
+    CapturePlaceLocation(vm,autoLocate=autoLocate&&initial==null){fix->
         val target=LatLng(fix.latitude,fix.longitude);requestedCenter=target;center=target
         centerChanged(fix.latitude,fix.longitude)
         map?.moveCamera(CameraUpdateFactory.newLatLngZoom(target,17.0))

@@ -15,7 +15,7 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
 /** capture.js capture-cover: typography struts, original motif and independent composition. */
-@Composable internal fun CategoryCover(){
+@Composable internal fun CategoryCover(income:Boolean=false){
     val t=LocalYohaku.current
     when(t.id){
         "magazine"->BoxWithConstraints(Modifier.fillMaxWidth().testTag("category-cover").heightIn(min=180.dp).drawBehind{drawLine(t.ink,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())}){
@@ -34,7 +34,7 @@ import com.yohaku.expensetracker.ui.theme.*
             }
             Column(Modifier.fillMaxWidth().padding(start=20.dp,end=20.dp,top=26.dp,bottom=23.dp)){
                 YText(word("第 1 步 · 选一枚分类","ステップ1・カテゴリ選び"),12,Modifier.testTag("category-cover-caption"),color=t.warm,lineHeightMultiplier=20f/12,cssLineBox=true)
-                YText(word("今天的小花费，\n写进哪一页？","今日の、小さな支出。\nどのページに書こう？"),27,Modifier.padding(top=12.dp,bottom=12.dp).testTag("category-cover-title"),letterSpacing=-.6f,lineHeightMultiplier=1.5f,cssLineBox=true)
+                YText(if(income)word("今天的收入，\n写进哪一页？","今日の収入。\nどのページに書こう？")else word("今天的小花费，\n写进哪一页？","今日の、小さな支出。\nどのページに書こう？"),27,Modifier.padding(top=12.dp,bottom=12.dp).testTag("category-cover-title"),letterSpacing=-.6f,lineHeightMultiplier=1.5f,cssLineBox=true)
             }
             Box(Modifier.offset(x=(maxWidth-2.dp)*.27f+1.dp,y=(-7).dp).size(91.dp,19.dp).rotate(-3f).background(Color(0x80d5bd85)))
             YText("✳",33,Modifier.align(Alignment.BottomEnd).padding(end=20.dp,bottom=18.dp).rotate(-15f),color=t.warm,lineHeightMultiplier=48f/33,cssLineBox=true)

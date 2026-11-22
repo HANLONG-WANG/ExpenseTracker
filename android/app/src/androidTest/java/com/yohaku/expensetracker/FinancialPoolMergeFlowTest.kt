@@ -115,6 +115,10 @@ class FinancialPoolMergeFlowTest {
             val feeLabel=text("另列变更费用 / 未知留空，已知无费用填0","別途変更手数料・不明は空欄、無料は0")+" · JPY"
             textField(feeLabel).performScrollTo().performTextReplacement("100")
             if(loan) {
+                tapTag("finance-flow-close")
+                tapTag("finance-tab-overview")
+                tapTag("financial-drafts-open")
+                tapTag("financial-draft-resume-ARRANGEMENT")
                 tapTag("arrangement-merge-open-pool")
                 ui.onNodeWithTag("pool-opening").assertExists()
                 tapTag("finance-flow-close")
@@ -126,7 +130,7 @@ class FinancialPoolMergeFlowTest {
                 ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
                 shot("$theme-$language-merge-ime")
             }
-            if(loan)textField(text("循环额度占用变动 / 未知留空，增加为正，释放为负","循環枠の利用額変動・不明は空欄、増加は正、解放は負")+" · JPY").performScrollTo().performTextReplacement("1000")
+            if(loan)textField(text("循环额度占用变动 / 未知留空，增加为正，释放为负","循環枠の利用額変動・不明は空欄、増加は正、解放は負")+" · JPY").performScrollTo().performTextReplacement("-1000")
             tapTag("arrangement-preview")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialArrangementReview.value?.calculation is Calculation.Ready}
             val review=vm.financialArrangementReview.value!!
@@ -142,6 +146,7 @@ class FinancialPoolMergeFlowTest {
             assertEquals(100L,f.bills.filter{it.active&&it.planId==pool}.sumOf{it.feeMinor!!})
             assertNull(runBlocking{db.financialDao().draft(book,FinancialDraftContext("ARRANGEMENT",debt,targetId=source).slot())})
             val change=f.arrangements.single()
+            if(loan)openFinancialPlan(ui,vm,source)
             tapTag("finance-arrangement-history-${change.id}");tapTag("finance-plan-version-open-1")
             ui.onNodeWithTag("pool-merge-history").performScrollTo();shot("$theme-$language-merge-history");tapTag("sheet-close")
             assertNull(vm.error.value)

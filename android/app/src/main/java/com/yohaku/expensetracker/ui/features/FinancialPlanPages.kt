@@ -70,7 +70,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 FinancialRemainingAfterBill(bill,currency,stale||manualReview)
                 val outstanding=s.billOutstanding(bill)
                 RecordFacts(listOf(word("已实际清偿本金 / 费用","実返済済みの元金・費用") to (Money(currency,outstanding.paidPrincipalMinor).display()+" / "+Money(currency,outstanding.paidFeeMinor).display())))
-                RecordFacts(listOf(word("实际清偿后待付","実返済後の請求残額") to Money(currency,outstanding.totalMinor).display()))
+                RecordFacts(listOf(word("实际清偿后待付","実返済後の請求残額") to financialAmount(currency,outstanding.knownTotalMinor)))
                 if(plan.reconciliation()?.input?.bills?.any{it.billId==bill.id}==true)RecordFacts(listOf(word("重核后待付本金 / 费用","再確認後の未払元金・手数料") to ((outstanding.principalMinor?.let{Money(currency,it).display()}?:word("未知","不明"))+" / "+(outstanding.feeMinor?.let{Money(currency,it).display()}?:word("未知","不明")))))
                 s.financialAccountSummary(finance,plan.accountId,java.time.LocalDate.now(vm.repository.clock).toString(),if(stale)setOf(plan.id)else emptySet()).rows.firstOrNull{it.bill.id==bill.id}?.let{row->
                     FinancialBillPayment(s,row,onPay,onPayment,"period")

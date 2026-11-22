@@ -16,6 +16,14 @@ class LedgerSearchTest {
     private val s=BookSnapshot(BookEntity("b","生活","JPY","2026-10-01"),listOf(bank),emptyList(),listOf(event("shop","スーパー"),event("plain","コンビニ","牛乳")),emptyList(),null,
         receipts=listOf(ReceiptEntity("b","receipt","shop")))
 
+    @Test fun accountListGroupsAndTotalsAnExpenseOnItsPostingDay() {
+        val event=s.events.first()
+        val day="2026-11-02"
+        val snapshot=s.copy(storedPostings=listOf(PostingEntity("b","posting",event.id,bank.id,-1280,"JPY",day)))
+        val list=com.yohaku.expensetracker.ui.features.transactionRows(snapshot,listOf(event),bank.id,true)
+        assertEquals(listOf(day to listOf(event)),list.days)
+        assertEquals(mapOf(day to 1280L),list.spent)
+    }
     @Test fun productNamesMatchAcrossHalfWidthAndOnlyReportProductHits() {
         val products=s.receiptProductNames(listOf(document("receipt","ｺｰﾋｰ豆",null,"牛乳")))
         assertEquals(listOf("ｺｰﾋｰ豆","牛乳"),products["shop"])

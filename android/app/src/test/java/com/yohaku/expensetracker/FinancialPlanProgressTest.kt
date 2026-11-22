@@ -2,6 +2,9 @@ package com.yohaku.expensetracker
 
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
+import com.yohaku.expensetracker.domain.finance.FinancialCalculationBasis
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -20,6 +23,25 @@ class FinancialPlanProgressTest {
         assertEquals("2026-12-05",p.lastDate);assertEquals(1000L,snapshot().balance(account))
         val stale=snapshot().financialPlanProgress(f,plan,"2026-11-10",true)
         assertTrue(stale.stale)
+    }
+    @Test fun nextPaymentSkipsFullyFundedPeriodAwaitingConfirmation() {
+        val fixture=CashProjectionFixture()
+        val later=fixture.bill.copy(id="later",number=2,confirmedDate="2026-11-20")
+        val graph=fixture.graph.copy(bills=listOf(fixture.bill,later))
+        val snapshot=fixture.pending(fixture.snapshot(),fixture.principal)
+        val progress=snapshot.financialPlanProgress(graph,fixture.plan,"2026-10-15")
+        assertEquals(2,progress.unpaidPeriods)
+        assertEquals(later.id,progress.nextPayment.single().bill.id)
+        assertEquals(fixture.principal,progress.nextPayment.single().cashRequiredMinor)
+    }
+    @Test fun unknownDeferredFeeKeepsOutstandingAndCashTotalsUnknown() {
+        val predicted=bill("unknown",1,"2026-11-05",1000,null,1000).copy(
+            predictedDate="2026-11-05",predictedPrincipalMinor=1000,predictedTotalMinor=1000,
+            confirmedDate=null,confirmedPrincipalMinor=null,confirmedTotalMinor=null,confirmedAt=null,
+            basisJson=Json.encodeToString(FinancialCalculationBasis(emptyList(),0,emptyList(),additionalFeeUnknown=true)))
+        val progress=snapshot().financialPlanProgress(graph(listOf(predicted)),plan,"2026-11-01")
+        assertEquals(1000L,progress.principalMinor)
+        assertNull(progress.totalMinor);assertNull(progress.cashRequiredMinor)
     }
     @Test fun unknownSplitsAndOverpaymentDoNotBecomeZeroOrOffsetAnotherUnpaidPeriod() {
         val f=graph(listOf(bill("overpaid",1,"2026-10-05",100,0,100),bill("unknown",2,"2026-11-05",null,null,600)))

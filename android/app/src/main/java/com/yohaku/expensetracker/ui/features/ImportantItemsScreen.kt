@@ -88,9 +88,11 @@ import com.yohaku.expensetracker.ui.theme.*
             if(budgetRisk) {
                 ThemeSection(word("预算风险","予算リスク"),"BUDGET")
                 val actual=pace.actualOverMinor?.let{it>0}==true
-                ImportantEvent(word("本月预算","今月の予算"),if(actual)word("已发生超出","実支出の超過")else word("预计超出","超過の見込み"),
+                val incomplete=!actual&&pace.projectedMinor==null
+                val missing=if(incomplete)recurring.firstOrNull{it.outstandingMinor==null&&it.item.scheduledDate.take(7)==today.toString().take(7)} else null
+                ImportantEvent(word("本月预算","今月の予算"),if(actual)word("已发生超出","実支出の超過")else if(pace.projectedMinor==null)word("资料不足，暂无法判断","情報不足のため判定できません")else word("预计超出","超過の見込み"),
                     outlookAmount(s.book.currency,if(actual)pace.actualOverMinor else pace.projectedOverMinor),
-                    word("按${pace.sampleDays}个自然日的已记录消费测算，打开查看依据。","記録済み支出・${pace.sampleDays}暦日から推計。根拠を確認できます。"),"important-budget",onForecast,warning=true,last=true)
+                    if(missing!=null)word("打开周期账单，补全金额。","定期支払を開いて金額を入力してください。")else if(incomplete)word("查看预算预测依据，核对待补金额。","予算予測の内訳を開き、未入力の金額を確認してください。")else word("按${pace.sampleDays}个自然日的已记录消费测算，打开查看依据。","記録済み支出・${pace.sampleDays}暦日から推計。根拠を確認できます。"),"important-budget",{if(missing!=null)onItem(missing.item)else onForecast()},warning=!incomplete,last=true)
             }
             if(risks.isNotEmpty()) {
                 ThemeSection(word("实际资金账户风险","実資金口座のリスク"),"FUNDS")

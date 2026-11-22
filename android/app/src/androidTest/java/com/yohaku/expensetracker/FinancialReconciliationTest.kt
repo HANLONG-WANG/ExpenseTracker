@@ -145,6 +145,7 @@ class FinancialReconciliationTest {
             assertTrue(review.calculation.toString(),review.calculation is Calculation.Ready)
             r.commitArrangementReconciliation(review,true)
             val after=r.snapshot(r.dao.book(x.b)!!).first();val f=db.financialDao().graph(x.b).first()!!
+            for(bill in listOf(old,first))assertEquals(after.billOutstanding(bill).totalMinor,review.projectedLedger.billOutstanding(bill).totalMinor)
             assertEquals(before.storedPostings,after.storedPostings);assertEquals(before.expenseComponents,after.expenseComponents)
             assertEquals(100L,after.billOutstanding(old).principalMinor);assertEquals(350L,after.billOutstanding(f.bills.first{it.id==first.id}).principalMinor)
             assertEquals(first.id,after.repaymentAllocations.single().billId)

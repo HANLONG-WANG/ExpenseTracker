@@ -59,16 +59,20 @@ suspend fun LedgerRepository.saveStatement(bookId: String, preview: StatementImp
     fresh.file.file_id
 }
 
-/** Recomputed from current facts on every read, so edits/deletion cannot leave stale exact matches. */
-fun BookSnapshot.reconciliationPostings(): List<ReconcilePosting> = postings.mapNotNull { p ->
-    if(p.deltaMinor==0L)return@mapNotNull null
-    val event = visibleEvents.find { it.id == p.eventId } ?: return@mapNotNull null
-    val account = accounts.first { it.id == p.accountId }
-    val debt = AccountType.valueOf(account.type).debt
-    val out = if (debt) p.deltaMinor > 0 else p.deltaMinor < 0
-    ReconcilePosting(book.id, account.id, p.id, event.id, p.currency,
-        BigDecimal.valueOf(p.deltaMinor, Currency.valueOf(p.currency).scale).abs(),
-        if (out) "out" else "in", p.date, event.date)
+/** Derived once per immutable snapshot, shared by review matching and the row views. */
+fun BookSnapshot.reconciliationPostings(): List<ReconcilePosting> = statementPostings
+internal fun BookSnapshot.buildReconciliationPostings(): List<ReconcilePosting> {
+    val accountsById=accounts.associateBy{it.id}
+    return postings.mapNotNull { p ->
+        if(p.deltaMinor==0L)return@mapNotNull null
+        val event = visibleById[p.eventId] ?: return@mapNotNull null
+        val account = accountsById.getValue(p.accountId)
+        val debt = AccountType.valueOf(account.type).debt
+        val out = if (debt) p.deltaMinor > 0 else p.deltaMinor < 0
+        ReconcilePosting(book.id, account.id, p.id, event.id, p.currency,
+            BigDecimal.valueOf(p.deltaMinor, Currency.valueOf(p.currency).scale).abs(),
+            if (out) "out" else "in", p.date, event.date)
+    }
 }
 fun BookSnapshot.matchStatements(batches: List<StatementBatchEntity>): Map<String, StatementMatchingResult> {
     return reviewStatements(batches,emptyList()).associate{it.batch.id to it.result}

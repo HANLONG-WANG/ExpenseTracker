@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "bea83b6da35281d2358ed1b55cfaa7621995409a6e8ae40ca5eb799b239baba0",
+    "catalogDigest": "4c0de39bea1e9203fe93b0045e29e9dfd6567f887412c77faac55bee73ce657d",
     "commands": [
         {
             "comparisonFields": [
@@ -18489,7 +18489,7 @@
             "outputs": {
                 "entry": "entry"
             },
-            "prerequisites": "Existing statement row without exact/manual association; shared record validation. Financial borrowing/repayment use their dedicated commands.",
+            "prerequisites": "Existing statement row in an active account without exact/manual association; shared record validation. Financial borrowing/repayment use their dedicated commands.",
             "unavailable": "Reject the whole batch if this command's input or prerequisites fail; no step is skipped.",
             "undo": "Restore exact recorded existing rows; remove only execution-owned new objects and dependent rows, if unchanged and without external FK/JSON/draft references. Full row/relationship conflicts block the entire undo.",
             "version": 1

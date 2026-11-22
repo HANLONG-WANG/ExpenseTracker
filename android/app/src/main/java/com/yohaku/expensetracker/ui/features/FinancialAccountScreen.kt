@@ -75,6 +75,13 @@ import kotlinx.serialization.encodeToString
     val currency=Currency.valueOf(account.currency)
     val scrolls=rememberSaveableStateHolder()
     val resume=resumedDraft?.let{vm.repository.json.decodeFromString<FinancialDraftContext>(it)}
+    fun openAdjustmentDraft(context:FinancialDraftContext) {
+        resumedDraft=null
+        when(context.kind) {
+            "POOL_PAYMENT"->poolPaymentPlan=requireNotNull(context.targetId)
+            "ARRANGEMENT"->arrangementPlan=requireNotNull(context.targetId)
+        }
+    }
     fun planSaved(id:String,contractId:String?) {
         manual=false;prediction=null;resumedDraft=null;createContract=null
         if(contractId!=null){navigate("manage/contracts");contractLink=contractId;savedContract=contractId;createdPlan=id}else{navigate("plans");selectedPlan=id}
@@ -135,7 +142,7 @@ import kotlinx.serialization.encodeToString
         limitRuleReturn=mode;limitDraftReturn=resumedDraft;limitSourceReturn=path;limitPageReturn=pageReturn
         resumedDraft=null;editMode=null;navigate("limits");vm.financialRuleReview.value=null
     }
-    if(resume?.kind=="RULE"){FinancialDraftResume(s,account,finance,resume,vm,{resumedDraft=null},onLimits={openRuleLimits(requireNotNull(resume.mode))});return@content}
+    if(resume?.kind=="RULE"){FinancialDraftResume(s,account,finance,resume,vm,{resumedDraft=null},::openAdjustmentDraft,onLimits={openRuleLimits(requireNotNull(resume.mode))});return@content}
     editMode?.let{raw->val mode=FinanceMode.valueOf(raw);val latest=rules.filter{it.mode==raw}.maxByOrNull{it.version}
         FinancialRuleEditor(s,account,mode,latest?.let{vm.repository.json.decodeFromString(it.json)},vm,{editMode=null},onLimits={openRuleLimits(mode.name)});return@content}
     if(tab=="overview") {
@@ -226,7 +233,7 @@ import kotlinx.serialization.encodeToString
         }
     }
 
-    resume?.let{context->FinancialDraftResume(s,account,finance,context,vm,{resumedDraft=null},{bill->
+    resume?.let{context->FinancialDraftResume(s,account,finance,context,vm,{resumedDraft=null},::openAdjustmentDraft,{bill->
         resumedDraft=null
         if(context.kind=="POOL")poolBillReturn=context.targetId.orEmpty() else if(context.kind=="ARRANGEMENT_REVIEW")reconciliationReturn=context.targetId
         confirming=bill
@@ -259,7 +266,7 @@ import kotlinx.serialization.encodeToString
     fun money(value:Long?)=value?.let{Money(currency,it).display()}
     YText(word("第${bill.number}期","第${bill.number}回")+" · "+bill.date,14)
     if(showAmountStatus)YText(if(bill.confirmed)word("平台已确认金额 · 尚非付款记录","返済先の確定金額・支払記録とは別")else word("规则预测","条件による予測"),11,color=LocalYohaku.current.accent)
-    RecordFacts(listOf(word("本金","元金") to (money(bill.principalMinor)?:word("未知","不明")),word("利息 / 费用","利息・手数料") to (money(bill.feeMinor)?:word("未知","不明")),word("合计","合計") to (if(!bill.confirmed&&bill.basisJson?.let{kotlinx.serialization.json.Json.decodeFromString<FinancialCalculationBasis>(it).additionalFeeUnknown}==true)word("手续费待补，合计未知","手数料未入力・合計不明")else Money(currency,bill.totalMinor).display())))
+    RecordFacts(listOf(word("本金","元金") to (money(bill.principalMinor)?:word("未知","不明")),word("利息 / 费用","利息・手数料") to (money(bill.feeMinor)?:word("未知","不明")),word("合计","合計") to (if(bill.hasUnknownPredictedFee())word("手续费待补，合计未知","手数料未入力・合計不明")else Money(currency,bill.totalMinor).display())))
     if(bill.confirmed&&bill.predictedTotalMinor!=null)YText(word("原预测：","元の予測：")+money(bill.predictedTotalMinor)+" · "+bill.predictedDate,11,color=LocalYohaku.current.muted)
 }
 

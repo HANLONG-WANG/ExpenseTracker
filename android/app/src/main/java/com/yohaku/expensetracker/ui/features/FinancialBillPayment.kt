@@ -17,7 +17,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val cleared=row.outstanding.paidPrincipalMinor+row.outstanding.paidFeeMinor
     YText(if(bill.confirmed)word("金额已确认","金額確定")else word("金额未确认 · 规则预测","金額未確定・条件による予測"),12,Modifier.testTag("$prefix-amount-status-${bill.id}"),color=LocalYohaku.current.muted)
     YText(when {
-        row.outstanding.totalMinor<0->word("已付超过账单，请核对","請求額を超える支払・要確認")
+        row.outstanding.knownTotalMinor?.let{it<0}==true->word("已付超过账单，请核对","請求額を超える支払・要確認")
         row.outstanding.settled->word("已结清","精算済み")
         pending&&row.cashRequiredMinor==0L->word("已付款，待平台确认","支払済み・返済先の確認待ち")
         pending&&row.pendingTotalMinor==null->word("已有付款，清偿待确认","支払記録あり・返済確定待ち")

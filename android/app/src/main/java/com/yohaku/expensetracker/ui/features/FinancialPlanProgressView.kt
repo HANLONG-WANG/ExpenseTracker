@@ -21,7 +21,7 @@ import com.yohaku.expensetracker.ui.theme.*
             word("其中已到期未清","うち期日経過・未返済") to p.overduePeriods.toString(),
             word("已列待还本金","予定分の未返済元金") to (amount(p.principalMinor)?:unknown),
             word("已列利息 / 费用","予定分の利息・費用") to (amount(p.feeMinor)?:unknown),
-            word("已列待付合计","予定分の未払合計") to Money(currency,p.totalMinor).display(),
+            word("已列待付合计","予定分の未払合計") to (amount(p.totalMinor)?:unknown),
             word("已付待确认","支払済・確認待ち") to (amount(p.pendingMinor)?:unknown),
             word("仍需备款","必要資金") to (amount(p.cashRequiredMinor)?:unknown)))
         YText(word("待付中：平台确认${p.confirmedPeriods}期 / 本地预测${p.predictedPeriods}期。","未払分：返済先確定${p.confirmedPeriods}回・ローカル予測${p.predictedPeriods}回。"),11)
@@ -66,7 +66,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }}
     if(mode=="CREDIT_LINE") {
         val pools=f.plans.filter{it.accountId==a.id&&it.origin=="POOL"&&it.active}
-        if(pools.isEmpty())YText(word("循环还款计划尚未建立；借入合同不等于已完整安排付款。","口座の循環循環返済プランは未作成。借入契約だけでは支払予定が揃ったことにはなりません。"),12,color=LocalYohaku.current.warm)
+        if(pools.isEmpty())YText(word("循环还款计划尚未建立；借入合同不等于已完整安排付款。","口座の循環返済プランは未作成。借入契約だけでは支払予定が揃ったことにはなりません。"),12,color=LocalYohaku.current.warm)
         else pools.forEach{YText(word("账户共同付款计划：","口座共通の支払プラン：")+it.name,12)}
     }
     YText(word("同一账户可以有两类借款。合同与付款计划用于解释来源，不再次加到上方账户欠款。","同じ口座に両方式の借入を記録できます。契約・支払予定は内訳で、上の口座残債へ重複加算しません。"),11,color=LocalYohaku.current.muted)

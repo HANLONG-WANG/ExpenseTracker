@@ -32,7 +32,7 @@ import java.time.LocalDate
         fun total(debt:Boolean):Long? {
             var sum=0L
             for(a in s.accounts.filter{AccountType.valueOf(it.type).debt==debt}) {
-                val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,asOf.toString()))
+                val amount=Money(Currency.valueOf(a.currency),s.cashBalanceAt(a,asOf.toString()))
                 val converted=if(amount.currency==base)amount else results[amount.currency]?.rate?.convert(amount)?:return null
                 sum=Math.addExact(sum,converted.minor)
             }

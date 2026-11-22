@@ -15,7 +15,8 @@ class FinancialOutlookTest {
         val timeline=CashTimeline("2026-10-15","2026-11-30",listOf(CashAccountOpening(bank,100),CashAccountOpening(bank.copy(id="other"),10000)),listOf(
             CashTimelineStep(item("one","2026-11-05",-250),-150,450),
             CashTimelineStep(item("two","2026-11-05",-50),-200,400),
-            CashTimelineStep(item("later","2026-11-20",-300),-500,100)))
+            CashTimelineStep(item("later","2026-11-20",-300),-500,100),
+            CashTimelineStep(item("transfer","2026-11-20",600,true),100,700)))
         val risk=timeline.accountRisks().first()
         assertEquals(300L,risk.nextNeedMinor);assertEquals(200L,risk.currentGapMinor)
         assertEquals(500L,risk.maximumGapMinor);assertEquals(0L,risk.includingIncomeGapMinor)

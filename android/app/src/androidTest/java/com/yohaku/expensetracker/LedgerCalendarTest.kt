@@ -63,16 +63,19 @@ class LedgerCalendarTest {
                 repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=food,amount="2800",date="2026-10-24",merchant="鸟贵族"))
                 repo.saveEntry(book,EntryDraft(kind=EntryKind.INCOME,accountId=cash,categoryId=salary,amount="250000",date="2026-10-24",merchant="工资"))
                 repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=food,amount="900",date="2026-09-30",merchant="上个月"))
+                repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=food,amount="100000",date="2026-10-30",merchant="未来"))
                 vm.preferences.select(book);book
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("ledger")}
             ui.onNodeWithTag("ledger-view-calendar").performScrollTo().performClick()
+            ui.onNodeWithTag("ledger-view-calendar").assertIsSelected()
+            ui.onNodeWithTag("ledger-view-list").assertIsNotSelected()
             ui.onNodeWithTag("calendar-day-2026-10-24").performScrollTo()
             ui.onNodeWithTag("ledger-view-tabs").performScrollTo()
             val s=(vm.state.value as AppState.Ready).snapshot!!
             assertEquals(s.monthExpense("2026-10")-15400L-12800L,s.budgetProjection("2026-10").spentMinor)
-            ui.onNode(hasText(Money(Currency.JPY,120000-s.budgetProjection("2026-10").spentMinor).display(),substring=true) and (hasTestTag("calendar-summary") or hasAnyAncestor(hasTestTag("calendar-summary")))).assertExists()
+            ui.onNode(hasText(Money(Currency.JPY,120000-(s.budgetProjection("2026-10").spentMinor-100000)).display(),substring=true) and (hasTestTag("calendar-summary") or hasAnyAncestor(hasTestTag("calendar-summary")))).assertExists()
             shot("$theme-$language-budget-excluded-month")
             // Day total: three expenses only; the same-day income is listed but not counted.
             ui.onNodeWithTag("calendar-day-2026-10-24").performScrollTo().performClick()

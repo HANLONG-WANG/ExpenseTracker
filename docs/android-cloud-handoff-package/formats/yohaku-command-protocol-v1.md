@@ -77,7 +77,7 @@
 
 ### 选择器（entry.update）
 
-`targets` 的ids/select必须且只能一个为非null；另一个可省略或显式null（schema用oneOf表达）。ids须1–5000个不重复目标，schema包含minItems/maxItems/uniqueItems；select解析后的目标数仍由手机限制，schema无法预知查询结果。`set` 为记录字段补丁：分类、账户、金额/结算、日期、商户、备注、期初已包含、转账两端/手续费、退款来源、付款选择、活动/周期/预留/互请关联等，精确字段见能力 schema。显式修改 occurrence 会用既有解除关联业务函数解除旧实例关联；不创建周期规则或新实例。省略保留原字段；切换到账/付款账户币种会使旧币种金额失效，需要补齐金额或明确换算。已有记录种类不可直接改写，不适用该种类的字段整批拒绝，退款的日期与入账日相同。显式 null 仅用于 schema/能力说明允许清空的可选字段。分类用途须一致且启用；只有支出/收入可改分类。仅 category 补丁配明确 ids 也可修改回收站记录分类而保留回收状态；不会自动上传回收站记录，必须已有明确ID。`ids` 中的元素也可为前步 entry 输出引用。
+`targets` 的ids/select必须且只能一个为非null；另一个可省略或显式null（schema用oneOf表达）。ids须1–5000个不重复目标，schema包含minItems/maxItems/uniqueItems；select解析后的目标数仍由手机限制，schema无法预知查询结果。`set` 为记录字段补丁：分类、账户、金额/结算、日期、商户、备注、期初已包含、转账两端/手续费、退款来源、付款选择、活动/周期/预留/互请关联等，精确字段见能力 schema。显式修改 occurrence 会用既有解除关联业务函数解除旧实例关联；不创建周期规则或新实例。省略保留原字段；切换到账/付款账户币种会使旧币种金额失效，需要补齐金额或明确换算。已有记录种类不可直接改写，不适用该种类的字段整批拒绝；收支与退款的发生日和入账日可分别指定。显式 null 仅用于 schema/能力说明允许清空的可选字段。分类用途须一致且启用；只有支出/收入可改分类。仅 category 补丁配明确 ids 也可修改回收站记录分类而保留回收状态；不会自动上传回收站记录，必须已有明确ID。`ids` 中的元素也可为前步 entry 输出引用。
 
 选择器支持 `from` / `through`（含起止日 YYYY-MM-DD）、`account`、`category`、`merchant_contains`、`note_contains`（忽略大小写的子串）、`kind`（EXPENSE/INCOME/TRANSFER/REFUND）、`min_minor` / `max_minor`（含边界）和 `currency`。金额条件必须提供 currency。多个条件取交集。空选择器意为所有未删除记录；可能含不支持的种类或超过数量上限，建议明确 kind 和范围。
 
@@ -107,7 +107,7 @@
 - `category.save`：name、kind 必填，kind 取 EXPENSE 或 INCOME；category 省略新建，parent 有类型引用/null根分类，favorite，icon。已有项省略 parent/favorite/icon 保留，新增默认为根分类/未收藏/自动图标；icon:null 清除手选图标。`category.setFavorite`、`category.lifecycle`（ARCHIVE/UNARCHIVE）、`category.reparent`（parent:null移为一级）复用本机校验与层级影响预览。
 - 商户与地点命令见「商户归属、原名整理与追溯」。`friend.save` 保存朋友名称并保留已有启停状态，`friend.setActive` 只改启停。
 - `entry.create` 创建 EXPENSE/INCOME/TRANSFER/REFUND，缺省 kind=EXPENSE。账户/日期/活动/信用卡付款选择采用表单默认值，**手机不会自动补分类和消费金额**；助手可以根据用户陈述和现有资料提出合理分类并在message列出假设，不可编造消费。金额字段 amount/accountAmount/baseAmount/toAmount/feeAmount/feeAccountAmount/feeBaseAmount/reserveAmount/cardPaymentFee 使用 `{currency,minor}`。同币种精确复制；外币提供实际或预计金额及状态，或明确手填十进制 manualRate。`useReferenceRates=true` 可使用本机预览冻结的参考汇率与现有换算函数；不能覆盖实际金额，缺参考报价时整批失败，不填0。默认不自动套参考汇率。
-- 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款 date 为发生日，settlementDate 为实际／预计入账日；新建时省略入账日沿用发生日，编辑时省略字段保留原值。转账两端、独立手续费账户和退款账户可在原角色保留已停用账户。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。付款选择及指定月、费用、分期期数与普通表单同规则。
+- 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款 date 为发生日，settlementDate 为实际／预计入账日；新建时省略入账日沿用发生日，编辑时省略字段保留原值。转账两端、独立手续费账户和退款账户可在原角色保留已停用账户。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。修改汇率或内扣手续费后，如需联动已有预计金额，同时给 estimateDirection（TO 估算到账、FROM 反推转出），省略该端金额；已确认或本次明确填写的金额优先。普通字段补丁省略方向时保留已有金额。付款选择及指定月、费用、分期期数与普通表单同规则。
 - 普通记录字段 `budgetExcluded`：新建默认 false，编辑省略保留、false 取消，不能为 null；只有 EXPENSE 可以设 true。排除月/分类预算（含待确认数、节奏、提醒及原支出的退款/费用），仍计入分析、账户余额、日历实际金额和活动自身预算。记录导出包含该字段。`template.save` 完整替换时默认 false，支出模板可保存并通过 `template.createEntry` 带入；周期规则、实例及固定预留不加字段。
 - entry 的百分比分摊可单独补丁修改 treatTail。省略保留原归属人，即使同时替换 treatShares；显式 null 恢复默认末位参与人，指定归属人须在参与名单中。
 - `entry.update` 批量字段补丁；`entry.confirmActual` 采用相同 targets/set，但必须明确至少一个实际确认标志为 true。账户负余额加重在预览中单独要求勾选，列明具体账户、币种和金额。记录缺必填项则整批失败；待用户补完用 entry.prepareDraft（interactive，不代用户提交）。
@@ -357,7 +357,7 @@ CSV 来源判重键 `sourceMatchKey` 保留解析后的日期、收支类型、�
 以下均 command_version=1；完整字段与例子必须读取本机能力附件，不推测隐藏字段。CSV **导入**本身用 entry.create 序列表达，不调用 CSV 文件解析器。
 
 - `statement.accept`：batch/row/entry，note 默认空；调用已有差异核对，只保留手动差异关联，不伪装完全匹配。账户、方向、币种必须一致且资金端不能重复占用。`statement.unlink`：batch/row，解除已有差异关联，保留原文件和正式记录。
-- `statement.supplement`：batch/row、occurredDate/postedDate 明确给出；kind 默认 EXPENSE，set 默认空，补分类、外币换算或转账另一端，不能改写已确定的流水来源端；适配完成后再次检查金额、币种、日期、方向及已确认状态，同币种 set.amount 也不能间接改写入账金额，流水已有 original 时须保留该原币事实。退款用 originalEvent。已有完全匹配/手动关联时禁止重复补记。`statement.confirmActual`：batch/row/entry/postedDate，可附 postingId 精确指定转出、转入或独立手续费分录；同一账户和方向有多个分录时必须指定，不能用手续费金额覆盖转账本金。set 仅可补 baseAmount，独立手续费则补 feeBaseAmount；实际账户金额来自流水。`statement.accept` 同样可用 postingId 消除多分录歧义。补记和确认实际金额要求手机用户勾选具体流水日期和金额事实；借入、还款、金融账单仍走已有金融专用命令，不伪装为消费/转账。
+- `statement.supplement`：batch/row、occurredDate/postedDate 明确给出；kind 默认 EXPENSE，set 默认空，补分类、外币换算或转账另一端，不能改写已确定的流水来源端；适配完成后再次检查金额、币种、日期、方向及已确认状态，同币种 set.amount 也不能间接改写入账金额，流水已有 original 时须保留该原币事实。退款用 originalEvent。补记前须启用流水所属账户。已有完全匹配/手动关联时禁止重复补记。`statement.confirmActual`：batch/row/entry/postedDate，可附 postingId 精确指定转出、转入或独立手续费分录；同一账户和方向有多个分录时必须指定，不能用手续费金额覆盖转账本金。set 仅可补 baseAmount，独立手续费则补 feeBaseAmount；实际账户金额来自流水。`statement.accept` 同样可用 postingId 消除多分录歧义。补记和确认实际金额要求手机用户勾选具体流水日期和金额事实；借入、还款、金融账单仍走已有金融专用命令，不伪装为消费/转账。
 - `receipt.items.save`：receipt/items，完整替换商品文档，既可首次回填也可编辑。adjustments=[]、total=null、complete=false、issues=[]；未知名/数量/价格/行金额保持未知。金额字段是 `{currency,minor}`；数量是十进制字符串。单价可用 unitPrice 金额对象，或互斥的 unitPriceDecimal（原回填协议支持小于最小货币单位的精确单价，例如0.5日元）；行金额、调整额、合计仍是最小单位整数。首次回填须明确 imageIds，编辑省略时保留原文档覆盖图片，不把新增图片擅自认定已整理；单行 imageIds 省略沿用文档覆盖。手机核对图片属于当前小票，并填当前修订，不能用任意路径或伪造导出包；与现有回填共用校验，不改变整单金额或分类。
 - `csvBatch.undo`：batch，首次预览固定剩余有效记录，移入回收站并按原规则处理关联退款；**不物理删除**，后来编辑的内容和导入历史保留，可整批撤销恢复。
 - `entryDraft.reclassify`：sourceCategory/category，只改现有收支草稿分类，其余字段、附件会话保留；不提交或放弃草稿。

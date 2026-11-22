@@ -33,7 +33,7 @@ import java.time.YearMonth
     val settlement=s.settlementByEvent[e.id]
     val transfer=s.transferByEvent[e.id]
     val displaySide=accountId?.let{s.accountEventPostings(e,it)}.orEmpty()
-    val displayDate=displaySide.maxOfOrNull{it.date}?:e.date
+    val displayDate=s.transactionRowDate(e,accountId)
     val accountDelta=displaySide.takeIf{it.isNotEmpty()}?.sumOf{it.deltaMinor}
     val money=if(accountDelta!=null)Money(Currency.valueOf(displaySide.first().currency),if(accountDelta<0)Math.negateExact(accountDelta)else accountDelta)else s.accountMoney(e)
     val journal=t.id=="journal";val objects=t.id=="objects"
@@ -51,7 +51,7 @@ import java.time.YearMonth
             Column(Modifier.weight(1f)) {
                 val route=transfer?.let{tr->s.accounts.find{it.id==e.accountId}?.name.orEmpty()+" → "+s.accounts.find{it.id==tr.toAccountId}?.name.orEmpty()}
                 YText(e.merchant.ifBlank{route?:entryKindName(kind)},if(journal)15 else if(objects)12 else 13,weight=if(objects)androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal,lineHeightMultiplier=if(journal)22f/15 else if(objects)17f/12 else 19f/13,cssLineBox=true)
-                YText((if(showDate)displayDate.takeLast(5).replace('-','.')+" · " else "")+if(kind==EntryKind.EXPENSE)s.path(e.categoryId) else entryKindName(kind),if(journal)10 else 8,Modifier.padding(top=5.dp),color=t.muted,lineHeightMultiplier=if(journal)15f/10 else if(objects)11f/8 else 13f/8,cssLineBox=true)
+                YText((if(showDate)(if(displayDate.take(4)==LocalDate.now().year.toString())displayDate.takeLast(5)else displayDate).replace('-','.')+" · " else "")+if(kind==EntryKind.EXPENSE)s.path(e.categoryId) else entryKindName(kind),if(journal)10 else 8,Modifier.padding(top=5.dp),color=t.muted,lineHeightMultiplier=if(journal)15f/10 else if(objects)11f/8 else 13f/8,cssLineBox=true)
                 if(transfer!=null)YText(when{transfer.fromConfirmed&&transfer.toConfirmed->word("两端已确认","両側確認済");transfer.fromConfirmed->word("在途","送金中");transfer.toConfirmed->word("转出待确认","出金確認待ち");else->word("计划","予定")},if(journal)10 else 8,color=t.warm)
                 else if(settlement?.confirmed==false)YText(if(kind==EntryKind.REFUND)word("待到账","未入金")else word("换算待确认","換算未確定"),if(journal)10 else 8,color=t.warm)
                 else if(kind==EntryKind.REFUND&&settlement?.confirmed==true)YText(word("已到账","入金済"),if(journal)10 else 8,color=t.accent)
@@ -100,18 +100,18 @@ import java.time.YearMonth
     var account by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var category by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var period by rememberSaveable(s.book.id){mutableStateOf("ALL")}
-    var from by rememberSaveable(s.book.id){mutableStateOf(YearMonth.now().atDay(1).toString())}
-    var to by rememberSaveable(s.book.id){mutableStateOf(LocalDate.now().toString())}
+    var from by rememberSaveable(s.book.id){mutableStateOf(YearMonth.from(today).atDay(1).toString())}
+    var to by rememberSaveable(s.book.id){mutableStateOf(today.toString())}
     var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     val categories=category?.let{id->setOf(id)+s.categories.filter{it.parentId==id}.map{it.id}}
     // The calendar keeps account and category filters; it only counts spending, so type, date range and search do not apply.
     val scoped=remember(s,calendar,account,categories){if(!calendar)emptyList() else s.visibleEvents.filter{e->(account==null||e.accountId==account||s.storedPostingsByEvent[e.id].orEmpty().any{it.accountId==account})&&(categories==null||e.categoryId in categories)}}
     val products=remember(s.receipts,receiptItems){s.receiptProductNames(receiptItems)}
-    val matches=remember(s,calendar,type,query,account,categories,period,from,to,products){if(calendar)emptyMap() else s.visibleEvents.mapNotNull{e->
+    val matches=remember(s,calendar,type,query,account,categories,period,from,to,products,today){if(calendar)emptyMap() else s.visibleEvents.mapNotNull{e->
         val sides=account?.let{id->s.storedPostingsByEvent[e.id].orEmpty().filter{it.accountId==id}}
-        val dates=if(account==null)listOf(e.date)else sides.orEmpty().map{it.date}.ifEmpty{listOf(e.date)}
+        val date=s.transactionRowDate(e,account)
         val kept=(type=="ALL"||e.kind==type)&&(account==null||e.accountId==account||!sides.isNullOrEmpty())&&(categories==null||e.categoryId in categories)&&
-            (period=="ALL"||period=="MONTH"&&dates.any{it.take(7)==YearMonth.now().toString()}||period=="CUSTOM"&&dates.any{it in from..to})
+            (period=="ALL"||period=="MONTH"&&date.take(7)==YearMonth.from(today).toString()||period=="CUSTOM"&&date in from..to)
         if(kept)s.ledgerSearch(e,query,sides,products[e.id].orEmpty())?.let{e to it}else null
     }.toMap()}
     val entries=remember(matches){matches.keys.toList()}
@@ -140,7 +140,7 @@ import java.time.YearMonth
                     YDateFields(listOf(YDateField("from",word("开始日期","開始日"),from),YDateField("to",word("结束日期","終了日"),to)),dateOwner,{dateOwner=it},{i,value->if(i=="from")from=value else to=value})
                     if(from>to)YText(word("结束日期不能早于开始日期。","終了日は開始日以降にしてください。"),11,color=t.warm)
                 }
-                LedgerClearFilters{type="ALL";query="";account=null;category=null;period="ALL";from=YearMonth.now().atDay(1).toString();to=LocalDate.now().toString();dateOwner=null}
+                LedgerClearFilters{type="ALL";query="";account=null;category=null;period="ALL";from=YearMonth.from(today).atDay(1).toString();to=today.toString();dateOwner=null}
             }}
         }
     }){
@@ -169,7 +169,8 @@ import java.time.YearMonth
     val t=LocalYohaku.current
     val date=LocalDate.parse(day)
     val weekday=if(LocalLanguage.current=="ja")"月火水木金土日"[date.dayOfWeek.value-1].toString() else "周"+"一二三四五六日"[date.dayOfWeek.value-1]
-    val label=date.monthValue.toString()+word("月","月")+date.dayOfMonth+word("日","日")+" · "+weekday
+    // Only another year needs its year; the current year stays compact.
+    val label=(if(date.year!=LocalDate.now().year)date.year.toString()+"年" else "")+date.monthValue.toString()+word("月","月")+date.dayOfMonth+word("日","日")+" · "+weekday
     val frame=when(t.id){
         "objects"->Modifier.padding(top=8.dp,bottom=2.dp,start=4.dp,end=4.dp)
         "journal"->Modifier.padding(top=18.dp,bottom=4.dp)

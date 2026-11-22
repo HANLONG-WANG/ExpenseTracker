@@ -22,6 +22,8 @@ fun BookSnapshot.expectedIncomeArrival(income:ExpectedIncomeEntity):EventEntity?
 }
 fun BookSnapshot.expectedIncomeNeedsReview(income:ExpectedIncomeEntity)=income.status=="ARRIVED"&&expectedIncomeArrival(income)==null
 
+fun BookSnapshot.canEditExpectedIncome(income:ExpectedIncomeEntity)=income.status=="PENDING"||expectedIncomeNeedsReview(income)
+
 suspend fun LedgerRepository.previewExpectedIncome(bookId:String,input:ExpectedIncomeInput):ExpectedIncomeReview=db.withTransaction {
     val b=requireNotNull(dao.book(bookId));val s=snapshot(b).first()
     val account=requireNotNull(s.accounts.firstOrNull{it.id==input.accountId&&it.active&&!AccountType.valueOf(it.type).debt}){"请选择本账本的资金账户 / この帳簿の資金口座を選択してください"}
@@ -48,7 +50,7 @@ suspend fun LedgerRepository.cancelExpectedIncome(bookId:String,id:String)=db.wi
 suspend fun LedgerRepository.previewExpectedIncomeArrival(bookId:String,id:String,draft:EntryDraft?=null,existingEventId:String?=null):ExpectedIncomeArrivalReview=db.withTransaction {
     require((draft!=null)!=(existingEventId!=null))
     val s=snapshot(requireNotNull(dao.book(bookId))).first();val income=requireNotNull(s.expectedIncomes.firstOrNull{it.id==id})
-    require(income.status=="PENDING"||s.expectedIncomeNeedsReview(income)){"该预计收入已经处理 / この収入予定は処理済みです"}
+    require(s.canEditExpectedIncome(income)){"该预计收入已经处理 / この収入予定は処理済みです"}
     val entry=draft?.let{
         require(it.id==null&&it.kind==EntryKind.INCOME&&it.accountId==income.accountId&&!it.historicalIncluded&&it.settlementConfirmed)
         previewEntry(bookId,it)
