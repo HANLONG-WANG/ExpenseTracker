@@ -103,7 +103,7 @@ private fun DrawScope.stitchedCross(color:Color) {
         "journal"->YText(word("图钉在 ","ピンの位置 ")+text+word(" · 半径 ${radius}m"," · 半径${radius}m"),12,modifier,color=t.accent)
         "objects"->Row(modifier,verticalAlignment=Alignment.CenterVertically) {
             YText(text,11,Modifier.background(t.soft,RoundedCornerShape(50)).padding(horizontal=10.dp,vertical=4.dp),color=t.ink,number=true)
-            YText("  ⌀ ${radius}m",11,color=t.muted,number=true)
+            YText("半径 ${radius}m",11,color=t.muted,number=true)
         }
         else->YText("PIN  $text   R ${radius}M",9,modifier,color=t.muted,number=true,letterSpacing=1.2f)
     }

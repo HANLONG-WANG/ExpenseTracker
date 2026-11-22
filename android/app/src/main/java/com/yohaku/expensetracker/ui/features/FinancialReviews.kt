@@ -99,7 +99,8 @@ import com.yohaku.expensetracker.ui.theme.*
     val choices=setOf("frequency","balance","roundAt","rounding","first","paymentMethod","feeMethod","principalRemainder","feeRemainder","loanMethod","allocation")
     val booleans=setOf("closingIncluded","includeStart","includeEnd","tiersIncludeFees","automatic")
     RecordFacts(names.filter{!values[it.first].isNullOrBlank()&&(it.first!="automatic"||rule.mode==FinanceMode.REVOLVING)}.map{(key,label)->val raw=values.getValue(key)
-        label to when {key=="bank"->s.accounts.firstOrNull{it.id==raw}?.name?:word("账户已不可用","口座が利用できません")
+        label to when {key in setOf("apr","totalRate") && raw.rateValue()==null->word("无效费率","無効な料率")+" · "+raw
+            key=="bank"->s.accounts.firstOrNull{it.id==raw}?.name?:word("账户已不可用","口座が利用できません")
             key=="tierBalanceDate"->if(raw=="BILL_CLOSING")word("本期计费截止余额","当期計算終了時点の残高")else word("付款日还本前余额","支払日の元金返済前残高")
             key in choices->financeLabel(raw)
             key in booleans->if(raw=="true")word("是","はい")else word("否","いいえ")

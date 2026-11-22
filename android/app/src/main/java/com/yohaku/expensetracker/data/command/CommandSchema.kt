@@ -29,6 +29,7 @@ internal fun descriptorSchema(d:SerialDescriptor,nullable:Boolean=d.isNullable):
 internal fun formatSchema(format:String)=buildJsonObject {
     put("type","string")
     when(format) {
+        "nonnegative-decimal"->put("pattern",com.yohaku.expensetracker.domain.finance.RATE_PATTERN)
         "date"->{put("format","date");put("pattern","^[0-9]{4}-[0-9]{2}-[0-9]{2}$")}
         "year-month"->{put("x-format","year-month");put("pattern","^[0-9]{4}-(0[1-9]|1[0-2])$");put("description","YYYY-MM")}
         else->{put("x-format",format);put("description",when(format){"local-time"->"ISO LocalTime (HH:mm, optional seconds/fraction)";"instant"->"ISO Instant (e.g. 2026-11-02T00:00:00Z)";else->"Java ZoneId (e.g. Asia/Tokyo, UTC, +09:00)"})}

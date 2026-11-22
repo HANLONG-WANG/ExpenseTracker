@@ -100,10 +100,10 @@ import java.time.LocalDate
         val canEdit=s.features?.activityMode==true
         if(budgetCategories.isNotEmpty()||canEdit) {
             ThemeSection(word("活动里的分类预算","シーン内のカテゴリ予算"),"WITHIN THIS SCENE")
-            if(budgetCategories.isNotEmpty())BudgetLimitList(budgetCategories,budgetCategories.map{money(categoryBudgets.getValue(it.id).amountMinor-s.activitySpent(activity.id,it.id))}) {category,modifier->
+            if(budgetCategories.isNotEmpty())BudgetLimitList(budgetCategories,budgetCategories.map{money(kotlin.math.abs(categoryBudgets.getValue(it.id).amountMinor-s.activitySpent(activity.id,it.id)))}) {category,modifier->
                 val limit=categoryBudgets.getValue(category.id).amountMinor
                 val spent=s.activitySpent(activity.id,category.id)
-                BudgetLimitRow(category.id,category.name,resolveCategoryIcon(category.id,s.categories),category.parentId!=null,spent,limit,money(spent),money(limit),money(limit-spent),
+                BudgetLimitRow(category.id,category.name,resolveCategoryIcon(category.id,s.categories),category.parentId!=null,spent,limit,money(spent),money(limit),money(kotlin.math.abs(limit-spent)),
                     if(canEdit)({editingCategory=category.id;editing=activity.id})else null,modifier)
             }
             if(canEdit)ActivityCategoryAddButton(false,{editingPicker=true;editing=activity.id},Modifier.testTag("activity-category-detail-add"))

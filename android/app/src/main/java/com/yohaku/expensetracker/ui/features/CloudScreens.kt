@@ -188,9 +188,9 @@ private fun CloudPhase.step()=when(this) {
 @Composable private fun cloudTypeLabel(type:String)=when(type){"receipt"->word("小票整理","レシート整理");"statement"->word("银行流水转换","明細の変換");else->word("通用分析","汎用分析")}
 
 /** The five-step route is drawn per theme: rules, a pencil trail or beads. */
-@Composable private fun CloudTrack(step:Int,warn:Boolean) {
+@Composable private fun CloudTrack(step:Int,warn:Boolean,monthlyReview:Boolean) {
     val t=LocalYohaku.current
-    val labels=listOf(word("上传","送信"),word("排队","待機"),word("分析","分析"),word("领取","受取"),word("入账本","帳簿へ"))
+    val labels=listOf(word("上传","送信"),word("排队","待機"),word("分析","分析"),word("领取","受取"),if(monthlyReview)word("存月评","レビュー保存")else word("入账本","帳簿へ"))
     val current=if(warn)t.warm else t.accent
     Column(Modifier.fillMaxWidth().clearAndSetSemantics{},verticalArrangement=Arrangement.spacedBy(6.dp)) {
         when(t.id) {
@@ -233,7 +233,7 @@ private fun CloudPhase.step()=when(this) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                 YText((index+1).toString().padStart(2,'0')+"  "+cloudTypeLabel(task.type),if(journal)12 else 9,Modifier.weight(1f).then(if(objects)Modifier else Modifier),color=t.muted,number=true,letterSpacing=if(t.id=="magazine")1f else 0f)
                 val tone=if(warn)t.warm else if(good)t.accent else t.muted
-                YText(phase.label(),if(journal)11 else 9,Modifier.testTag("cloud-phase-${task.localId}").then(when(t.id) {
+                YText(if(phase==CloudPhase.IMPORTED && task.purpose=="monthly-review")word("月评已保存","月次レビュー保存済み")else phase.label(),if(journal)11 else 9,Modifier.testTag("cloud-phase-${task.localId}").then(when(t.id) {
                     "magazine"->Modifier.background(if(good)t.ink else Color.Transparent).border(1.dp,if(good)t.ink else tone).padding(horizontal=8.dp,vertical=4.dp)
                     "journal"->Modifier.rotate(-4f).border(1.5.dp,tone,RoundedCornerShape(50)).padding(horizontal=10.dp,vertical=3.dp)
                     else->Modifier.background(if(warn)Color(0xffefd3ad)else if(good)Color(0xffe3e7d6)else Color(0xfff0e4ce),RoundedCornerShape(8.dp)).padding(horizontal=9.dp,vertical=5.dp)
@@ -244,18 +244,24 @@ private fun CloudPhase.step()=when(this) {
             YText(listOf(java.time.Instant.ofEpochMilli(task.createdAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(),
                 word("资料 $uploaded/${view.transfers.size} 份","資料 $uploaded/${view.transfers.size} 件"),
                 view.remote?.inputRevision?.let{word("输入第${it}版","入力 第${it}版")}).filterNotNull().joinToString(" · "),if(journal)11 else 9,color=t.muted,number=true)
-            CloudTrack(phase.step(),warn)
+            CloudTrack(phase.step(),warn,task.purpose=="monthly-review")
             task.lastError?.let{YText(localized(it),11,color=t.warm)}
             if(phase==CloudPhase.NEEDS_INFO)view.latestEventMessages.firstOrNull()?.let{YText(word("分析台留言：","分析デスクより：")+it,12,color=t.warm)}
             view.claimable?.let{r->
                 r.summary?.takeIf{it.isNotBlank()}?.let{YText(it,12)}
             }
             view.ackWarnings.forEach{YText(localized(it),10,color=t.warm)}
-            if(view.ackPending)YText(word("本地已导入，回执待发送。不会重复导入。","端末では取込済み。受領通知の送信待ちです。重複取込はしません。"),10,color=t.muted)
+            if(view.savedAckPending)YText(if(task.purpose=="monthly-review")word("月评已保存，回执待发送。","月次レビューを保存しました。受領通知は送信待ちです。")
+                else word("本地已导入，回执待发送。","端末に取り込みました。受領通知は送信待ちです。"),10,color=t.muted)
+            if(view.failedAckPending)YText(word("导入失败回执待发送。","取込失敗の通知は送信待ちです。"),10,color=t.warm)
+            if(view.pendingAcks.isEmpty())view.latestSentAck?.let { ack ->
+                YText(if(ack.status=="failed")word("导入失败回执已发送。","取込失敗の通知を送信しました。")
+                    else word("保存回执已发送。","保存の通知を送信しました。"),10,color=t.muted)
+            }
             FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 when(phase) {
                     CloudPhase.READY->YButton(word("领取结果并预览","結果を受け取って確認"),onClaim,Modifier.testTag("cloud-claim-${task.localId}"),primary=true,enabled=!busy)
-                    CloudPhase.BLOCKED,CloudPhase.PREPARING->YButton(word("继续上传","アップロードを再開"),onRetry,Modifier.testTag("cloud-retry-${task.localId}"),enabled=!busy)
+                    CloudPhase.BLOCKED,CloudPhase.PREPARING->if(!task.connectionBlocked)YButton(word("继续上传","アップロードを再開"),onRetry,Modifier.testTag("cloud-retry-${task.localId}"),enabled=!busy)
                     CloudPhase.NEEDS_INFO->YButton(word("补充资料","資料を追加"),onSupplement,Modifier.testTag("cloud-supplement-${task.localId}"),enabled=!busy)
                     else->{}
                 }
@@ -308,7 +314,7 @@ private fun CloudPhase.step()=when(this) {
     }
 }
 
-@Composable internal fun CloudPickedFiles(files:List<Uri>,onRemove:(Uri)->Unit) {
+@Composable internal fun CloudPickedFiles(files:List<Uri>,onRemove:(Uri)->Unit,unreadable:Set<Uri> = emptySet()) {
     val context=LocalContext.current
     val t=LocalYohaku.current
     if(files.isEmpty())return
@@ -317,7 +323,10 @@ private fun CloudPhase.step()=when(this) {
             val name=remember(uri){runCatching{context.contentResolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use{c->if(c.moveToFirst())c.getString(0)else null}}.getOrNull()?:uri.lastPathSegment.orEmpty()}
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                 YText((i+1).toString().padStart(2,'0'),10,color=t.muted,number=true)
-                YText(name,11,Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    YText(name,11)
+                    if(uri in unreadable)YText(word("无法读取，请移除后重新选择","読み込めません。削除して選び直してください"),11,color=t.warm)
+                }
                 YLink(word("移除","削除"),{onRemove(uri)})
             }
         }

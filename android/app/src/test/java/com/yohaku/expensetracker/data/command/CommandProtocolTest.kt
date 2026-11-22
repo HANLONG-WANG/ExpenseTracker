@@ -6,6 +6,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CommandProtocolTest {
+    @Test fun treatTailCanBePatchedIndependentlyOfShares() {
+        val old=mapOf("ME" to "50","friend" to "50","__tail" to "ME")
+        val shares=mapOf("ME" to "25","friend" to "75")
+        fun patch(weights:Map<String,String>?,tail:JsonElement?)=patchTreatWeights(old,weights,tail){it.jsonPrimitive.content}
+        assertEquals(shares+("__tail" to "ME"),patch(shares,null))
+        assertEquals(old+("__tail" to "friend"),patch(null,JsonPrimitive("friend")))
+        assertEquals(old-"__tail",patch(null,JsonNull))
+    }
+
     private val registry=CommandRegistry()
     private val context="0".repeat(64)
     private fun input(raw:String)=commandJson.parseToJsonElement(raw).jsonObject

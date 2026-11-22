@@ -12,11 +12,17 @@ fun predictionCandidates(mode:FinanceMode,count:Int,start:LocalDate,firstDate:Lo
     val payment=if(mode==FinanceMode.SINGLE&&rule?.billing?.issues()?.isEmpty()==true)
         event?.takeIf{it.cardPaymentChoice in listOf("BONUS","DEFERRED")}?.let{recordedSinglePaymentDate(it,rule)}?:billingDates(start,rule.billing).paymentDate
         else firstDate
+    return monthlyCandidates(n,start,payment,firstEnd,rule,mode)
+}
+
+internal fun monthlyCandidates(count:Int,start:LocalDate,payment:LocalDate,firstEnd:LocalDate,
+    rule:FinancialRuleVersion?,mode:FinanceMode):List<Pair<String,AccrualWindow>> {
+    val paymentDay=if(mode==FinanceMode.FIXED_LOAN && rule!=null)start.dayOfMonth else rule?.billing?.paymentDay
     val interest=rule?.revolving?.interest
-    return List(n){i->
-        val previous=firstEnd.plusMonths(i-1L)
+    return List(count){i->
+        val previous=monthlyDate(firstEnd,i-1L,rule?.billing?.closingDay)
         val nextStart=if(i==0)start else if(interest?.frequency==ChargeFrequency.MONTHLY||interest?.includeStart==true&&interest.includeEnd==true)previous.plusDays(1)
             else if(interest?.includeStart==false&&interest.includeEnd==false)previous.minusDays(1)else previous
-        payment.plusMonths(i.toLong()).toString() to AccrualWindow(nextStart.toString(),firstEnd.plusMonths(i.toLong()).toString())
+        monthlyDate(payment,i.toLong(),paymentDay).toString() to AccrualWindow(nextStart.toString(),monthlyDate(firstEnd,i.toLong(),rule?.billing?.closingDay).toString())
     }
 }

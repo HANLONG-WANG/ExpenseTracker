@@ -135,10 +135,9 @@ import java.time.LocalDate
             YButton(word("生成按月候选","月ごとの候補を作成"),{vm.execute {
                 val n=count.toIntOrNull()?:error("请输入期数 / 回数を入力してください");require(n in 1..1200)
                 val end=LocalDate.parse(firstEnd);val payment=LocalDate.parse(firstPay)
-                val rule=f.rules.cardRule(a.id,firstStart,mode.name)?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}?.revolving?.interest
-                encoded=vm.repository.json.encodeToString(List(n){i->val previous=end.plusMonths(i-1L)
-                    val start=if(i==0)LocalDate.parse(firstStart)else if(rule?.frequency==ChargeFrequency.MONTHLY||rule?.includeStart==true&&rule.includeEnd==true)previous.plusDays(1)else if(rule?.includeStart==false&&rule.includeEnd==false)previous.minusDays(1)else previous
-                    PoolPeriodDraft(payment.plusMonths(i.toLong()).toString(),start.toString(),end.plusMonths(i.toLong()).toString())})
+                val rule=f.rules.cardRule(a.id,firstStart,mode.name)?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
+                encoded=vm.repository.json.encodeToString(monthlyCandidates(n,LocalDate.parse(firstStart),payment,end,rule,mode).map { (date,window) ->
+                    PoolPeriodDraft(date,window.start,window.end) })
             }},Modifier.testTag("pool-generate"),enabled=!busy,haptic=Haptic.Step)
             rows.forEachIndexed{i,row->key(row.calendarId){Panel {
                 YText(word("第${i+1}期","第${i+1}回"),14)

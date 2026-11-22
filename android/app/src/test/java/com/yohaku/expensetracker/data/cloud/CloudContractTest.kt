@@ -38,12 +38,20 @@ class CloudContractTest {
         val imported=CloudImportEntity(importKey(row.origin,"remote","good","sha"),"local","remote","good",1,"sha","saved.txt",2)
         val ack=CloudAckEntity("local","good","imported","remote",2)
         val view=cloudTaskView(row,emptyList(),listOf(imported),listOf(ack))
-        assertEquals(CloudPhase.IMPORTED,view.phase); assertTrue(view.ackPending)
+        assertEquals(CloudPhase.IMPORTED,view.phase); assertTrue(view.savedAckPending)
         val conflict=cloudTaskView(row,emptyList(),listOf(imported),listOf(ack.copy(sentAt=3,lastError="version conflict")))
-        assertEquals(CloudPhase.IMPORTED,conflict.phase); assertFalse(conflict.ackPending)
+        assertEquals(CloudPhase.IMPORTED,conflict.phase); assertFalse(conflict.savedAckPending)
         assertEquals(listOf("version conflict"),conflict.ackWarnings)
         assertEquals(CloudPhase.SUBMITTED,cloudTaskView(row.copy(remoteJson=null),emptyList(),emptyList(),emptyList()).phase)
-        assertEquals(CloudPhase.BLOCKED,cloudTaskView(row.copy(stage="BLOCKED"),emptyList(),emptyList(),emptyList()).phase)
+        assertEquals(CloudPhase.READY,cloudTaskView(row.copy(stage="BLOCKED"),emptyList(),emptyList(),emptyList()).phase)
+        for(stage in listOf("PREPARED","UPLOADING","SUBMITTED")) {
+            val blocked=row.copy(stage="CONNECTION:$stage")
+            assertEquals(stage,blocked.resumeStage())
+            assertEquals(CloudPhase.BLOCKED,cloudTaskView(blocked,emptyList(),emptyList(),emptyList()).phase)
+        }
+        val failed=cloudTaskView(row,emptyList(),emptyList(),listOf(ack.copy(status="failed")))
+        assertTrue(failed.failedAckPending);assertFalse(failed.savedAckPending);assertEquals(CloudPhase.READY,failed.phase)
+        assertEquals("failed",cloudTaskView(row,emptyList(),emptyList(),listOf(ack.copy(status="failed",sentAt=3))).latestSentAck?.status)
     }
     @Test fun httpUsesTwoHeadersFixedLengthAndNeverFollowsRedirects() = runBlocking {
         val server=HttpServer.create(InetSocketAddress("127.0.0.1",0),0)

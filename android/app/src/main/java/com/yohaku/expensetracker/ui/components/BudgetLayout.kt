@@ -73,7 +73,7 @@ import com.yohaku.expensetracker.ui.features.ThemeSection
     val objects=t.id=="objects"
     val over=limit!=null&&spent>limit
     val mainLabel=when{limit==null->word("已花","支出");over->word("已超出","超過");else->word("还剩","残り")}
-    val main=if(limit==null)spentText else remaining.removePrefix("−").removePrefix("-")
+    val main=if(limit==null)spentText else remaining
     val caption=if(limit==null)word("未设分类预算","カテゴリ予算なし")else word("已花 ","支出 ")+spentText+" / "+word("预算 ","予算 ")+limitText
     val mainColor=if(over)t.warm else if(limit==null)t.muted else t.ink
     val frame=if(objects)Modifier.drawBehind{drawRoundRect(Color(0x20d4c3a8),Offset(0f,4.dp.toPx()),cornerRadius=androidx.compose.ui.geometry.CornerRadius(17.dp.toPx()))}.background(t.surface,RoundedCornerShape(17.dp)).padding(horizontal=14.dp,vertical=16.dp)

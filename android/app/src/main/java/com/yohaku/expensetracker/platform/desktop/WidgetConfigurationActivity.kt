@@ -7,7 +7,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import com.yohaku.expensetracker.enablePaperSystemBars
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -29,7 +29,7 @@ class WidgetConfigurationActivity:ComponentActivity() {
         setResult(RESULT_CANCELED)
         val id=intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,AppWidgetManager.INVALID_APPWIDGET_ID)
         if(id==AppWidgetManager.INVALID_APPWIDGET_ID){finish();return}
-        enableEdgeToEdge()
+        enablePaperSystemBars()
         val app=application as YohakuApplication
         setContent {
             val selection by remember {combine(app.repository.dao.bookOverviews(),app.preferences.activeBook){books,active->

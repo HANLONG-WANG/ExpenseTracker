@@ -1,6 +1,8 @@
 package com.yohaku.expensetracker.ui.features.scan
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.*
@@ -19,7 +21,7 @@ import com.yohaku.expensetracker.receipt.scan.*
 import com.yohaku.expensetracker.ui.theme.*
 import kotlin.math.*
 
-// The accessibility/test action goes through the very same constraint/magnifier path as touch.
+// Instrumentation also uses this action to exercise dragging and the magnifier.
 internal val MoveScanHandle = SemanticsPropertyKey<AccessibilityAction<(Int, Float, Float, Boolean) -> Boolean>>("MoveScanHandle")
 internal val ScanContourValue = SemanticsPropertyKey<ScanContour>("ScanContourValue")
 internal val ScanMagnifierVisible = SemanticsPropertyKey<Boolean>("ScanMagnifierVisible")
@@ -41,44 +43,70 @@ internal val ScanMagnifierVisible = SemanticsPropertyKey<Boolean>("ScanMagnifier
         changed(next)
         return true
     }
-    Canvas(modifier.testTag("scan-contour-editor").semantics {
-        contentDescription = description
-        this[ScanContourValue] = contour
-        this[ScanMagnifierVisible] = active >= 0
-        this[MoveScanHandle] = AccessibilityAction(description, ::move)
-    }.pointerInput(frame) {
-        fun fit() = min(size.width.toFloat() / frame.width, size.height.toFloat() / frame.height)
-        fun origin(scale: Float) = Offset((size.width - frame.width * scale) / 2, (size.height - frame.height * scale) / 2)
-        detectDragGestures(onDragStart = { touch ->
-            val scale = fit(); val offset = origin(scale)
-            val handles = current.left + current.right
-            val nearest = handles.indices.minBy { (Offset(handles[it].x.toFloat(), handles[it].y.toFloat()) * scale + offset - touch).getDistance() }
-            val distance = (Offset(handles[nearest].x.toFloat(), handles[nearest].y.toFloat()) * scale + offset - touch).getDistance()
-            active = if (distance <= 32.dp.toPx()) nearest else -1
-            if (active >= 0) dragPosition = Offset(handles[active].x.toFloat(), handles[active].y.toFloat())
-        }, onDragEnd = { active = -1 }, onDragCancel = { active = -1 }) { change, delta ->
-            if (active >= 0) {
-                change.consume()
-                dragPosition += delta / fit()
-                move(active, dragPosition.x, dragPosition.y, true)
+    BoxWithConstraints(modifier) {
+        Canvas(Modifier.fillMaxSize().testTag("scan-contour-editor").semantics {
+            contentDescription = description
+            this[ScanContourValue] = contour
+            this[ScanMagnifierVisible] = active >= 0
+            this[MoveScanHandle] = AccessibilityAction(description, ::move)
+        }.pointerInput(frame) {
+            fun fit() = min(size.width.toFloat() / frame.width, size.height.toFloat() / frame.height)
+            fun origin(scale: Float) = Offset((size.width - frame.width * scale) / 2, (size.height - frame.height * scale) / 2)
+            detectDragGestures(onDragStart = { touch ->
+                val scale = fit(); val offset = origin(scale)
+                val handles = current.left + current.right
+                val nearest = handles.indices.minBy { (Offset(handles[it].x.toFloat(), handles[it].y.toFloat()) * scale + offset - touch).getDistance() }
+                val distance = (Offset(handles[nearest].x.toFloat(), handles[nearest].y.toFloat()) * scale + offset - touch).getDistance()
+                active = if (distance <= 32.dp.toPx()) nearest else -1
+                if (active >= 0) dragPosition = Offset(handles[active].x.toFloat(), handles[active].y.toFloat())
+            }, onDragEnd = { active = -1 }, onDragCancel = { active = -1 }) { change, delta ->
+                if (active >= 0) {
+                    change.consume()
+                    dragPosition += delta / fit()
+                    move(active, dragPosition.x, dragPosition.y, true)
+                }
             }
+        }) {
+            val scale = min(size.width / frame.width, size.height / frame.height)
+            val offset = Offset((size.width - frame.width * scale) / 2, (size.height - frame.height * scale) / 2)
+            fun project(p: ScanPoint) = Offset(p.x.toFloat(), p.y.toFloat()) * scale + offset
+            drawImage(image, dstOffset = IntOffset(offset.x.roundToInt(), offset.y.roundToInt()),
+                dstSize = IntSize((frame.width * scale).roundToInt(), (frame.height * scale).roundToInt()), filterQuality = FilterQuality.High)
+            val outline = contour.outline()
+            // Keep receipt lettering clear: no translucent fill inside the editable area.
+            // Curves and ends are separate rendering functions so themes can replace each independently.
+            scanSide(outline.take(64).map(::project), t)
+            scanSide(outline.drop(64).map(::project), t)
+            scanEnd(project(contour.top.left), project(contour.top.right), contour.topInFrame, t)
+            scanEnd(project(contour.bottom.left), project(contour.bottom.right), contour.bottomInFrame, t)
+            (contour.left + contour.right).forEachIndexed { i, p -> scanHandle(project(p), i == active, t) }
+            if (active >= 0) scanMagnifier(image, project((contour.left + contour.right)[active]), offset,
+                Size(frame.width * scale, frame.height * scale), t)
         }
-    }) {
-        val scale = min(size.width / frame.width, size.height / frame.height)
-        val offset = Offset((size.width - frame.width * scale) / 2, (size.height - frame.height * scale) / 2)
-        fun project(p: ScanPoint) = Offset(p.x.toFloat(), p.y.toFloat()) * scale + offset
-        drawImage(image, dstOffset = IntOffset(offset.x.roundToInt(), offset.y.roundToInt()),
-            dstSize = IntSize((frame.width * scale).roundToInt(), (frame.height * scale).roundToInt()), filterQuality = FilterQuality.High)
-        val outline = contour.outline()
-        // Keep receipt lettering clear: no translucent fill inside the editable area.
-        // Curves and ends are separate rendering functions so themes can replace each independently.
-        scanSide(outline.take(64).map(::project), t)
-        scanSide(outline.drop(64).map(::project), t)
-        scanEnd(project(contour.top.left), project(contour.top.right), contour.topInFrame, t)
-        scanEnd(project(contour.bottom.left), project(contour.bottom.right), contour.bottomInFrame, t)
-        (contour.left + contour.right).forEachIndexed { i, p -> scanHandle(project(p), i == active, t) }
-        if (active >= 0) scanMagnifier(image, project((contour.left + contour.right)[active]), offset,
-            Size(frame.width * scale, frame.height * scale), t)
+        val scale = minOf(maxWidth / frame.width, maxHeight / frame.height)
+        val left = (maxWidth - scale * frame.width) / 2
+        val top = (maxHeight - scale * frame.height) / 2
+        val step = min(frame.width, frame.height) * .01f
+        val directions = listOf(
+            Triple(word("左移", "左へ"), -step, 0f), Triple(word("右移", "右へ"), step, 0f),
+            Triple(word("上移", "上へ"), 0f, -step), Triple(word("下移", "下へ"), 0f, step)
+        )
+        (contour.left + contour.right).forEachIndexed { id, point ->
+            val side = if (id < 5) word("左边缘", "左の縁") else word("右边缘", "右の縁")
+            val label = word("${side}控制点 ${id % 5 + 1}", "${side}の点 ${id % 5 + 1}")
+            Box(Modifier.offset(
+                x = (left + scale * point.x.toFloat() - 12.dp).coerceIn(0.dp, (maxWidth-24.dp).coerceAtLeast(0.dp)),
+                y = (top + scale * point.y.toFloat() - 12.dp).coerceIn(0.dp, (maxHeight-24.dp).coerceAtLeast(0.dp))
+            ).size(24.dp).focusable().semantics {
+                contentDescription = label
+                customActions = directions.map { (name, dx, dy) ->
+                    CustomAccessibilityAction(name) {
+                        val handle = (current.left + current.right)[id]
+                        move(id, handle.x.toFloat() + dx, handle.y.toFloat() + dy, false)
+                    }
+                }
+            })
+        }
     }
 }
 

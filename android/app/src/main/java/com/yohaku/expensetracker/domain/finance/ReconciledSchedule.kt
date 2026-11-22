@@ -25,7 +25,7 @@ fun reconciledSchedule(
     if(additions.isNotEmpty()&&mode !in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE))return Calculation.Unsupported("pool.fixedLoan")
     if(additions.any{it.date<terms.agreementDate})return Calculation.Incomplete(listOf("pool.sourceBeforeStart"))
     if(facts.any{LocalDate.parse(it.date)<LocalDate.parse(terms.agreementDate)})return Calculation.Incomplete(listOf("plan.clearingBeforeSource"))
-    if(retained.any{it.date<LocalDate.parse(terms.agreementDate)})return Calculation.Incomplete(listOf("plan.billBeforeSource"))
+    if(terms.hasPaymentBeforeSource(retained))return Calculation.Incomplete(listOf("plan.billBeforeSource"))
     if(retained.any{bill->bill.principalMinor?.let{principal->facts.filter{it.periodNumber==bill.number}.fold(0L){sum,p->Math.addExact(sum,p.principalMinor)}>principal}==true})return Calculation.Incomplete(listOf("plan.clearedExceedsBill"))
     require(terms.additionalFees.all{it.number in 1..terms.paymentDates.size&&it.minor>=0})
     val actual=facts.map{PrincipalChange(LocalDate.parse(it.date),-it.principalMinor)}+additions.map{PrincipalChange(LocalDate.parse(it.date),it.principalMinor)}
@@ -108,7 +108,7 @@ fun reconciledSchedule(
             val openingAfterStart=interest.frequency==ChargeFrequency.MONTHLY||interest.balanceBasis==BalanceBasis.OPENING_BALANCE
             val changes=(actual+planned).filter{it.date<=end&&if(openingAfterStart)it.date>start else it.date>=start}
             when(val result=if(revolving)versionedInterestCharge(position(start,openingAfterStart),start,end,rates,changes,terms.firstPeriodNumber+index==1)
-                else interestCharge(position(start,openingAfterStart),start,end,rule.loanInterest!!,changes,terms.firstPeriodNumber+index==1)) {
+                else interestCharge(position(start,openingAfterStart),start,end,interest.forLoanPeriod(index),changes,terms.firstPeriodNumber+index==1)) {
                 is Calculation.Ready->result.value
                 is Calculation.Incomplete->return result
                 is Calculation.Unsupported->return result

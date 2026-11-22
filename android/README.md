@@ -88,9 +88,9 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 ## 桌面小组件与模板快捷方式（2026-11-07）
 
-本节对应当前源码，文首既有发布 APK 不包含本功能。视觉依据为 [widgets.html](../design/widgets.html)：小组件默认 4×2、最小 2×2，宽度达到 250dp 显示前四个模板。Android 12+ 使用两种尺寸映射的 RemoteViews，Android 10–11 根据尺寸选布局；支持添加时选账本和 Android 12+ 长按重新配置。配置页用当前账本的 Compose 主题；小组件按所绑定账本的主题与中日语言显示。杂志用报头、分隔线和编号目录，手账用横线纸、红页边、装订孔、胶带、算式、波浪线和清单，小物用钱袋、提带、分半奶油卡及带分类图标的模板纸条。
+本节对应当前源码，文首既有发布 APK 不包含本功能。视觉依据为 [widgets.html](../design/widgets.html)：小组件目标格数 4×2，最小可缩放尺寸 140×180dp（实际格数由启动器决定），宽度达到 250dp 显示前四个模板。Android 12+ 使用两种尺寸映射的 RemoteViews，Android 10–11 根据尺寸选布局；支持添加时选账本和 Android 12+ 长按重新配置。配置页用当前账本的 Compose 主题；小组件按所绑定账本的主题与中日语言显示。杂志用报头、分隔线和编号目录，手账用横线纸、红页边、装订孔、胶带、算式、波浪线和清单，小物用钱袋、提带、分半奶油卡及带分类图标的模板纸条。
 
-月份取设备当地今天；`WidgetBudget` 纯函数接收 `BudgetProjection` 和日期。预算内还能花为 `remainingMinor`，自由可花为 `availableMinor`（扣除本月待付预留），与首页相同。剩余天数包含今天，日均为非负自由可花除以剩余天数、按币种最小单位向下取整，金额仍用 `Money.display()`。未设预算显示本月已花、未设预算和剩余天数；超支显示正数超出额、月预算和剩余天数；预留金额未知时自由可花/日均显示「—」，仅自由可花为负时保留负数而日均为零。
+月份取设备当地今天；桌面先按自然月预测未物化的周期实例，与已保存实例合并后计算 `BudgetProjection`，刷新不会写入账本。预算内还能花为 `remainingMinor`，自由可花为 `availableMinor`（扣除本月待付预留），与首页相同。剩余天数包含今天，日均为非负自由可花除以剩余天数、按币种最小单位向下取整，金额仍用 `Money.display()`。未设预算显示本月已花、未设预算和剩余天数；超支显示正数超出额、月预算和剩余天数；预留金额未知时自由可花/日均显示「—」，仅自由可花为负时保留负数而日均为零。
 
 余额点击切到账本首页；宽版模板按 sortOrder 取前四个（包含失效模板），模板格始终按四格定位，不足四个时不拉伸，紧随最后一个模板放一格「＋ 模板」（进入模板管理），其余格留白；无模板时整行显示创建提示并进入模板管理。失效格置灰并进入编辑；已删除模板打开管理并显示主题提示。有效模板复用 `startTemplate`、既有草稿确认和金额聚焦，不新增保存流程。长按 app 图标的动态快捷方式取当前账本前四个**可用**模板；标签为模板名、长标签附固定金额。图标用共享字体链或现有分类路径绘制 adaptive bitmap，三主题独立设计；没有 pinned 快捷方式或桌面记账弹窗。快捷方式内容未变时不重复发布；系统限流会记录错误并安排重试，应用回到前台也重新检查。
 
@@ -210,7 +210,7 @@ Room 33→34：`recurrences` 增加 `merchant`/`note`（NOT NULL DEFAULT ''）�
 | SyntheticDoc 31×45，ReceiptScanEval 的 `original_31x45.ckpt` 经 `eval/syntheticdoc.py` 导出 backward map（opset 17） | [MIT](app/src/main/assets/licenses/SyntheticDoc-MIT.txt) |
 | ONNX Runtime 1.29.0 | [MIT](app/src/main/assets/licenses/ONNXRuntime-MIT.txt) |
 | OpenCV 5.0.0 | [Apache-2.0](app/src/main/assets/licenses/OpenCV-Apache-2.0.txt) |
-| QNN runtime 2.42.0 | [Qualcomm AI Stack License](app/src/main/assets/licenses/QNN-Runtime-LICENSE.txt)（该版本 AAR 的 LICENSE.pdf 转文本）及 [原样 NOTICE](app/src/main/assets/licenses/QNN-Runtime-NOTICE.txt) |
+| QNN runtime 2.42.0 | [Qualcomm AI Stack License](app/src/main/assets/licenses/QNN-Runtime-LICENSE.txt)（按原 PDF 栏序提取）及 [原样 NOTICE](app/src/main/assets/licenses/QNN-Runtime-NOTICE.txt) |
 
 模型下载来源、SHA256 和合成测试数据再生成方法见 [扫描工具 README](tools/receipt-scanner/README.md#模型位置与来源)。许可文件以组件名前缀区分，`assets/licenses/` 与依赖 JAR 的 `META-INF` 资源路径不同；保留既有 Gradle packaging 配置，不为新增许可添加 exclude/pickFirst。阶段 6 的 debug/release 构建均通过，六份许可与提供的原文及 APK 内文件逐字节一致，APK 内无重复条目。
 
@@ -496,6 +496,12 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 - 修正对象为 `docs/bug-reports-other.md` 分区 01/02，涉及额度基准、日历/按日小计的费用口径、预留与周期扣款去重、リボ周期消费风险、结束活动后的期间外规则、活动预留和他人请客的同币种金额、预留跨月预览、退款入账日、解除周期关联、已知资金缺口提醒、停用账户的历史转账/退款编辑、空余额池调整月付、规则变更影响范围。手机和云端命令共用同一仓库校验。
 - JVM：`CreditLimitBasisTest`、`ActivityPlanningReviewTest`、`BudgetExclusionTest`、`CardRecurrenceForecastTest`、`FinancialOutlookTest` 及全量通过。仪器默认参数：`ActivityTreatTest`、`BudgetRecurrenceTest`、`CommandWorkflowExecutionTest`、`CommandPlanningExecutionTest`、`CurrencyTransactionsTest`、`TransferTransactionsTest`、`FinancialPoolPaymentTest`、`FinancialPredictionTest`、`CardPaymentTest`、`FinancialPoolTest`、`ActivityManagementStorageTest`（61 项）通过；`EntryFlowTest`、`TransferFlowTest`、`ActivityFlowTest`、`StatementFileWorkflowTest`、`LedgerCalendarTest`、`FinancialOutlookFlowTest`、`BudgetRecurrenceFlowTest`、`EntryLifecycleFlowTest` 通过。
 - 视觉（S24 Ultra 尺寸，`looks=all visual=true`，截图已查看）：新增 `ActivityFlowTest#crossMonthReserveAndEndedActivityRuleInEveryThemeAndLanguage`（`phase-b-p11/*-reserve-cross-month.png`、`*-activity-end-preview.png`、`*-ended-activity-rule.png`）；退款表单发生日/入账日两栏见 `phase-b-p08/*-refund-form.png`；另跑 `LedgerCalendarTest`、`FinancialOutlookFlowTest#cardRecurring…`、`TransferFlowTest`。
+
+### 云端任务与金融预测（2026-11-22）
+
+重连原站点后，任务恢复之前的传输阶段，待发送的成功和失败回执分别提示。月评保存指保存评估内容，办理建议仍需另行确认。所选记录导出包括分录 ID 与转账两端的日期、确认状态，详见[办理协议](../docs/formats/yohaku-command-protocol-v1.md)。
+
+固定贷款按日计息时，中间付款日只归属一期。付款日或计费截止日遇短月时，规则候选日期在后续月份恢复原日号。预测付款日须在来源日当天或之后；固定贷款首期须晚于开始日。未知费率可留空，已填写的费率须为非负数。
 
 ## 构建与验证
 

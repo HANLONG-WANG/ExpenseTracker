@@ -68,36 +68,43 @@ class ReminderCoordinator(private val app:YohakuApplication,private val reposito
         var current=planReminders(items,settings,state,now,zone)
         state=state.copy(risks=state.risks.filterKeys{it in current.activeRiskKeys})
         val books=repo.books.first().filter{it.deletedAt==null}.associateBy{it.id}
-        // Cancel displayed summaries whose facts changed, or whose book/settings disappeared.
-        for(notification in manager.activeNotifications) {
-            val id=notification.tag?.removePrefix("book:")?:continue
-            val prior=notification.notification.extras.getStringArray("yohaku.items")?.toList().orEmpty()
-            val live=items.filter{it.bookId==id&&(settings[id]?:ReminderPreferences()).allows(it.kind)}.map{repo.json.encodeToString(ReminderItem.serializer(),it)}
-            if(!allowed()||id !in books||prior.any{it !in live})manager.cancel(notification.tag,NOTIFICATION_ID)
-        }
-        if(deliver&&allowed()) {
-            for((bookId,due) in current.due.groupBy{it.item.bookId}) {
-                val book=books[bookId]?:continue
-                val ja=book.language=="ja"
-                val rows=due.distinctBy{it.item.key}.map{slot->val i=slot.item
-                    if(i.kind=="MONTHLY_REVIEW")return@map i.title+if(ja)" · 内容を確認して送信"else" · 查看内容后手动提交"
-                    val amount=i.amountMinor?.let{Money(Currency.valueOf(i.currency),it).display()}?:if(ja)"金額未定"else"金额未定"
-                    "${if(i.estimated)if(ja)"見込み "else"预计 "else ""}${i.currency} $amount · ${i.date} · ${i.account} · ${i.title}"
-                }
-                val open=Intent(app,MainActivity::class.java).setAction(ACTION_OPEN).setData(Uri.Builder().scheme("yohaku").authority("reminders").appendPath(bookId).build()).putExtra(EXTRA_BOOK,bookId).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                (due.firstOrNull{it.item.kind=="MONTHLY_REVIEW"}?:due.distinctBy{it.item.key}.singleOrNull())?.let{open.putExtra(EXTRA_ITEM,repo.json.encodeToString(ReminderItem.serializer(),it.item))}
-                val content=PendingIntent.getActivity(app,0,open,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                val notification=NotificationCompat.Builder(app,CHANNEL).setSmallIcon(R.drawable.ic_notification)
-                    .setContentTitle("${book.name} · "+if(ja)"大事な予定"else"重要事项")
-                    .setContentText(rows.first()).setStyle(if(rows.size==1)NotificationCompat.BigTextStyle().bigText(rows.first())else NotificationCompat.InboxStyle().also{style->rows.forEach{style.addLine(it)}})
-                    .setContentIntent(content).setAutoCancel(true).setOnlyAlertOnce(false)
-                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC).setCategory(NotificationCompat.CATEGORY_REMINDER)
-                    .addExtras(android.os.Bundle().apply{putStringArray("yohaku.items",due.map{repo.json.encodeToString(ReminderItem.serializer(),it.item)}.toTypedArray())}).build()
-                manager.notify("book:$bookId",NOTIFICATION_ID,notification)
-                state=recordReminderDelivery(state,due,now,zone)
+        val active=manager.activeNotifications.filter{it.id==NOTIFICATION_ID && it.tag?.startsWith("book:")==true}
+            .associateBy{requireNotNull(it.tag).removePrefix("book:")}
+        val enabled=allowed()
+        val dueByBook=if(deliver&&enabled)current.due.groupBy{it.item.bookId} else emptyMap()
+        for(bookId in active.keys+dueByBook.keys) {
+            val book=books[bookId]
+            val prior=active[bookId]?.notification?.extras?.getStringArray("yohaku.items").orEmpty()
+            val due=dueByBook[bookId].orEmpty()
+            val priorKeys=prior.map{repo.json.decodeFromString(ReminderItem.serializer(),it).key}.toSet()
+            val prefs=settings[bookId]?:ReminderPreferences()
+            val live=items.filter{it.bookId==bookId&&prefs.allows(it.kind)}
+            val shown=displayedReminders(priorKeys,live,due)
+            if(!enabled||book==null||shown.isEmpty()) {
+                manager.cancel("book:$bookId",NOTIFICATION_ID)
+                continue
             }
-            current=planReminders(items,settings,state,now,zone)
+            val encoded=shown.map{repo.json.encodeToString(ReminderItem.serializer(),it)}
+            if(due.isEmpty()&&encoded==prior.toList())continue
+            val ja=book.language=="ja"
+            val rows=shown.map{i->
+                if(i.kind=="MONTHLY_REVIEW")return@map i.title+if(ja)" · 内容を確認して送信"else" · 查看内容后手动提交"
+                val amount=i.amountMinor?.let{Money(Currency.valueOf(i.currency),it).display()}?:if(ja)"金額未定"else"金额未定"
+                "${if(i.estimated)if(ja)"見込み "else"预计 "else ""}${i.currency} $amount · ${i.date} · ${i.account} · ${i.title}"
+            }
+            val open=Intent(app,MainActivity::class.java).setAction(ACTION_OPEN).setData(Uri.Builder().scheme("yohaku").authority("reminders").appendPath(bookId).build()).putExtra(EXTRA_BOOK,bookId).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            (shown.singleOrNull{it.kind=="MONTHLY_REVIEW"}?:shown.singleOrNull())?.let{open.putExtra(EXTRA_ITEM,repo.json.encodeToString(ReminderItem.serializer(),it))}
+            val content=PendingIntent.getActivity(app,0,open,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val notification=NotificationCompat.Builder(app,CHANNEL).setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("${book.name} · "+if(ja)"大事な予定"else"重要事项")
+                .setContentText(rows.first()).setStyle(if(rows.size==1)NotificationCompat.BigTextStyle().bigText(rows.first())else NotificationCompat.InboxStyle().also{style->rows.forEach{style.addLine(it)}})
+                .setContentIntent(content).setAutoCancel(true).setOnlyAlertOnce(due.isEmpty())
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC).setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .addExtras(android.os.Bundle().apply{putStringArray("yohaku.items",encoded.toTypedArray())}).build()
+            manager.notify("book:$bookId",NOTIFICATION_ID,notification)
+            if(due.isNotEmpty())state=recordReminderDelivery(state,due,now,zone)
         }
+        if(dueByBook.isNotEmpty())current=planReminders(items,settings,state,now,zone)
         preferences.saveReminderRuntime(state,current.slots)
         plan.value=current.slots
         // Midnight re-evaluation rolls forecasts and recurrence instances forward without a service.

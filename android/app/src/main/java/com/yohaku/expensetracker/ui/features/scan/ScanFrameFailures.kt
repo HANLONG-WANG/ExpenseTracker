@@ -1,19 +1,18 @@
 package com.yohaku.expensetracker.ui.features.scan
 
-/** A broken analysis frame is dropped; it never owns camera lifecycle or the error page.
- * Shared by the analyzer and overlay mapping, which run on different threads.
- */
 internal class ScanFrameFailures(private val log: (Int, Exception) -> Unit) {
+    private var consecutive = 0
     @Volatile var count = 0
         private set
     private var lastLogMs: Long? = null
 
-    fun <T> dropping(nowMs: Long, work: () -> T): T? = try { work() } catch (e: Exception) {
+    fun <T> dropping(nowMs: Long, work: () -> T): T? = try { work().also { consecutive = 0 } } catch (e: Exception) {
         record(nowMs, e)
+        if (++consecutive >= 3) throw e
         null
     }
 
-    @Synchronized private fun record(nowMs: Long, error: Exception) {
+    private fun record(nowMs: Long, error: Exception) {
         count++
         if (lastLogMs == null || nowMs - lastLogMs!! >= 5_000) {
             lastLogMs = nowMs

@@ -101,7 +101,8 @@ class CommandFlowTest {
                 val b=r.createBook(if(ja)"日々の暮らし"else"日常生活",Currency.JPY,theme,language,startDate="2026-09-01",budgetMinor=10000)
                 r.updateBook(r.dao.book(b)!!.copy(initialized=true))
                 val a=r.saveAccount(b,if(ja)"生活口座"else"生活账户",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-09-01")
-                val expense=r.saveCategory(b,if(ja)"食事"else"餐饮",EntryKind.EXPENSE,null)
+                val parent=r.saveCategory(b,if(ja)"食事"else"餐饮",EntryKind.EXPENSE,null)
+                val expense=r.saveCategory(b,if(ja)"昼食"else"午餐",EntryKind.EXPENSE,parent)
                 val income=r.saveCategory(b,if(ja)"給与"else"工资",EntryKind.INCOME,null)
                 r.saveEntry(b,EntryDraft(kind=EntryKind.EXPENSE,accountId=a,categoryId=expense,amount="1200",date="2026-10-10"))
                 r.saveEntry(b,EntryDraft(kind=EntryKind.INCOME,accountId=a,categoryId=income,amount="5000",date="2026-10-20"))
@@ -128,6 +129,7 @@ class CommandFlowTest {
             ui.runOnIdle{vm.navigate("home");vm.openReminderBook(book,commandJson.encodeToString(reminder))}
             ui.waitUntil(15000){!vm.busy.value&&vm.route.value=="monthly-submit"&&ui.onAllNodes(hasTestTag("monthly-submit-confirm") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
             assertEquals("2026-10",vm.monthlyReviewMonth.value)
+            ui.onNodeWithText(if(ja)"食事 / 昼食" else "餐饮 / 午餐",substring=true).performScrollTo().assertIsDisplayed()
             ui.onNodeWithTag("monthly-submit").performScrollTo();shot("$theme-$language-monthly-submit")
             tap("monthly-submit-confirm");ui.waitUntil(15000){vm.route.value=="monthly-history"&&!vm.busy.value}
             val row=runBlocking {

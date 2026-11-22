@@ -1428,11 +1428,7 @@
                 "kind": {
                     "enum": [
                         "EXPENSE",
-                        "INCOME",
-                        "TRANSFER",
-                        "REPAYMENT",
-                        "BORROWING",
-                        "REFUND"
+                        "INCOME"
                     ],
                     "type": "string"
                 },
@@ -12372,6 +12368,7 @@
                                                 "additionalProperties": false,
                                                 "properties": {
                                                     "feePerHundred": {
+                                                        "pattern": "^[+]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)(?:[eE][+-]?[0-9]+)?$",
                                                         "type": "string"
                                                     },
                                                     "periods": {
@@ -12460,6 +12457,7 @@
                                         "totalRate": {
                                             "anyOf": [
                                                 {
+                                                    "pattern": "^[+]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)(?:[eE][+-]?[0-9]+)?$",
                                                     "type": "string"
                                                 },
                                                 {
@@ -12499,6 +12497,7 @@
                                         "annualRate": {
                                             "anyOf": [
                                                 {
+                                                    "pattern": "^[+]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)(?:[eE][+-]?[0-9]+)?$",
                                                     "type": "string"
                                                 },
                                                 {
@@ -12700,6 +12699,7 @@
                                                 "annualRate": {
                                                     "anyOf": [
                                                         {
+                                                            "pattern": "^[+]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)(?:[eE][+-]?[0-9]+)?$",
                                                             "type": "string"
                                                         },
                                                         {
@@ -17898,11 +17898,7 @@
                 "kind": {
                     "enum": [
                         "EXPENSE",
-                        "INCOME",
-                        "TRANSFER",
-                        "REPAYMENT",
-                        "BORROWING",
-                        "REFUND"
+                        "INCOME"
                     ],
                     "type": "string"
                 },

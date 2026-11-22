@@ -9,6 +9,33 @@ class ReconciledScheduleTest {
     private val daily=InterestRule("0.18",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL)
     private val revolving=FinancialRuleVersion("r","b","a",FinanceMode.REVOLVING,"2026-04-01","Asia/Tokyo",billing=BillingRule(31,true,1,27,"bank"),revolving=RevolvingRule(daily,PaymentMethod.FIXED_PRINCIPAL,10000,allocation=AllocationOrder.FEES_FIRST,automatic=false))
     private val terms=FinancialScheduleTerms("2026-04-01",listOf("2026-05-27","2026-06-27","2026-07-27"),listOf(AccrualWindow("2026-04-01","2026-04-30"),AccrualWindow("2026-05-01","2026-05-31"),AccrualWindow("2026-06-01","2026-06-30")))
+    @Test fun intermediateLoanPaymentDayIsChargedOnceAcrossAllCalculators() {
+        val start=LocalDate.parse("2026-01-01")
+        val dates=listOf("2026-02-01","2026-03-01")
+        val terms=FinancialScheduleTerms(start.toString(),dates)
+        for(include in listOf(true,false)) {
+            val rate=daily.copy(annualRate="0.0365",includeStart=include,includeEnd=include)
+            val rule=revolving.copy(mode=FinanceMode.FIXED_LOAN,effectiveFrom=start.toString(),loanMethod=LoanMethod.INTEREST_ONLY,
+                loanInterest=rate,allocation=AllocationOrder.FEES_FIRST)
+            val versions=listOf(EffectiveFinancialRule(1,rule))
+            val trial=fixedLoanPlan(100000,start,dates.map(LocalDate::parse),LoanMethod.INTEREST_ONLY,rate,null) as Calculation.Ready
+            val prediction=predictedSchedule(100000,rule.mode,terms,versions) as Calculation.Ready
+            val actual=reconciledSchedule(100000,rule.mode,terms,versions,emptyList(),emptyList(),start) as Calculation.Ready
+            val expected=if(include)listOf(320L,280L) else listOf(300L,280L)
+            assertEquals(expected,trial.value.map{it.feeMinor})
+            assertEquals(expected,prediction.value.map{it.period.feeMinor})
+            assertEquals(expected,actual.value.map{it.period.feeMinor})
+        }
+    }
+
+    @Test fun newBillsCannotPredateTheirSource() {
+        val terms=FinancialScheduleTerms("2026-05-01",listOf("2026-04-27"))
+        for(mode in listOf(FinanceMode.SINGLE,FinanceMode.INSTALLMENT)) {
+            val versions=listOf(EffectiveFinancialRule(1,revolving.copy(mode=mode)))
+            assertEquals(Calculation.Incomplete(listOf("plan.billBeforeSource")),predictedSchedule(1000,mode,terms,versions))
+        }
+    }
+
     @Test fun revolvingInterestCannotStartBeforeTheCurrentAgreement() {
         val valid=FinancialScheduleTerms("2026-11-01",listOf("2026-12-27"),listOf(AccrualWindow("2026-11-01","2026-11-30")))
         val early=valid.copy(accrualWindows=listOf(AccrualWindow("2026-10-01","2026-11-30")))

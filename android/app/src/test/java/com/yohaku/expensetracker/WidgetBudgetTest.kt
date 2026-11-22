@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker
 
+import com.yohaku.expensetracker.data.db.*
+import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.data.repository.BudgetProjection
 import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.platform.desktop.*
@@ -11,6 +13,14 @@ class WidgetBudgetTest {
     private val today=LocalDate.of(2026,11,7)
     private fun projection(limit:Long?=180000,spent:Long=90360,reserve:Long?=40000,currency:Currency=Currency.JPY)=
         BudgetProjection("2026-11",currency,limit,spent,spent,0,reserve,0)
+    @Test fun unopenedMonthIncludesUnmaterializedRent() {
+        val book=BookEntity("b","home","JPY","2026-10-01",budgetMinor=100000)
+        val rent=RecurrenceEntity("b","r","rent","bank","c","JPY",30000,30000,false,"MONTHLY","2026-10-05",null)
+        val snapshot=BookSnapshot(book,emptyList(),emptyList(),emptyList(),emptyList(),null,recurrences=listOf(rent))
+        val budget=widgetBudget(snapshot,LocalDate.of(2026,11,1))
+        assertEquals(70000L,budget.availableMinor)
+        assertEquals(2333L,budget.dailyMinor)
+    }
     @Test fun normalMatchesHomeAndIncludesToday() {
         val m=widgetBudget(projection(),today)
         assertEquals(WidgetBudgetState.NORMAL,m.state);assertEquals(89640,m.amountMinor)

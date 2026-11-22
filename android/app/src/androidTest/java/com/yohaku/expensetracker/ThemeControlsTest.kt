@@ -349,10 +349,11 @@ class ThemeControlsTest {
         }
     }
     @Test fun successToastKeepsEachThemesStyleInBothLanguages(){
-        val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
+        val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val attention=mutableStateOf(false)
         ui.setContent{YohakuTheme(theme.value,language.value){
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(start=24.dp,end=24.dp,bottom=95.dp),contentAlignment=androidx.compose.ui.Alignment.BottomCenter){
-                YToast(word("修改已保存到原条目","元の記録に変更を保存"))
+                if(attention.value)YToast(word("模板暂不可用，请检查并编辑","テンプレートは利用できません。確認して編集してください"),tone=NoticeTone.ATTENTION)
+                else YToast(word("修改已保存到原条目","元の記録に変更を保存"))
             }
         }}
         for((t,l) in testLooks(this@ThemeControlsTest)){
@@ -370,6 +371,11 @@ class ThemeControlsTest {
                 if (visualEnabled()) file.appendText("$t,$l,${node.boundsInRoot.width/density},${node.boundsInRoot.height/density}\n")
             }
             capture("$t-$l-toast")
+            ui.runOnIdle{attention.value=true}
+            ui.onNodeWithText("!",substring=true).assertIsDisplayed()
+            ui.onNodeWithText("✓",substring=true).assertDoesNotExist()
+            capture("$t-$l-toast-attention")
+            ui.runOnIdle{attention.value=false}
         }
     }
     @Test fun togglesExposeStateAndThemeSpecificControls(){

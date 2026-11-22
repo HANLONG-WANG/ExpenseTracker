@@ -108,13 +108,18 @@ class CommandWorkflowExecutionTest {
         val (book,bank,_)=setup()
         val target=r.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")
         val transfer=r.previewEntry(book,EntryDraft(kind=EntryKind.TRANSFER,accountId=bank,toAccountId=target,amount="1000",toAmount="1000",
-            date="2026-11-02",toDate="2026-11-02",fromConfirmed=true,toConfirmed=true,feePosition=TransferFeePosition.SEPARATE,
+            date="2026-11-02",toDate="2026-11-03",fromConfirmed=true,toConfirmed=false,feePosition=TransferFeePosition.SEPARATE,
             feeAccountId=bank,feeAmount="10",feeCurrency=Currency.JPY,feeDate="2026-11-02",feeConfirmed=false))
         val event=requireNotNull(r.commitEntryReview(book,transfer))
+        val record=r.commandExports(book,RecordScope(mode="account",account=bank)).records!!.records.single()
+        assertEquals(true,record.confirmed);assertEquals(true,record.fromConfirmed);assertEquals(false,record.toConfirmed)
+        assertEquals("2026-11-02",record.fromDate);assertEquals("2026-11-03",record.toDate)
+        val feePosting=record.postings.single{it.account==bank && it.deltaMinor == -10L}
+        assertEquals(setOf("$event:from","$event:fee"),record.postings.filter{it.account==bank}.map{it.id}.toSet())
         val row=StatementRow(r.id(),"2026-11-02","out",FileMoney("JPY","15"),"手续费")
         val file=StatementFile("yohaku.statement",1,r.id(),book,bank,"JPY","2026-11-01","2026-11-02","posted_date",true,"银行",emptyList(),listOf(row))
         r.saveStatement(book,r.previewStatement(book,FileProtocols.json.encodeToString(file)))
-        val plan=receive(book,listOf(step("fee","statement.confirmActual","""{"batch":"${file.file_id}","row":"${row.row_id}","entry":"$event","postingId":"$event:fee","postedDate":"2026-11-02"}""")))
+        val plan=receive(book,listOf(step("fee","statement.confirmActual","""{"batch":"${file.file_id}","row":"${row.row_id}","entry":"$event","postingId":"${feePosting.id}","postedDate":"2026-11-02"}""")))
         execute(plan)
         val s=snapshot(book)
         assertEquals(1000L,s.events.single().amountMinor);assertEquals(1000L,s.transfers.single().toMinor)

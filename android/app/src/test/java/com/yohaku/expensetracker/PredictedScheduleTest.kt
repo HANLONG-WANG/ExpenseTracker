@@ -8,6 +8,18 @@ import org.junit.Test
 class PredictedScheduleTest {
     private val interest=InterestRule("0.18",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL)
     private fun rule(id:String="r1",effective:String="2026-04-01",annual:String="0.18")=FinancialRuleVersion(id,"book","card",FinanceMode.REVOLVING,effective,"Asia/Tokyo",billing=BillingRule(31,true,1,27,"bank"),revolving=RevolvingRule(interest.copy(annualRate=annual),PaymentMethod.FIXED_PRINCIPAL,10000,allocation=AllocationOrder.FEES_FIRST,automatic=false))
+    @Test fun ruleCandidatesPreserveBothMonthlyDaysAfterClipping() {
+        val start=LocalDate.parse("2026-02-01")
+        val feb=LocalDate.parse("2026-02-28")
+        val rule=rule().copy(billing=BillingRule(31,true,0,31,"bank"))
+        val rows=com.yohaku.expensetracker.data.repository.predictionCandidates(rule.mode,3,start,feb,feb,rule)
+        assertEquals(listOf("2026-02-28","2026-03-31","2026-04-30"),rows.map{it.first})
+        assertEquals(rows.map{it.first},rows.map{it.second.end})
+        assertEquals(listOf("2026-02-01","2026-03-01","2026-04-01"),rows.map{it.second.start})
+        val chosen=com.yohaku.expensetracker.data.repository.predictionCandidates(rule.mode,2,start,feb.minusDays(1),feb,rule)
+        assertEquals("2026-03-27",chosen.last().first)
+    }
+
     @Test fun lastConfirmedBillWithUnknownPrincipalBlocksFixedAndRevolvingPredictions() {
         val terms=FinancialScheduleTerms("2026-04-01",listOf("2026-05-27"),listOf(AccrualWindow("2026-04-01","2026-04-30")))
         val known=listOf(ConfirmedSchedulePeriod(1,null,null,5000,LocalDate.parse("2026-05-27")))

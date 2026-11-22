@@ -28,7 +28,10 @@ class CommandMoneyFactsUiTest {
             j("""{"currency":"JPY","fundingAccountId":"funds","fundingCurrency":"USD","separateFeeCurrency":"USD","receivedMinor":20000,"withheldFeeMinor":2000,"withheldFeeBaseMinor":6000,"separateFeeMinor":300,"separateFeeBaseMinor":2100}"""))
         val details=ObjectEffect("entryDetails","payment",
             buildJsonObject{put("repayment",repayment.before)},buildJsonObject{put("repayment",repayment.after)})
+        val userText=ObjectEffect("entry","entry",j("""{"name":"NORMAL","note":"@小王 代付午餐","zoneId":"Asia/Tokyo"}"""),
+            j("""{"name":"ME","note":"INCOME","zoneId":"Asia/Shanghai"}"""))
         val cases=listOf(
+            Triple("user-text",userText,listOf("NORMAL → ME","@小王 代付午餐 → INCOME","Asia/Tokyo → Asia/Shanghai")),
             Triple("repayment",repayment,listOf("CN¥100.00 → CN¥120.00","US$1.00 → US$2.00","CN¥7.00 → CN¥15.00")),
             Triple("borrowing",contract,listOf("US$190.00 → US$200.00","CN¥50.00 → CN¥60.00","US$2.00 → US$3.00","CN¥14.00 → CN¥21.00")),
             Triple("nested-repayment",details,listOf("¥20,000 → ¥21,000","CN¥100.00 → CN¥120.00","US$1.00 → US$2.00"))

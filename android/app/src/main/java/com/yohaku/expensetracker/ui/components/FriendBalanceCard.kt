@@ -67,8 +67,13 @@ import com.yohaku.expensetracker.ui.theme.*
             fun path(d:String)=Path().apply{addPath(androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toPath())}
             val cup=path("M16 30h49v27a21 21 0 0 1-21 21h-7a21 21 0 0 1-21-21Z")
             drawPath(cup,Paint().apply{this.color=surface})
-            val tea=path("M21 ${66-kotlin.math.round(fill*27).toInt()}h39v13a16 16 0 0 1-16 16h-7a16 16 0 0 1-16-16Z")
-            drawPath(tea,Paint().apply{this.color=color.copy(alpha=.4f)})
+            if(fill>0f) {
+                save()
+                clipPath(cup)
+                val surfaceY=78f-48f*fill.coerceIn(0f,1f)
+                drawRect(androidx.compose.ui.geometry.Rect(16f,surfaceY,65f,78f),Paint().apply{this.color=color.copy(alpha=.4f)})
+                restore()
+            }
             val stroke=Paint().apply{this.color=color;style=PaintingStyle.Stroke;strokeWidth=1.3f;strokeCap=StrokeCap.Round;strokeJoin=StrokeJoin.Round}
             drawPath(cup,stroke);drawPath(path("M65 34h8c19 0 19 28 0 28h-8M30 9c-7 8 6 8 0 16m15-17c-7 8 6 8 0 16"),stroke)
             restore()

@@ -52,7 +52,19 @@ import java.time.format.DateTimeFormatter
     var from by rememberSaveable(s.book.id){mutableStateOf(LocalDate.now(vm.repository.clock).withDayOfMonth(1).toString())}
     var through by rememberSaveable(s.book.id){mutableStateOf(LocalDate.now(vm.repository.clock).toString())}
     var account by rememberSaveable(s.book.id){mutableStateOf(s.accounts.firstOrNull()?.id)}
-    var files by remember{mutableStateOf<List<Uri>>(emptyList())}
+    // OpenDocument grants survive activity recreation. Reopen each URI before enabling submission.
+    var files by rememberSaveable(s.book.id){mutableStateOf(arrayListOf<Uri>())}
+    val resolver=androidx.compose.ui.platform.LocalContext.current.contentResolver
+    var unreadable by remember(files){mutableStateOf<Set<Uri>?>(null)}
+    LaunchedEffect(files) {
+        unreadable=withContext(Dispatchers.IO) {
+            files.filterNot{uri->
+                try { resolver.openInputStream(uri)?.use{true}==true }
+                catch(e:java.io.IOException){false}
+                catch(e:SecurityException){false}
+            }.toSet()
+        }
+    }
     var dateOwner by remember{mutableStateOf<YDateSelection?>(null)}
     var bundle by remember{mutableStateOf<CommandExportBundle?>(null)}
     var exportedScope by remember{mutableStateOf<RecordScope?>(null)}
@@ -65,12 +77,12 @@ import java.time.format.DateTimeFormatter
         catch(e:CancellationException){throw e}
         catch(e:Exception){exportError=e.message?:"无法准备上传摘要 / 送信内容を準備できません"}
     }
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){files=(files+it).distinct()}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){files=ArrayList((files+it).distinct())}
     CommandHeading(word("把需求写下来。","やりたいことを書こう。"),word("先看上传范围，再交给助手。","送る範囲を確認してから、アシスタントへ。"),"01", "REQUEST")
     Panel {
         YField(word("任务名称","タスク名"),title,{title=it.take(150)},Modifier.testTag("command-title"))
         YField(word("希望办理什么","依頼したいこと"),request,{request=it.take(19800)},Modifier.testTag("command-request"),multiline=true)
-        CloudPickedFiles(files,{files=files-it})
+        CloudPickedFiles(files,{files=ArrayList(files-it)},unreadable.orEmpty())
         YButton(word("添加截图或文件","画像・ファイルを追加"),{picker.launch(arrayOf("*/*"))},Modifier.testTag("command-files"),enabled=!busy)
     }
     Panel {
@@ -92,7 +104,7 @@ import java.time.format.DateTimeFormatter
     YButton(word("上传并提交办理需求","アップロードして依頼"),{
         val ready=bundle?.takeIf{exportedScope==scope}?:return@YButton;val selected=files;val note=request;val name=title
         vm.execute(onSuccess={vm.navigate("cloud")}){cloud.prepareCommandTask(s.book.id,selected,name,note,ready);vm.haptic(Haptic.Done)}
-    },Modifier.fillMaxWidth().testTag("command-submit"),primary=true,enabled=!busy&&bundle!=null&&exportedScope==scope&&title.isNotBlank()&&request.isNotBlank())
+    },Modifier.fillMaxWidth().testTag("command-submit"),primary=true,enabled=!busy&&unreadable?.isEmpty()==true&&bundle!=null&&exportedScope==scope&&title.isNotBlank()&&request.isNotBlank())
 }
 
 @Composable internal fun CommandHistoryScreen(s:BookSnapshot,vm:AppViewModel) {

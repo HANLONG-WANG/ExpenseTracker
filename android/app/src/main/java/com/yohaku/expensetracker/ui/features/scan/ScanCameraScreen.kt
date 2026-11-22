@@ -250,6 +250,7 @@ private fun Context.activity(): Activity = when (this) {
             }
         } else ScanStatus(
             if (cameraIssue == CameraIssue.NO_CAMERA) word("此设备没有可用的后置相机", "この端末には使用できる背面カメラがありません")
+            else if (cameraIssue == CameraIssue.ANALYSIS) word("小票识别失败，请重试", "レシートを認識できませんでした。再試行してください")
             else word("相机连接失败，请重试", "カメラに接続できませんでした。再試行してください"),
             Modifier.testTag("scan-camera-error"), action = { YButton(word("重试", "再試行"), retry, primary = true) })
     }

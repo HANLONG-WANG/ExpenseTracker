@@ -61,9 +61,22 @@ enum class CloudPhase { PREPARING, UPLOADING, SUBMITTED, QUEUED, ANALYZING, NEED
 
 data class CloudTaskView(val task:CloudTaskEntity, val transfers:List<CloudTransferEntity>,
     val imports:List<CloudImportEntity>, val pendingAcks:List<CloudAckEntity>, val phase:CloudPhase,
-    val claimable:CloudResult?, val remote:CloudTask?, val ackWarnings:List<String> = emptyList()) {
-    val ackPending:Boolean get() = pendingAcks.isNotEmpty()
+    val claimable:CloudResult?, val remote:CloudTask?, val ackWarnings:List<String> = emptyList(), val latestSentAck:CloudAckEntity?=null) {
+    val savedAckPending get() = pendingAcks.any { ack -> ack.status == "imported" &&
+        imports.any { it.resultId == ack.resultId && it.taskId == ack.taskId } }
+    val failedAckPending get() = pendingAcks.any { it.status == "failed" }
     val latestEventMessages:List<String> get() = remote?.events.orEmpty().sortedByDescending { it.createdAt }.mapNotNull { it.message }
+}
+
+// A connection failure can interrupt any operation, including a receipt after submission.
+internal val CloudTaskEntity.connectionBlocked get() = stage.startsWith("CONNECTION:")
+internal fun CloudTaskEntity.resumeStage():String = when {
+    connectionBlocked -> stage.removePrefix("CONNECTION:")
+    stage.startsWith("TRANSFER_ERROR:") -> stage.removePrefix("TRANSFER_ERROR:")
+    stage != "BLOCKED" -> stage
+    taskId == null -> "PREPARED"
+    remoteStatus in setOf("queued","analyzing","review","ready","archived") -> "SUBMITTED"
+    else -> "UPLOADING"
 }
 
 internal fun importKey(origin:String, taskId:String, resultId:String, sha256:String) = "$origin|$taskId|$resultId|$sha256"
@@ -73,9 +86,10 @@ fun cloudTaskView(task:CloudTaskEntity, transfers:List<CloudTransferEntity>, imp
     val imported = result != null && imports.any { it.taskId == remote.id && it.resultId == result.id &&
         it.sha256 == remote.files.find { file -> file.id == result.fileId }?.sha256 }
     val phase = when {
-        task.stage == "BLOCKED" -> CloudPhase.BLOCKED
         imported -> CloudPhase.IMPORTED
+        task.connectionBlocked || task.stage.startsWith("TRANSFER_ERROR:") -> CloudPhase.BLOCKED
         result != null -> CloudPhase.READY
+        task.stage == "BLOCKED" -> CloudPhase.BLOCKED
         remote?.status == "ready" -> CloudPhase.REVIEW
         remote?.status == "queued" -> CloudPhase.QUEUED
         remote?.status == "analyzing" -> CloudPhase.ANALYZING
@@ -87,5 +101,6 @@ fun cloudTaskView(task:CloudTaskEntity, transfers:List<CloudTransferEntity>, imp
         else -> CloudPhase.PREPARING
     }
     return CloudTaskView(task, transfers.sortedBy { it.position }, imports, acks.filter { it.sentAt == null }, phase, result, remote,
-        acks.filter { it.sentAt != null }.mapNotNull { it.lastError })
+        acks.filter { it.sentAt != null }.mapNotNull { it.lastError },
+        acks.filter { it.sentAt != null && it.lastError == null }.maxByOrNull { it.sentAt!! })
 }

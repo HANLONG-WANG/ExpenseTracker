@@ -31,7 +31,7 @@ import kotlinx.serialization.Serializable
             if(mode in listOf(FinanceMode.SINGLE,FinanceMode.INSTALLMENT,FinanceMode.REVOLVING))BillingRule(integer("closing"),boolean("closingIncluded"),integer("monthOffset"),integer("payday"),optional("bank"))else null,
             if(mode==FinanceMode.INSTALLMENT)installment else null,if(mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE))revolving else null,
             if(mode==FinanceMode.FIXED_LOAN)choice("loanMethod")else null,if(mode==FinanceMode.FIXED_LOAN)interest else null,
-            choice("allocation"),null,optional("unsupported"),loanPrincipalRemainder=choice("principalRemainder"),deadlines=deadlines,bonusPayments=if(mode==FinanceMode.SINGLE)(0..1).filter{get("bonus${it}Enabled")=="true"}.map{i->BonusPaymentWindow(integer("bonus${i}StartMonth")?:0,integer("bonus${i}StartDay")?:0,integer("bonus${i}EndMonth")?:0,integer("bonus${i}EndDay")?:0,integer("bonus${i}PaymentMonth")?:0,integer("bonus${i}PaymentDay")?:0)}else emptyList())
+            choice("allocation"),null,optional("unsupported"),loanPrincipalRemainder=choice("principalRemainder"),deadlines=deadlines,bonusPayments=if(mode==FinanceMode.SINGLE)(0..1).filter{get("bonus${it}Enabled")=="true"}.map{i->BonusPaymentWindow(integer("bonus${i}StartMonth")?:0,integer("bonus${i}StartDay")?:0,integer("bonus${i}EndMonth")?:0,integer("bonus${i}EndDay")?:0,integer("bonus${i}PaymentMonth")?:0,integer("bonus${i}PaymentDay")?:0)}else emptyList()).also { it.requireValidRates() }
     }
 }
 
@@ -42,10 +42,10 @@ internal fun FinancialRuleVersion.toForm(currency:Currency):FinancialRuleDraft {
     billing?.let{put("closing",it.closingDay);put("closingIncluded",it.closingDayInCurrentBill);put("monthOffset",it.paymentMonthOffset);put("payday",it.paymentDay);put("bank",it.paymentAccountId)}
     bonusPayments.forEachIndexed{i,w->put("bonus${i}Enabled",true);put("bonus${i}StartMonth",w.startMonth);put("bonus${i}StartDay",w.startDay);put("bonus${i}EndMonth",w.endMonth);put("bonus${i}EndDay",w.endDay);put("bonus${i}PaymentMonth",w.paymentMonth);put("bonus${i}PaymentDay",w.paymentDay)}
     val interest=revolving?.interest?:loanInterest
-    interest?.let{put("apr",it.annualRate?.toBigDecimal()?.movePointRight(2)?.toPlainString());put("frequency",it.frequency);put("balance",it.balanceBasis)
+    interest?.let{put("apr",it.annualRate?.let { rate -> rate.rateValue()?.movePointRight(2)?.toPlainString() ?: rate });put("frequency",it.frequency);put("balance",it.balanceBasis)
         put("includeStart",it.includeStart);put("includeEnd",it.includeEnd);put("yearDays",it.yearDays);put("roundAt",it.rounding);put("rounding",it.roundingMode);put("first",it.firstCharge)}
     revolving?.let{put("paymentMethod",it.method);amount("payment",it.paymentMinor);put("tiers",it.tiers.joinToString(","){tier->(tier.upToMinor?.let{n->Money(currency,n).decimal.toPlainString()}?:"*")+":"+Money(currency,tier.paymentMinor).decimal.toPlainString()});put("tiersIncludeFees",it.tierPaymentIncludesFees);put("tierBalanceDate",it.tierBalanceDate);put("allocation",it.allocation);put("automatic",it.automatic)}
-    installment?.let{put("periods",it.supportedPeriods.joinToString(","));put("feeMethod",it.feeMethod);amount("totalFee",it.totalFeeMinor);put("totalRate",it.totalRate?.toBigDecimal()?.movePointRight(2)?.toPlainString());put("feeTable",it.feeTable.joinToString(","){f->"${f.periods}:${f.feePerHundred}"});put("principalRemainder",it.principalRemainder);put("feeRemainder",it.feeRemainder);put("rounding",it.roundingMode)}
+    installment?.let{put("periods",it.supportedPeriods.joinToString(","));put("feeMethod",it.feeMethod);amount("totalFee",it.totalFeeMinor);put("totalRate",it.totalRate?.let { rate -> rate.rateValue()?.movePointRight(2)?.toPlainString() ?: rate });put("feeTable",it.feeTable.joinToString(","){f->"${f.periods}:${f.feePerHundred}"});put("principalRemainder",it.principalRemainder);put("feeRemainder",it.feeRemainder);put("rounding",it.roundingMode)}
     put("loanMethod",loanMethod);put("principalRemainder",loanPrincipalRemainder?:installment?.principalRemainder);put("allocation",allocation?:revolving?.allocation);put("recovery",limitRecovery);put("unsupported",unsupportedReason)
     return FinancialRuleDraft(mode,values,deadlines)
 }

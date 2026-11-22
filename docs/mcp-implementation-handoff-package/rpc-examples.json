@@ -15,8 +15,10 @@
           "2026-07-28"
         ],
         "capabilities": {
-          "tools": {}
-        }
+          "tools": {},
+          "events": {}
+        },
+        "resultType": "complete"
       }
     }
   },
@@ -120,6 +122,52 @@
       "error": {
         "code": -32000,
         "message": "请先登录；手机请求需携带平台访问头和设备令牌"
+      }
+    }
+  },
+  {
+    "label": "events list",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 8,
+      "method": "events/list",
+      "params": {}
+    }
+  },
+  {
+    "label": "events subscribe",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 9,
+      "method": "events/subscribe",
+      "params": {
+        "name": "analysis_task.submitted",
+        "arguments": {
+          "type": "statement"
+        },
+        "delivery": {
+          "mode": "webhook",
+          "url": "https://chatgpt.com/example/webhook",
+          "secret": "whsec_c3ludGhldGljLWV4YW1wbGUtc2VjcmV0LTMyYnl0ZXM="
+        }
+      }
+    }
+  },
+  {
+    "label": "events unsubscribe",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 10,
+      "method": "events/unsubscribe",
+      "params": {
+        "name": "analysis_task.submitted",
+        "arguments": {
+          "type": "statement"
+        },
+        "delivery": {
+          "mode": "webhook",
+          "url": "https://chatgpt.com/example/webhook"
+        }
       }
     }
   }

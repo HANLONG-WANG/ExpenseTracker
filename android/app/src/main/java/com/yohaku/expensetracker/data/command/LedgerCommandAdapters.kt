@@ -82,6 +82,7 @@ internal class ActiveAdapter(private val type:String):LedgerAdapter() {
 @Serializable internal data class CategoryParentInput(val category:JsonElement,val parent:JsonElement?)
 internal class CategoryAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("category.$action",patchSchema(when(action){"save"->descriptorSchema(CategorySaveInput.serializer().descriptor);"setFavorite"->descriptorSchema(CategoryFavoriteInput.serializer().descriptor);"reparent"->descriptorSchema(CategoryParentInput.serializer().descriptor);else->descriptorSchema(CategoryLifecycleInput.serializer().descriptor)},buildMap {
+        if(action=="save")put("kind",enumSchema("EXPENSE","INCOME"))
         put("category",if(action=="save")nullableSchema(referenceSchema("category"))else referenceSchema("category"))
         if(action in listOf("save","reparent"))put("parent",nullableSchema(referenceSchema("category")))
         if(action=="lifecycle")put("operation",enumSchema("ARCHIVE","UNARCHIVE"))
@@ -207,6 +208,7 @@ internal class ContactAdapter(private val type:String):LedgerAdapter() {
 @Serializable internal data class TemplateMoveInput(val template:JsonElement,val direction:Int)
 internal class TemplateAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("template.$action",patchSchema(if(action=="save")descriptorSchema(TemplateSaveInput.serializer().descriptor)else descriptorSchema(TemplateMoveInput.serializer().descriptor),buildMap {
+        if(action=="save")put("kind",enumSchema("EXPENSE","INCOME"))
         put("template",if(action=="save")nullableSchema(referenceSchema("template"))else referenceSchema("template"))
         if(action=="save")put("cardPaymentPeriods",localConstraintSchema(nullableSchema(buildJsonObject{put("type","integer")}),"Selected account is CREDIT and cardPaymentChoice is INSTALLMENT; ignored otherwise.",rangeSchema(1)))
         if(action=="move")put("direction",JsonObject(rangeSchema(-1,1)+("enum" to encoded(listOf(-1,1)))))

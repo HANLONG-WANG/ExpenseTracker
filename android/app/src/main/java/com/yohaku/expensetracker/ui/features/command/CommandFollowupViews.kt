@@ -158,7 +158,7 @@ internal val workflowFieldLabels=mapOf(
 internal fun workflowDisplayFacts(type:String,value:JsonElement):JsonElement {
     if(value !is JsonObject)return value
     return when(type) {
-        "drafts","entryDraft"->JsonObject(((value["json"] as? JsonObject)?:value).filterKeys{it in setOf("kind","accountId","categoryId","amount","originalCurrency","accountAmount","baseAmount","date","settlementDate","merchant","note","toAccountId","toAmount","toDate","originalEventId","requestedMedia")})
+        "drafts","entryDraft"->JsonObject(((value["json"] as? JsonObject)?:value).filterKeys{it !in setOf("id","bookId","mediaSession","merchantSyncVersion","mediaInitialized")})
         "statementAssociation"->JsonObject(value.filterKeys{it in setOf("sourceDate","sourceSummary","postingJson","note","invalidatedAt")})
         "attachment"->JsonObject(value.filterKeys{it in setOf("entryId","eventId","name","fileId","size","mime")})
         "csvBatch"->JsonObject(value.filterKeys{it in setOf("fileName","accountId","rowCount","importedCount","skippedCount")})

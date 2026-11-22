@@ -2,7 +2,6 @@ package com.yohaku.expensetracker.domain.finance
 
 import com.yohaku.expensetracker.domain.model.SchemaRange
 import com.yohaku.expensetracker.domain.model.SchemaFormat
-import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.LocalTime
@@ -22,9 +21,20 @@ import kotlinx.serialization.Serializable
 @Serializable enum class LimitRecovery { PAYMENT_DATE, PLATFORM_CONFIRMATION, MANUAL }
 @Serializable enum class FirstCharge { NORMAL, WAIVED }
 
+internal const val RATE_PATTERN = "^[+]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)(?:[eE][+-]?[0-9]+)?$"
+private val ratePattern = Regex(RATE_PATTERN)
+internal fun String.rateValue() = takeIf { ratePattern.matches(it) }?.toBigDecimalOrNull()
+
+internal fun FinancialRuleVersion.requireValidRates() {
+    for (rate in listOfNotNull(loanInterest?.annualRate, revolving?.interest?.annualRate, installment?.totalRate) +
+        installment?.feeTable.orEmpty().map { it.feePerHundred }) {
+        require(rate.rateValue() != null) { "费率须为非负数 / 料率には0以上の数値を入力してください ($rate)" }
+    }
+}
+
 /** Rates are decimal fractions (18% = "0.18"); amounts are account-currency minor units. */
 @Serializable data class InterestRule(
-    val annualRate: String? = null,
+    @SchemaFormat("nonnegative-decimal") val annualRate: String? = null,
     val frequency: ChargeFrequency? = null,
     val balanceBasis: BalanceBasis? = null,
     val includeStart: Boolean? = null,
@@ -35,7 +45,7 @@ import kotlinx.serialization.Serializable
     val firstCharge: FirstCharge? = null
 ) {
     fun issues(): List<String> = buildList {
-        if (annualRate?.toBigDecimalOrNull()?.let { it >= BigDecimal.ZERO } != true) add("interest.annualRate")
+        if (annualRate?.rateValue() == null) add("interest.annualRate")
         if (frequency == null) add("interest.frequency")
         if (balanceBasis == null) add("interest.balanceBasis")
         if (frequency == ChargeFrequency.DAILY) {
@@ -75,13 +85,13 @@ import kotlinx.serialization.Serializable
     }
 }
 
-@Serializable data class InstallmentFee(@SchemaRange(minimum=1,condition="PER_HUNDRED_TABLE installment calculation; saving an incomplete rule remains allowed.") val periods: Int, val feePerHundred: String)
+@Serializable data class InstallmentFee(@SchemaRange(minimum=1,condition="PER_HUNDRED_TABLE installment calculation; saving an incomplete rule remains allowed.") val periods: Int, @SchemaFormat("nonnegative-decimal") val feePerHundred: String)
 @Serializable enum class InstallmentFeeMethod { TOTAL_AMOUNT, TOTAL_RATE, PER_HUNDRED_TABLE }
 @Serializable data class InstallmentRule(
     @SchemaRange(minimum=1,items=true,condition="Installment calculation; saving an incomplete rule remains allowed.") val supportedPeriods: List<Int> = emptyList(),
     val feeMethod: InstallmentFeeMethod? = null,
     @SchemaRange(minimum=0,condition="TOTAL_AMOUNT installment calculation; saving an incomplete rule remains allowed.") val totalFeeMinor: Long? = null,
-    val totalRate: String? = null,
+    @SchemaFormat("nonnegative-decimal") val totalRate: String? = null,
     val feeTable: List<InstallmentFee> = emptyList(),
     val principalRemainder: RemainderPlacement? = null,
     val feeRemainder: RemainderPlacement? = null,
@@ -92,8 +102,8 @@ import kotlinx.serialization.Serializable
         if (feeMethod == null) add("installment.feeMethod")
         when (feeMethod) {
             InstallmentFeeMethod.TOTAL_AMOUNT -> if (totalFeeMinor == null || totalFeeMinor < 0) add("installment.totalFee")
-            InstallmentFeeMethod.TOTAL_RATE -> if (totalRate?.toBigDecimalOrNull()?.let { it >= BigDecimal.ZERO } != true) add("installment.totalRate")
-            InstallmentFeeMethod.PER_HUNDRED_TABLE -> if (feeTable.any { it.periods <= 0 || it.feePerHundred.toBigDecimalOrNull()?.let { n -> n >= BigDecimal.ZERO } != true } || supportedPeriods.any { p -> feeTable.count { it.periods == p } != 1 }) add("installment.feeTable")
+            InstallmentFeeMethod.TOTAL_RATE -> if (totalRate?.rateValue() == null) add("installment.totalRate")
+            InstallmentFeeMethod.PER_HUNDRED_TABLE -> if (feeTable.any { it.periods <= 0 || it.feePerHundred.rateValue() == null } || supportedPeriods.any { p -> feeTable.count { it.periods == p } != 1 }) add("installment.feeTable")
             null -> Unit
         }
         if (principalRemainder == null) add("installment.principalRemainder")
@@ -161,6 +171,13 @@ import kotlinx.serialization.Serializable
 fun dayInMonth(month: YearMonth, day: Int): LocalDate {
     require(day in 1..31)
     return month.atDay(minOf(day, month.lengthOfMonth()))
+}
+
+/** Keep the contractual day when this first date is its clipped occurrence, or use the chosen day. */
+fun monthlyDate(first:LocalDate, offset:Long, ruleDay:Int?=null):LocalDate {
+    val month = YearMonth.from(first)
+    val day = ruleDay?.takeIf { it in 1..31 && dayInMonth(month,it) == first } ?: first.dayOfMonth
+    return dayInMonth(month.plusMonths(offset),day)
 }
 
 data class BillDates(val closingDate: LocalDate, val paymentDate: LocalDate, val monthEndAdjusted: Boolean)

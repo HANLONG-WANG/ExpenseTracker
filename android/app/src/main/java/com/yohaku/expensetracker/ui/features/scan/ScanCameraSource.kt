@@ -34,7 +34,7 @@ internal data class ScanCameraFrame(
     val actualEps: Map<String, String>,
     val failedFrames: Int = 0,
 )
-internal enum class CameraIssue { NO_CAMERA, FAILED }
+internal enum class CameraIssue { NO_CAMERA, FAILED, ANALYSIS }
 internal interface ScanCameraListener {
     fun ready(hasTorch: Boolean, zoom2xAvailable: Boolean)
     fun idle()
@@ -103,9 +103,11 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
         }
     }
     private var lastDelivered = 0L
-    private val frameFailures = ScanFrameFailures { count, error ->
+    private fun failureCounter() = ScanFrameFailures { count, error ->
         Log.w("ScanCamera", "Dropped analysis frame; total failures=$count", error)
     }
+    private val frameFailures = failureCounter()
+    private val mappingFailures = failureCounter()
     private val cameraStateObserver = Observer<CameraState> { state ->
         state.error?.let { error ->
             if (!closed.get()) fail(IllegalStateException("Camera error ${error.code}", error.cause))
@@ -159,8 +161,8 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
         val began = SystemClock.elapsedRealtime()
         try {
             if (closed.get() || generation != zoomGeneration) return
+            val engine = processor ?: ScanFrameProcessor(context).also { processor = it }
             frameFailures.dropping(began) {
-                val engine = processor ?: ScanFrameProcessor(context).also { processor = it }
                 val bgr = rgbaToUpright(image)
                 try {
                     val source = ImageProxyTransformFactory().apply { isUsingCropRect = true; isUsingRotationDegrees = true }.getOutputTransform(image)
@@ -169,29 +171,32 @@ internal class CameraXScanSource(private val context: Context) : ScanCameraSourc
                     // Integer OpenCV pixel centers -> CameraX edge coordinates (+0.5), as ReceiptBench.
                     val points = smooth.points.flatMap { listOf((it.x * bgr.cols() + .5).toFloat(), (it.y * bgr.rows() + .5).toFloat()) }.toFloatArray()
                     main.execute {
-                        if (!closed.get() && generation == zoomGeneration) frameFailures.dropping(SystemClock.elapsedRealtime()) {
-                            val target = view.outputTransform
-                            if (target != null) {
+                        if (closed.get() || generation != zoomGeneration) return@execute
+                        try {
+                            mappingFailures.dropping(SystemClock.elapsedRealtime()) {
+                                val target = view.outputTransform ?: return@dropping
                                 CoordinateTransform(source, target).mapPoints(points)
                                 val now = SystemClock.elapsedRealtime()
                                 val fps = if (lastDelivered == 0L) 0.0 else 1000.0 / (now - lastDelivered).coerceAtLeast(1)
                                 lastDelivered = now
                                 if (BuildConfig.DEBUG) Log.d("ScanCamera", "fps=$fps arrival-to-overlay=${now-began}ms")
-                                listener?.frame(ScanCameraFrame(points.asList().chunked(2).map { ScanPoint(it[0].toDouble()/view.width, it[1].toDouble()/view.height) }, hint, began, fps, result.diagnostics.actualEps, frameFailures.count))
+                                listener?.frame(ScanCameraFrame(points.asList().chunked(2).map { ScanPoint(it[0].toDouble()/view.width, it[1].toDouble()/view.height) }, hint, began, fps, result.diagnostics.actualEps, frameFailures.count + mappingFailures.count))
                             }
-                        }
+                        } catch (e: Exception) { fail(e, CameraIssue.ANALYSIS) }
                     }
                 } finally { bgr.release() }
             }
+        } catch (e: Exception) {
+            main.execute { if (!closed.get() && generation == zoomGeneration) fail(e, CameraIssue.ANALYSIS) }
         } finally { image.close() }
     }
 
-    private fun fail(e: Exception) {
+    private fun fail(e: Exception, issue: CameraIssue = CameraIssue.FAILED) {
         Log.e("ScanCamera", "Camera failed", e)
         zoomGeneration++
         view.previewStreamState.removeObserver(streamObserver)
         analysis?.clearAnalyzer()
-        listener?.failed(CameraIssue.FAILED, e)
+        listener?.failed(issue, e)
     }
 
     override fun capture(file: File, result: (Result<Unit>) -> Unit) {

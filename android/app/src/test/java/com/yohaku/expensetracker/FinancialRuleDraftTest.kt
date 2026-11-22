@@ -10,6 +10,25 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FinancialRuleDraftTest {
+    @Test fun malformedStoredRateCanBeReadAndCorrected() {
+        val old=FinancialRuleVersion("r","b","a",FinanceMode.FIXED_LOAN,"2026-01-01","UTC",loanInterest=InterestRule("18%"))
+        assertThrows(IllegalArgumentException::class.java) { old.requireValidRates() }
+        val form=old.toForm(Currency.JPY)
+        assertEquals("18%",form["apr"])
+        assertEquals("0.18",form.with("apr","18").build("b","a",Currency.JPY).loanInterest!!.annualRate)
+        assertNull(form.with("apr","").build("b","a",Currency.JPY).loanInterest!!.annualRate)
+    }
+
+    @Test fun annuityPreviewRestoresContractDayAfterFebruary() {
+        val start=LocalDate.parse("2026-01-31")
+        val rate=InterestRule("0.12",ChargeFrequency.MONTHLY,BalanceBasis.OPENING_BALANCE,rounding=ChargeRounding.PERIOD_TOTAL,
+            roundingMode="DOWN",firstCharge=FirstCharge.NORMAL)
+        val rule=FinancialRuleVersion("r","b","a",FinanceMode.FIXED_LOAN,start.toString(),"UTC",loanMethod=LoanMethod.ANNUITY,
+            loanInterest=rate,allocation=AllocationOrder.FEES_FIRST)
+        val preview=calculateRulePreview(rule,RulePreviewInput(10000,3,start,start,start.plusMonths(1))) as Calculation.Ready
+        assertEquals(listOf("2026-02-28","2026-03-31","2026-04-30"),preview.value.map{it.date.toString()})
+    }
+
     @Test fun userPercentAndAccountCurrencyAmountsReachTheCalculatorExactly() {
         val billing=mapOf("effective" to "2026-10-01","zone" to "Asia/Shanghai","closing" to "31","closingIncluded" to "true","monthOffset" to "1","payday" to "27","bank" to "bank")
         val split=FinancialRuleDraft(FinanceMode.INSTALLMENT,billing+mapOf("periods" to "3","feeMethod" to "PER_HUNDRED_TABLE","feeTable" to "3:2.01","principalRemainder" to "LAST","feeRemainder" to "FIRST","rounding" to "DOWN"))

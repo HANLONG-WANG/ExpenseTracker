@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -148,7 +149,7 @@ class ScanReviewFlowTest {
         val directory = session()
         val contour = contour()
         assertEquals(ScanContour.centered(contour.width, contour.height), contour)
-        ui.onNodeWithTag("scan-cancel-edit").performClick()
+        ui.onNodeWithTag("scan-review-leave").performClick()
         ui.waitUntil(10_000) { cancelled == 1 }
         assertFalse(directory.exists()); assertTrue(borrowed.exists()); assertTrue(results.isEmpty())
     }
@@ -208,6 +209,25 @@ class ScanReviewFlowTest {
         ui.onNodeWithTag("scan-contour-editor").assertDoesNotExist()
     }
 
+    @Test fun failedManualRenderKeepsCanvasAndAccessibleMovement() {
+        install(ScanFlowRequest("manual-error", input(), ScanPhotoSource.EXISTING_IMAGE))
+        result()
+        ui.onNodeWithTag("scan-edit").performClick()
+        val original = File(session(), "original.jpg")
+        val saved = File(root, "saved.jpg")
+        assertTrue(original.renameTo(saved))
+        ui.onNodeWithTag("scan-render").performClick()
+        ui.waitUntil(30_000) { ui.onAllNodesWithText("处理失败，可调整轮廓后重新处理").fetchSemanticsNodes().isNotEmpty() }
+        val before = contour()
+        val handle = ui.onNodeWithContentDescription("左边缘控制点 3")
+        val action = handle.fetchSemanticsNode().config[SemanticsActions.CustomActions].single { it.label == "右移" }
+        ui.runOnIdle { assertTrue(action.action()) }
+        assertNotEquals(before, contour())
+        assertTrue(saved.renameTo(original))
+        ui.onNodeWithTag("scan-render").performClick()
+        result()
+    }
+
     @Test fun activityRecreationKeepsEditingContourAndOriginalPhoto() {
         install(ScanFlowRequest("restore", input(), ScanPhotoSource.EXISTING_IMAGE))
         result(); ui.onNodeWithTag("scan-edit").performClick()
@@ -248,10 +268,10 @@ class ScanReviewFlowTest {
             ui.runOnIdle { theme = t; language = l }
             ui.onNodeWithTag("scan-review-hint").assertTextContains(if (l == "ja") "レシートが見つかりません" else "没找到小票", substring = true)
             ui.onNodeWithTag("scan-render").assertIsDisplayed()
-            ui.onNodeWithTag("scan-cancel-edit").assertIsDisplayed()
+            ui.onNodeWithTag("scan-review-leave").assertIsDisplayed()
             shot("$t-$l-not-detected")
         }
-        ui.onNodeWithTag("scan-cancel-edit").performClick()
+        ui.onNodeWithTag("scan-review-leave").performClick()
         ui.waitUntil { cancelled == 2 }
     }
 

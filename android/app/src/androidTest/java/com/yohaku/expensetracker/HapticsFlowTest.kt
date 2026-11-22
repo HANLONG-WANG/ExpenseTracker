@@ -1,5 +1,10 @@
 package com.yohaku.expensetracker
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.CompositionLocalProvider
+import com.yohaku.expensetracker.ui.components.MerchantExpanded
+import com.yohaku.expensetracker.ui.components.YBottomNav
+import com.yohaku.expensetracker.ui.theme.YohakuTheme
 import android.graphics.Bitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -44,6 +49,21 @@ class HapticsFlowTest {
         ui.runOnIdle{vm.navigate("settings")}
         ui.waitUntil(10000){ui.onAllNodesWithTag("settings-haptics").fetchSemanticsNodes().isNotEmpty()}
         ui.waitForIdle();recorder.clear()
+    }
+    @Test fun ledgerUsesSelectedHomeTabAndMerchantStartsEntry() {
+        ui.setContent {
+            YohakuTheme("journal","zh") {
+                CompositionLocalProvider(LocalHaptics provides Haptics(recorder,"journal",true)) {
+                    Column {
+                        YBottomNav("ledger",{}, {})
+                        MerchantExpanded("shop",emptyList(),"",true,{}, {})
+                    }
+                }
+            }
+        }
+        ui.onNodeWithTag("nav-home").assertIsSelected().performClick()
+        ui.onNodeWithTag("merchant-entry-shop").performClick()
+        assertEquals(listOf(Haptic.Compose),recorder.calls.map{it.second})
     }
     @Test fun toggleUsesEachTheme() {
         ui.setContent{NativeApp(vm,haptics=recorder)}

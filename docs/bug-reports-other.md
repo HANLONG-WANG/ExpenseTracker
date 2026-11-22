@@ -115,16 +115,6 @@
 
 ## 分区 03-command-cloud
 
-2. **[严重度 中] 保存时仍接受已经撤回或过期的领取结果**
-
-   位置：`android/app/src/main/java/com/yohaku/expensetracker/data/cloud/CloudRepository.kt:360`、`:376`、`:385`
-
-   问题：`validateClaim()`只核对历史结果ID、版本、文件哈希，没有核对任务仍为ready、结果仍为ready、`stale=false`和当前输入版本。用户打开预览后，云端重新分析或发布新结果，即使前台轮询已经更新了本地任务详情，旧预览仍能保存。后续ack的409只留下提示，不会撤销已经保存的旧资料。
-
-   建议：保存前重新核验当前可领取结果身份；发现撤回或换版时使旧预览失效，要求重新领取。
-
-   把握：确定。
-
 3. **[严重度 中] 流水差异关联无法选择同一账户下的多个资金端**
 
    位置：`android/app/src/main/java/com/yohaku/expensetracker/data/command/FileCommandAdapters.kt:55`；关联实现：`android/app/src/main/java/com/yohaku/expensetracker/data/repository/TransferTransactions.kt:45`
@@ -215,11 +205,6 @@
 
     把握：确定。
 
-### 值得注意但不确定
-
-- `CloudRepository.kt:103`的401处理没有绑定凭证版本：后台旧凭证请求晚返回401时，可能把刚保存并验证成功的新配置再次标记为需要重连。存在代码层面的竞态窗口，未运行并发场景验证。
-- 未核查线上站点实际部署版本；上述服务端问题确认存在于仓库交付的参考源码，不能据此断言线上当前版本完全相同。
-
 ## 分区 04-db-domain
 
 2. **[严重度 中] 固定贷款的日计息区间会重复计算或漏算付款日**
@@ -250,17 +235,6 @@
    - 建议：保存前拒绝非法数值字符串，未知统一使用 `null`；同步云端 schema/说明，并确保已有不合法规则可展示原值和错误、允许修正。
    - 把握：确定。
 
-6. **[严重度 中] 小票商品仍标记不确定，列表却不显示“明细待确认”**
-   
-   - 位置：`android/app/src/main/java/com/yohaku/expensetracker/data/files/ReceiptTotals.kt:11`；`android/app/src/main/java/com/yohaku/expensetracker/ui/features/ReceiptWorkflowScreen.kt:32`
-   - 问题：`detailsComplete` 只检查 `complete`、行金额非空和记录级 `issues`，完全忽略商品级 `uncertain_fields`。例如结果声明明细齐全、金额都有值，但某商品包含 `uncertain_fields=["line_amount"]`，列表仍只显示“已整理”，漏掉“明细待确认”。详情虽然能看到不确定字段，工作台的待确认提示却失效，与 `docs/implementation-spec.md:240` 的疑点提示要求不一致。
-   - 建议：将商品级不确定字段纳入待确认判定；图片是否已整理继续保持独立判断。
-   - 把握：确定。
-
-### 值得注意但不确定
-
-- `FinancialRules.kt:74`、`:149` 要求填写付款分配顺序，但 `PaymentCalculation.kt:148` 的计算不使用该顺序，只在计算依据里记录它；检索仓储也未发现其参与分配。尚不能确定这是仅保存平台约定，还是漏实现“先本金／先费用”的业务效果。建议明确其作用，避免用户把必填设置理解为已影响计算。
-
 ## 分区 05-platform-receipt-build
 
 2. **[严重度 中] 跨月小组件漏算尚未物化的周期预留**
@@ -277,12 +251,6 @@
    - 建议：按仍有效的事项更新通知内容；全部失效时才取消。更新已有通知与再次提醒的去重应分开处理。
    - 把握：确定。
 
-4. **[严重度 中] 财务详情通知被标记为锁屏公开内容**
-   
-   - 位置：`android/app/src/main/java/com/yohaku/expensetracker/platform/ReminderCoordinator.kt:85`、`:91`、`:94`
-   - 问题：通知包含账本名、账户名、金额、日期和事项，却使用 `VISIBILITY_PUBLIC`。在允许显示通知、仅隐藏敏感内容的锁屏设置下，这些财务详情仍被应用声明为可公开显示。
-   - 建议：使用 `VISIBILITY_PRIVATE`，需要锁屏提示时提供不包含金额、账户等详情的公开版本。
-   - 把握：确定。
 
 5. **[严重度 中] 持续的扫描引擎故障被无限当作单帧异常丢弃**
 
@@ -325,11 +293,6 @@
     - 问题：`GRANT OF LICENSE` 的连续句子被另一栏的高风险用途条款逐行插入，例如 `Subject to and conditioned upon Your` 后接 `(9) administration of justice...`，原条款无法顺序阅读。这是提取顺序错误，不是普通换行问题。
     - 建议：从原始 PDF 按正确栏序重新提取并逐段核对，或同时提供原始 PDF，保持许可措辞不变。
     - 把握：确定。
-
-### 值得注意但不确定
-
-- **高分辨率照片的内存峰值**：`ScanCameraSource.kt:116` 请求最高可用照片分辨率；`ReceiptScanner.kt:129` 全尺寸解码；`ReceiptGeometry.kt:77` 创建全尺寸旋转中间图；`ScanReviewState.kt:94` 又全尺寸解码结果预览。输出上限检查发生较晚。存在高分辨率设备或大图处理时内存不足的风险，但未运行真机，无法确认实际协商分辨率及峰值。
-- **用户手动固定的快捷方式可能残留旧信息**：`DesktopShortcuts.kt:23` 只移除动态快捷方式，未处理用户从启动器拖到桌面的固定副本。模板删除或切换账本后，固定图标可能继续保留旧名称及入口；点击后的应用内失效检查已有实现，但启动器侧行为尚未验证。
 
 ## 分区 06-components-theme-commandui
 
@@ -421,11 +384,6 @@
     - 问题：底部导航用映射后的 `active` 判断选中状态，却用原始 `route` 判断是否震动。流水页已选中“今天”，再次点“今天”仍发 `TabSwitch`，不符合“选中项改变时才震动”。另外，商户展开区的“记一笔”没有传 `Haptic.Compose`，调用方也未补发，导致这个记账入口缺少规定的开始记账反馈。
     - 建议：导航使用 `!selected` 判断触感；商户记账按钮显式传入 `Haptic.Compose`。
     - 把握：确定。
-
-### 值得注意但不确定
-
-- `ThemedSheet.kt:43`：`sheetSticky()` 使用 `positionInRoot()` 缓存位置，同时用 `graphicsLayer.translationY` 调整位置。坐标回调是否会把已平移的位置再次纳入计算、造成固定区域抖动，需要实际滚动验证；此次未按确定问题报告。
-- `SystemHapticOutput.kt:28`、`:41`：系统开关检查和触摸用途标记均已实现，但在目标三星设备上是否随系统触摸振动强度正确缩放，静态阅读无法确认；`docs/haptics.md` 也明确保留了真机定稿事项。
 
 ## 分区 07-ui-shell
 

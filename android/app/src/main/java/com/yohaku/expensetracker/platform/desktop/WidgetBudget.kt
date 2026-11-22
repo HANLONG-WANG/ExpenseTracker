@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker.platform.desktop
 
-import com.yohaku.expensetracker.data.repository.BudgetProjection
+import com.yohaku.expensetracker.data.repository.*
+import java.time.YearMonth
 import com.yohaku.expensetracker.domain.model.Currency
 import java.time.LocalDate
 
@@ -9,6 +10,12 @@ data class WidgetBudget(
     val state:WidgetBudgetState,val currency:Currency,val amountMinor:Long,
     val limitMinor:Long?,val spentMinor:Long,val availableMinor:Long?,val dailyMinor:Long?,val daysLeft:Int
 )
+internal fun widgetBudget(snapshot:BookSnapshot,today:LocalDate):WidgetBudget {
+    val month=YearMonth.from(today)
+    val planned=snapshot.copy(occurrences=snapshot.forecastOccurrences(month.atDay(1),month.atEndOfMonth()))
+    return widgetBudget(planned.budgetProjection(month.toString()),today)
+}
+
 /** 所有值均为币种最小单位；含今天，非负日均用整数除法向下取整。 */
 fun widgetBudget(projection:BudgetProjection,today:LocalDate):WidgetBudget {
     val days=today.lengthOfMonth()-today.dayOfMonth+1

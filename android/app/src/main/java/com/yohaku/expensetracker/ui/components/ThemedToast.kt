@@ -21,8 +21,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.LocalYohaku
 
+enum class NoticeTone { SUCCESS, ATTENTION }
+
 /** Final .toast styles; lifetime and actual success are owned by the caller. */
-@Composable fun YToast(message:String,modifier:Modifier=Modifier){
+@Composable fun YToast(message:String,modifier:Modifier=Modifier,tone:NoticeTone=NoticeTone.SUCCESS){
+    val attention=tone==NoticeTone.ATTENTION
+    val mark=if(attention)"!" else "✓"
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=when(t.id){
@@ -41,11 +45,11 @@ import com.yohaku.expensetracker.ui.theme.LocalYohaku
                 drawPath(path,t.accent,style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))
             }
             "objects"->Modifier.border(1.dp,Color(0xffdec39c),shape)
-            else->Modifier.drawBehind{drawRect(Color(0xffbac9ac),Offset.Zero,Size(3.dp.toPx(),size.height))}
+            else->Modifier.drawBehind{drawRect(if(attention)t.warm else Color(0xffbac9ac),Offset.Zero,Size(3.dp.toPx(),size.height))}
         }
         Row(Modifier.background(background,shape).then(edge).padding(start=if(journal||objects)21.dp else 23.dp,end=if(journal||objects)21.dp else 20.dp,top=if(journal||objects)14.dp else 13.dp,bottom=if(journal||objects)14.dp else 13.dp),verticalAlignment=Alignment.CenterVertically){
-            if(objects)Box(Modifier.size(20.dp).background(Color(0xffdde5cb),RoundedCornerShape(7.dp)),contentAlignment=Alignment.Center){YText("✓",13,color=Color(0xff8b9b71),lineHeightMultiplier=1f)}
-            else YText(if(journal)"✓ " else "✓",if(journal)17 else 10,color=if(journal)t.warm else color,lineHeightMultiplier=if(journal)25f/17 else 1.5f)
+            if(objects)Box(Modifier.size(20.dp).background(if(attention)Color(0xffefd3ad) else Color(0xffdde5cb),RoundedCornerShape(7.dp)),contentAlignment=Alignment.Center){YText(mark,13,color=if(attention)t.warm else Color(0xff8b9b71),lineHeightMultiplier=1f)}
+            else YText(if(journal)"$mark " else mark,if(journal)17 else 10,color=if(journal)t.warm else color,lineHeightMultiplier=if(journal)25f/17 else 1.5f)
             if(!journal)Spacer(Modifier.width(9.dp))
             YText(message,if(journal)13 else if(objects)12 else 10,Modifier.weight(1f,fill=false),color=color,lineHeightMultiplier=if(journal)19f/13 else if(objects)17f/12 else 1.5f)
         }

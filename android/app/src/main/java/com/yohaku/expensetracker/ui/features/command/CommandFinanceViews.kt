@@ -206,7 +206,7 @@ internal fun commandFieldZone(root:JsonObject,path:String,effects:List<ObjectEff
     var value:JsonElement=root
     val parents=mutableListOf(root)
     for(part in path.split('.').dropLast(1)) {
-        value=when(val current=value){is JsonObject->current[part];is JsonArray->part.toIntOrNull()?.let{current.getOrNull(it)};else->null}?:break
+        value=when(val current=value){is JsonObject->current[part];is JsonArray->part.toIntOrNull()?.let{current.getOrNull(it - 1)};else->null}?:break
         if(value is JsonObject)parents+=value
     }
     val operation=parents.lastOrNull{it.containsKey("appliedAt")}?:root

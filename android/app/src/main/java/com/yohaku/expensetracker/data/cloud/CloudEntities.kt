@@ -38,6 +38,8 @@ interface CloudDao {
     @Query("SELECT * FROM cloud_tasks WHERE bookId=:bookId AND taskId IS NOT NULL AND (remoteStatus IS NULL OR remoteStatus!='archived')")
     suspend fun active(bookId:String):List<CloudTaskEntity>
     @Query("SELECT * FROM cloud_tasks WHERE stage IN ('PREPARED','UPLOADING')") suspend fun unfinished():List<CloudTaskEntity>
+    @Query("SELECT localId FROM cloud_tasks WHERE origin=:origin AND (stage GLOB 'CONNECTION:*' OR stage='BLOCKED')")
+    suspend fun connectionBlocked(origin:String):List<String>
     @Insert suspend fun insertTask(task:CloudTaskEntity)
     @Update suspend fun updateTask(task:CloudTaskEntity)
     @Query("DELETE FROM cloud_tasks WHERE localId=:localId") suspend fun deleteTask(localId:String)

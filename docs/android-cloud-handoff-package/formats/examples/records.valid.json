@@ -31,6 +31,61 @@
       "cardPaymentPeriods": null,
       "cardPaymentMonth": null,
       "cardPaymentFeeMinor": null
+    },
+    {
+      "id": "transfer-1",
+      "kind": "TRANSFER",
+      "date": "2026-10-20",
+      "account": "bank-1",
+      "category": null,
+      "currency": "JPY",
+      "amountMinor": 1000,
+      "baseMinor": 0,
+      "merchant": "",
+      "note": "",
+      "revision": 1,
+      "accountMinor": 1000,
+      "accountCurrency": "JPY",
+      "confirmed": true,
+      "historicalIncluded": false,
+      "budgetExcluded": false,
+      "cardPaymentChoice": null,
+      "cardPaymentPeriods": null,
+      "cardPaymentMonth": null,
+      "cardPaymentFeeMinor": null,
+      "toAccount": "cash-1",
+      "toMinor": 1000,
+      "toCurrency": "JPY",
+      "fromDate": "2026-10-20",
+      "fromConfirmed": true,
+      "toDate": "2026-10-21",
+      "toConfirmed": false,
+      "postings": [
+        {
+          "id": "transfer-1:from",
+          "account": "bank-1",
+          "deltaMinor": -1000,
+          "currency": "JPY",
+          "date": "2026-10-20",
+          "confirmed": true
+        },
+        {
+          "id": "transfer-1:to",
+          "account": "cash-1",
+          "deltaMinor": 1000,
+          "currency": "JPY",
+          "date": "2026-10-21",
+          "confirmed": false
+        },
+        {
+          "id": "transfer-1:fee",
+          "account": "bank-1",
+          "deltaMinor": -10,
+          "currency": "JPY",
+          "date": "2026-10-20",
+          "confirmed": true
+        }
+      ]
     }
   ]
 }

@@ -85,7 +85,8 @@ import kotlinx.serialization.json.*
     val before=effect.before as? JsonObject;val after=effect.after as? JsonObject
     val title=effectTitle(effect,s,model)
     val currency=(after?.get("currency")?:before?.get("currency"))?.jsonPrimitive?.contentOrNull?:s.book.currency
-    fun amount(v:JsonElement?)=v?.jsonPrimitive?.longOrNull?.let{Money(Currency.valueOf(currency),it).display()}
+    fun amount(row:JsonObject?,key:String,value:JsonElement?=row?.get(key)) =
+        commandSummaryAmount(row,value,s.book.currency)
     val none=word("无","なし");val unknown=word("未知","不明");val confirmedLabel=word("已确认","確定");val predictedLabel=word("预测","予測");val unset=word("未设定","未設定")
     val text=if(effect.type in financeObjectTypes) {
         val created=word("尚未创建","未作成");val removed=word("移除本方案新建对象","このプランで作成した対象を削除")
@@ -95,7 +96,7 @@ import kotlinx.serialization.json.*
             listOfNotNull(row["name"]?.jsonPrimitive?.contentOrNull,
                 (row["date"]?:row["effectiveDate"]?:row["basisDate"]?:row["clearingDate"])?.jsonPrimitive?.contentOrNull,
                 row["observedAt"]?.jsonPrimitive?.contentOrNull?.let{FinancialDisplayFacts.time(java.time.Instant.parse(it),java.time.OffsetDateTime.parse(it).offset,s.book.language)},
-                if(moneyKey in row)amount(row[moneyKey])?:unknown else null,
+                if(moneyKey in row)amount(row,moneyKey)?:unknown else null,
                 if(effect.type=="ruleValidation")if(row["dateChanged"]==JsonPrimitive(true))differs else verified else null,
                 row["accountId"]?.jsonPrimitive?.contentOrNull?.let{resolveName(it,s,model)},
                 if(effect.type=="financialDraft")(row["valuesJson"] as? JsonObject)?.get("category")?.jsonPrimitive?.contentOrNull?.let{resolveName(it,s,model)}else null
@@ -104,24 +105,24 @@ import kotlinx.serialization.json.*
         (finance(before)?:created)+" → "+(finance(after)?:removed)
     }else when(effect.type) {
         "monthlyPlan"->(before?.get("text")?.jsonPrimitive?.content?:unset)+" → "+(after?.get("text")?.jsonPrimitive?.content?:unset)
-        "balance"->(amount(before?.get("ledgerMinor"))?:word("无","なし"))+" → "+(amount(after?.get("ledgerMinor"))?:word("未知","不明"))
+        "balance"->(amount(before,"ledgerMinor")?:word("无","なし"))+" → "+(amount(after,"ledgerMinor")?:word("未知","不明"))
         "bill"->{
             fun bill(v:JsonObject?):String=if(v==null)none else {
                 val confirmed=v["confirmed"]?.jsonPrimitive?.booleanOrNull==true
                 val date=v[if(confirmed)"confirmedDate"else"predictedDate"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                date+" · "+(amount(v[if(confirmed)"confirmedTotalMinor"else"predictedTotalMinor"])?:unknown)+" · "+if(confirmed)confirmedLabel else predictedLabel
+                date+" · "+(amount(v,if(confirmed)"confirmedTotalMinor"else"predictedTotalMinor")?:unknown)+" · "+if(confirmed)confirmedLabel else predictedLabel
             }
             bill(before)+" → "+bill(after)
         }
-        "activityBalance"->word("预留 ","確保 ")+(amount(before?.get("reserveMinor"))?:none)+" → "+(amount(after?.get("reserveMinor"))?:none)+"\n"+
-            word("预留后可用 ","確保後の残額 ")+(amount(before?.get("availableMinor"))?:unset)+" → "+(amount(after?.get("availableMinor"))?:unset)
+        "activityBalance"->word("预留 ","確保 ")+(amount(before,"reserveMinor")?:none)+" → "+(amount(after,"reserveMinor")?:none)+"\n"+
+            word("预留后可用 ","確保後の残額 ")+(amount(before,"availableMinor")?:unset)+" → "+(amount(after,"availableMinor")?:unset)
         "budget"->{
-            fun remaining(v:JsonObject?)=amount(v?.get("remainingMinor"))?:unset
+            fun remaining(v:JsonObject?)=amount(v,"remainingMinor")?:unset
             fun held(v:JsonObject?)=(v?.get("projection") as? JsonObject)?.get("reserveMinor")
             val balance=word("剩余 ","残り ")+remaining(before)+" → "+remaining(after)
-            if(held(before)==held(after))balance else balance+"\n"+word("月预算预留 ","月予算の確保 ")+(amount(held(before))?:unknown)+" → "+(amount(held(after))?:unknown)
+            if(held(before)==held(after))balance else balance+"\n"+word("月预算预留 ","月予算の確保 ")+(amount(before,"reserveMinor",held(before))?:unknown)+" → "+(amount(after,"reserveMinor",held(after))?:unknown)
         }
-        "budgetSetting","activityBudget"->(amount(before?.get("amountMinor"))?:unset)+" → "+(amount(after?.get("amountMinor"))?:unset)
+        "budgetSetting","activityBudget"->(amount(before,"amountMinor")?:unset)+" → "+(amount(after,"amountMinor")?:unset)
         "activity","reserve","treat","recurrence","occurrence","expectedIncome"->{
             val removed=word("移除本方案新建对象","このプランで作成した対象を削除")
             val created=word("尚未创建","未作成")
@@ -130,7 +131,7 @@ import kotlinx.serialization.json.*
             fun facts(v:JsonObject?):String?=v?.let{value->
                 listOfNotNull(value["name"]?.jsonPrimitive?.contentOrNull,
                     (value["scheduledDate"]?:value["date"]?:value["startDate"])?.jsonPrimitive?.contentOrNull,
-                    amount(value[if(effect.type=="activity")"budgetMinor"else"amountMinor"]),
+                    amount(value,if(effect.type=="activity")"budgetMinor"else"amountMinor"),
                     value["status"]?.jsonPrimitive?.contentOrNull?.takeIf{effect.type=="occurrence"&&it=="WITHDRAWN"}?.let{withdrawn},
                     if(value["ended"]==JsonPrimitive(true))ended else null).joinToString(" · ")
             }
@@ -139,7 +140,7 @@ import kotlinx.serialization.json.*
         "activityMode"->fieldValue(before?.get("activityMode")?.let{it to null},"activityMode",currency,s,model)+" → "+fieldValue(after?.get("activityMode")?.let{it to null},"activityMode",currency,s,model)
         "activityParticipant"->(after?:before)?.get("friendId")?.jsonPrimitive?.contentOrNull?.let{resolveName(it,s,model)}.orEmpty()
         "creditLimit","creditLimitGroup"->{
-            fun available(v:JsonObject?)=amount((v?.get("total") as? JsonObject)?.get("availableMinor"))?:unknown
+            fun available(v:JsonObject?)=amount(v,"availableMinor",(v?.get("total") as? JsonObject)?.get("availableMinor"))?:unknown
             word("可用 ","利用可能 ")+available(before)+" → "+available(after)
         }
         "book","category","merchant","merchantLocation","friend","template"-> {
@@ -150,13 +151,13 @@ import kotlinx.serialization.json.*
         }
         "entry"->{
             val trash=word("回收站","ごみ箱")
-            fun entry(v:JsonObject?)=if(v==null)none else listOfNotNull(v["date"]?.jsonPrimitive?.contentOrNull,v["merchant"]?.jsonPrimitive?.contentOrNull,amount(v["amountMinor"]),if(v["deletedAt"]!=null&&v["deletedAt"]!=JsonNull)trash else null).filter{it.isNotBlank()}.joinToString(" · ")
+            fun entry(v:JsonObject?)=if(v==null)none else listOfNotNull(v["date"]?.jsonPrimitive?.contentOrNull,v["merchant"]?.jsonPrimitive?.contentOrNull,amount(v,"amountMinor"),if(v["deletedAt"]!=null&&v["deletedAt"]!=JsonNull)trash else null).filter{it.isNotBlank()}.joinToString(" · ")
             entry(before)+" → "+entry(after)
         }
         "account"->(before?.get("name")?.jsonPrimitive?.contentOrNull?:word("新建","新規"))+" → "+(after?.get("name")?.jsonPrimitive?.contentOrNull?:word("移除方案新建账户","プランで作成した口座を削除"))
         "rule"->if(after==null)word("将移除版本 ","削除するバージョン ")+(before?.get("version")?.jsonPrimitive?.content.orEmpty())else word("新增版本 ","新しいバージョン ")+(after.get("version")?.jsonPrimitive?.content.orEmpty())
         "prediction"->{
-            fun plan(v:JsonObject?)=v?.let{(it["name"]?.jsonPrimitive?.contentOrNull.orEmpty())+" · "+(amount(it["principalMinor"])?:unknown)}
+            fun plan(v:JsonObject?)=v?.let{(it["name"]?.jsonPrimitive?.contentOrNull.orEmpty())+" · "+(amount(it,"principalMinor")?:unknown)}
             (plan(before)?:word("尚未创建","未作成"))+" → "+(plan(after)?:word("移除本方案新建计划","このプランで作成したプランを削除"))
         }
         else->word("查看逐项前后值","各項目の変更前後を見る")
@@ -165,13 +166,13 @@ import kotlinx.serialization.json.*
         YText(title,12,color=LocalYohaku.current.muted);YText(text,14,number=effect.type in setOf("balance","bill","budget","creditLimit"))
         if(effect.type=="creditLimitGroup") {
             val row=after?:before
-            YText(word("跨账户共享组上限：","口座間の共通枠上限：")+(amount((row?.get("group") as? JsonObject)?.get("totalMinor"))?:unknown),12)
+            YText(word("跨账户共享组上限：","口座間の共通枠上限：")+(amount(row,"totalMinor",(row?.get("group") as? JsonObject)?.get("totalMinor"))?:unknown),12)
         }
         if(effect.type=="creditLimit") {
             FinancialLimitRelationship(FinancialDisplayFacts.limitRelationship((after?:before)?.get("config") as? JsonObject),Currency.valueOf(currency))
             (after?:before)?.get("groupId")?.jsonPrimitive?.contentOrNull?.let{groupId->
                 YText(word("共享组限制：","共通枠の制限：")+resolveName(groupId,s,model),11)
-                YText(word("限制后本账户预计可用：","制限後の当口座の予測利用可能額：")+(amount((after?:before)?.get("effectiveTotalMinor"))?:unknown),12)
+                YText(word("限制后本账户预计可用：","制限後の当口座の予測利用可能額：")+(amount(after?:before,"effectiveTotalMinor")?:unknown),12)
             }
         }
     }
@@ -207,8 +208,10 @@ import kotlinx.serialization.json.*
                 val old=before[path];val new=after[path]
                 val leaf=path.substringAfterLast('.')
                 val key=if(effect.type=="saveOrder")"eventId"else if(leaf.toIntOrNull()!=null)path.substringBeforeLast('.').substringAfterLast('.')else leaf
-                val label=path.split('.').map{part->when {
+                val segments=path.split('.')
+                val label=segments.mapIndexed{index,part->when {
                     part=="ME"->word("本人","自分")
+                    segments.getOrNull(index-1)=="treatWeights" && part!="__tail"->resolveName(part,s,model)
                     part.startsWith("@")||part.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}"))->resolveName(part,s,model)
                     else->fieldName(if(part=="position"&&effect.type in setOf("activityParticipant","receipt_images"))"sortOrder"else part)
                 }}.joinToString(" / ")
@@ -283,6 +286,28 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     else->operation
 }
 
+private val commandReferenceFields=setOf(
+    "account", "accountId", "accountIds", "activeActivityId", "activityId",
+    "allocationId", "arrangementId", "attachmentIds", "billId", "cardPaymentRuleId",
+    "category", "categoryId", "contractId", "debtAccountId", "entryId",
+    "eventId", "feeAccountId", "fileId", "friendId", "fundingAccountId",
+    "fundingEventId", "groupId", "linkedTransferEventId", "merchantId", "mergePoolId",
+    "occurrenceId", "occurrenceLinkEventId", "originalEventId", "originalPlanId", "parentId",
+    "parentReviewId", "participant", "payerFriendId", "paymentAccountId", "planId",
+    "poolBillId", "poolId", "receiptFileIds", "receiptId", "recurrenceId",
+    "reserveId", "retainedBillIds", "ruleIds", "ruleVersionId", "scope",
+    "separateFeeAccountId", "sourceAccountId", "sourceEventId", "sourceId", "sourcePlanIds",
+    "targetPlanId", "toAccountId", "treatFriends", "treatId", "__tail"
+)
+private val commandEnumFields=setOf(
+    "activityMode", "adjustmentKind", "allocation", "balanceBasis", "cardPaymentMode",
+    "originalFeeTreatment", "paymentType", "feeMethod", "feeRemainder", "feeTreatment", "firstCharge", "frequency",
+    "kind", "loanMethod", "loanPrincipalRemainder", "method", "mode",
+    "origin", "principalRemainder", "recovery", "rounding", "roundingMode",
+    "sharing", "sourceDate", "splitMode", "status", "tierBalanceDate",
+    "treatMode", "type", "usageBasis", "usageStart"
+)
+
 @Composable internal fun fieldValue(value:Pair<JsonElement,String?>?,key:String,currency:String,s:BookSnapshot,model:ConfirmationModel,zone:java.time.ZoneId?=null):String {
     if(value==null)return word("无此项","項目なし")
     val raw=value.first
@@ -304,7 +329,7 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     if(key=="activeBook")return resolveName(text,s,model)
     if(key in setOf("modulesJson","pinnedJson"))return when(text){"CATEGORIES"->word("分类","カテゴリ");"MERCHANTS"->word("商户","お店");"TREND"->word("趋势","推移");"ACTIVITIES"->word("活动","シーン");"COMPARISON"->word("对比","比較");else->word("无","なし")}
     if(key=="uncertain_fields")return fieldName(text)
-    if(key=="requestedMedia")return when(text){"ATTACHMENT"->word("在表单中选择附件","フォームで添付を選択");"RECEIPT_IMAGES"->word("在表单中选择小票图片","フォームでレシート画像を選択");"RECEIPT_CAMERA"->word("在表单点「拍照」扫描小票","フォームの「撮影する」でレシートをスキャン");else->word("补全记账资料","記録情報を補完")}
+    if(key=="requestedMedia")return when(text){"NONE"->word("无","なし");"ATTACHMENT"->word("在表单中选择附件","フォームで添付を選択");"RECEIPT_IMAGES"->word("在表单中选择小票图片","フォームでレシート画像を選択");"RECEIPT_CAMERA"->word("在表单点「拍照」扫描小票","フォームの「撮影する」でレシートをスキャン");else->word("补全记账资料","記録情報を補完")}
     if(key=="permission")return if(text=="LOCATION")word("前台定位","前景の位置情報")else word("系统通知","システム通知")
     if(key=="direction")return if(text=="in")word("流入","入金")else word("流出","出金")
     if(key=="mode"&&text in setOf("interactive","post-commit"))return if(text=="interactive")word("需要你在本机操作","端末での操作が必要")else word("提交后执行","保存後に実行")
@@ -313,16 +338,20 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     if(key=="icon")return com.yohaku.expensetracker.domain.category.categoryIconOf(text)?.let{word(it.zh,it.ja)}?:word("自动 / 继承","自動・親に従う")
     if(key=="rateSource")return when(text){"manual"->word("手填","手入力");else->text}
     if(key=="scope"&&text in setOf("TOTAL","INSTALLMENT","REVOLVING"))return when(text){"TOTAL"->word("总额度","総枠");"INSTALLMENT"->word("分期额度","分割枠");else->word("循环额度","リボ枠")}
-    if(text.startsWith("source:")||text.startsWith("charge:")||text.startsWith("refund:")||text.startsWith("rule:")||text.startsWith("actual:")||text.startsWith("arrangement:")||text.startsWith("refund-allocation:"))return word("相关本金／额度变动","関連する元金・利用枠の変動")
+    if(key in setOf("sourceId","sourceKey","movementId","key")&&(text.startsWith("source:")||text.startsWith("charge:")||text.startsWith("refund:")||text.startsWith("rule:")||text.startsWith("actual:")||text.startsWith("arrangement:")||text.startsWith("refund-allocation:")))return word("相关本金／额度变动","関連する元金・利用枠の変動")
     if(key=="scope"&&text.isEmpty())return word("月预算","月予算")
-    if(key=="position")return when(text){"INCLUDED_FROM"->word("包含在转出金额","出金額に含む");"DEDUCTED_TO"->word("从到账金额扣除","入金額から差引");"SEPARATE"->word("单独付款","別途支払");"WITHHELD"->word("预扣费用","天引手数料");"INCLUDED_PAYMENT"->word("包含于还款的费用","返済に含む手数料");else->text}
-    if(text.startsWith("@")||text.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}")))return resolveName(text,s,model)
-    if(key.endsWith("Id")||key.endsWith("Ids")||key in setOf("account","category","scope"))return resolveName(text,s,model)
-    if(text.startsWith("limit."))return limitLabel(text)
+    if(key=="position"||key=="feePosition")return when(text){"INCLUDED_FROM"->word("包含在转出金额","出金額に含む");"DEDUCTED_TO"->word("从到账金额扣除","入金額から差引");"SEPARATE"->word("单独付款","別途支払");"WITHHELD"->word("预扣费用","天引手数料");"INCLUDED_PAYMENT"->word("包含于还款的费用","返済に含む手数料");else->text}
+    if(key=="participant"&&text=="ME")return word("本人","自分")
+    if(key in commandReferenceFields)return resolveName(text,s,model)
+    if(key in setOf("issue","issues")&&text.startsWith("limit."))return limitLabel(text)
     if(key=="issue")return cashIssue(text)
     if(key=="cardPaymentChoice")return when(text){"BONUS"->word("奖金月付款","ボーナス払い");"DEFERRED"->word("指定月付款","支払月を指定");"ACCOUNT_RULE"->word("按账户规则","口座の条件に従う");else->financeLabel(text)}
-    return when(text){"SORTED"->word("已整理","整理済み");"NORMAL"->word("通常","通常");"CARD_ENTRY"->word("信用卡消费预测","カード利用の予測");"RULE_BASED"->word("按规则预测","条件による予測");"POOL"->word("循环还款计划","リボ・循環返済プラン");"POOL_MEMBER"->word("已并入循环还款计划","リボ・循環返済プランへ統合済み");"POOL_RETAINED"->word("计划内保留义务","循環返済プラン内に保持する債務");"CANCELLED_ARRANGEMENT"->word("已撤销安排","取消済みの予定");"MANUAL"->word("手工记录","手入力");"EXPECTED"->word("预计收入草稿","収入予定の下書き");"TRANSACTION"->word("交易日","取引日");"ACCOUNT_POSTING"->word("账户入账日","口座計上日");"RETAIN"->word("保留原费用","元の手数料を保持");"CANCELLED_BY_PLATFORM"->word("平台已取消费用","返済先が手数料を取消済み");"PARTIAL"->word("部分还款","一部返済");"EARLY"->word("提前还款","繰上返済");"SETTLEMENT"->word("全部清偿","完済");"ADDITION"->word("新增本金","元金追加");"REFUND_ALLOCATION"->word("退款本金归属","返金元金の帰属");"CHARGE"->word("额度占用","利用枠の使用");"ACTUAL_RECOVERY"->word("平台实际恢复","返済先の実回復");"RECOVERY_CHANGED"->word("恢复依据已变化","回復の根拠が変更済み");"RULE_RECOVERY"->word("按规则恢复","条件による回復");"ARRANGEMENT"->word("办理变更","手続き変更");"ARRANGEMENT_LIMIT_UNKNOWN"->word("安排变更的额度影响未知","予定変更の枠への影響が不明");"UNSORTED"->word("未整理","未整理");"ARRIVED"->word("已到账","入金済み");"WEEKLY"->word("每周","毎週");"MONTHLY"->word("每月","毎月");"YEARLY"->word("每年","毎年");"PENDING"->word("待处理","未処理");"COMPLETED"->word("已完成","完了");"CANCELLED"->word("已取消","取消済み");"WITHDRAWN"->word("已撤回","取下げ済み");"EQUAL"->word("均分","均等");"AMOUNTS"->word("按金额分摊","金額で分担");"PERCENT"->word("按比例分摊","割合で分担");"ME"->word("本人","自分");"true"->word("是","はい");"false"->word("否","いいえ");"EMPTY"->word("无","なし");"OPENING"->word("期初欠款","期首残高");"EVENT"->word("记录来源","記録が対象");"EXPENSE"->word("支出","支出");"INCOME"->word("收入","収入");"TRANSFER"->word("转账","振替");"REFUND"->word("退款","返金");"REPAYMENT"->word("还款","返済");"BORROWING"->word("借入","借入");"BILL"->word("账单","請求");"POSTING"->word("入账","計上");"CARD_RECURRENCE"->word("信用卡周期预计扣款","カード定期支払の引落見込み");"RECURRENCE"->word("周期计划","定期予定");"RESERVE"->word("预留","確保");"EXPECTED_INCOME"->word("预计收入","入金予定");else->when {
-        key in setOf("mode","method","loanMethod","frequency","balanceBasis","rounding","roundingMode","firstCharge","allocation","tierBalanceDate","feeMethod","principalRemainder","feeRemainder","loanPrincipalRemainder","cardPaymentMode") -> financeLabel(text)
+    if(!raw.jsonPrimitive.isString && raw.jsonPrimitive.booleanOrNull!=null)
+        return if(raw.jsonPrimitive.boolean)word("是","はい")else word("否","いいえ")
+    if(key in setOf("firstCharge","loanMethod"))return financeLabel(text)
+    if(key !in commandEnumFields)return text
+    return when(text){"SORTED"->word("已整理","整理済み");"NORMAL"->word("通常","通常");"CARD_ENTRY"->word("信用卡消费预测","カード利用の予測");"RULE_BASED"->word("按规则预测","条件による予測");"POOL"->word("循环还款计划","リボ・循環返済プラン");"POOL_MEMBER"->word("已并入循环还款计划","リボ・循環返済プランへ統合済み");"POOL_RETAINED"->word("计划内保留义务","循環返済プラン内に保持する債務");"CANCELLED_ARRANGEMENT"->word("已撤销安排","取消済みの予定");"MANUAL"->word("手工记录","手入力");"EXPECTED"->word("预计收入草稿","収入予定の下書き");"TRANSACTION"->word("交易日","取引日");"ACCOUNT_POSTING"->word("账户入账日","口座計上日");"RETAIN"->word("保留原费用","元の手数料を保持");"CANCELLED_BY_PLATFORM"->word("平台已取消费用","返済先が手数料を取消済み");"PARTIAL"->word("部分还款","一部返済");"EARLY"->word("提前还款","繰上返済");"SETTLEMENT"->word("全部清偿","完済");"ADDITION"->word("新增本金","元金追加");"REFUND_ALLOCATION"->word("退款本金归属","返金元金の帰属");"CHARGE"->word("额度占用","利用枠の使用");"ACTUAL_RECOVERY"->word("平台实际恢复","返済先の実回復");"RECOVERY_CHANGED"->word("恢复依据已变化","回復の根拠が変更済み");"RULE_RECOVERY"->word("按规则恢复","条件による回復");"ARRANGEMENT"->word("办理变更","手続き変更");"ARRANGEMENT_LIMIT_UNKNOWN"->word("安排变更的额度影响未知","予定変更の枠への影響が不明");"UNSORTED"->word("未整理","未整理");"ARRIVED"->word("已到账","入金済み");"WEEKLY"->word("每周","毎週");"MONTHLY"->word("每月","毎月");"YEARLY"->word("每年","毎年");"PENDING"->word("待处理","未処理");"COMPLETED"->word("已完成","完了");"CANCELLED"->word("已取消","取消済み");"WITHDRAWN"->word("已撤回","取下げ済み");"EQUAL"->word("均分","均等");"AMOUNTS"->word("按金额分摊","金額で分担");"PERCENT"->word("按比例分摊","割合で分担");"ME"->word("本人","自分");"OPENING"->word("期初欠款","期首残高");"EVENT"->word("记录来源","記録が対象");"EXPENSE"->word("支出","支出");"INCOME"->word("收入","収入");"TRANSFER"->word("转账","振替");"REFUND"->word("退款","返金");"REPAYMENT"->word("还款","返済");"BORROWING"->word("借入","借入");"BILL"->word("账单","請求");"POSTING"->word("入账","計上");"CARD_RECURRENCE"->word("信用卡周期预计扣款","カード定期支払の引落見込み");"RECURRENCE"->word("周期计划","定期予定");"RESERVE"->word("预留","確保");"EXPECTED_INCOME"->word("预计收入","入金予定");else->when {
+        key in setOf("mode","method","frequency","balanceBasis","rounding","roundingMode","allocation","tierBalanceDate","feeMethod","principalRemainder","feeRemainder","loanPrincipalRemainder","cardPaymentMode") -> financeLabel(text)
         key in setOf("sharing","recovery","usageBasis","usageStart") -> limitLabel(text)
         key=="type"&&text in setOf("CASH","BANK","CREDIT","LOAN","IC") -> com.yohaku.expensetracker.ui.features.accountTypeName(com.yohaku.expensetracker.domain.model.AccountType.valueOf(text))
         else->text
@@ -334,7 +363,7 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
     when(value) {
         is JsonObject->for((field,v) in value) {
             if(field in setOf("id","bookId","createdAt","deletionGroupId"))continue
-            val label=if(field=="ME")word("本人","自分")else if(field.startsWith("@")||field.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}")))resolveName(field,s,model)else fieldName(field)
+            val label=if(field=="ME")word("本人","自分")else if((key=="treatWeights" && field!="__tail")||field.startsWith("@")||field.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}")))resolveName(field,s,model)else fieldName(field)
             val unit=currencies.fieldCurrency(value,field,currencies.objectCurrency(value,currency))
             val rendered=if(isCommandMoneyField(field)&&v is JsonPrimitive&&v.longOrNull!=null)fieldValue(v to unit,field,currency,s,model,zone)
                 else readableCommandJson(v,field,unit?:currency,s,model,zone)
@@ -356,6 +385,30 @@ internal fun resolveName(id:String,s:BookSnapshot,model:ConfirmationModel):Strin
 @Composable internal fun fieldName(key:String):String {
     if(key.toIntOrNull()!=null)return word("第 $key 项","$key 件目")
     val names=mapOf(
+        "amount" to ("金额" to "金額"),
+        "baseAmount" to ("本位币金额" to "基準通貨額"),
+        "accountAmount" to ("账户币金额" to "口座通貨額"),
+        "toAmount" to ("转入金额" to "入金額"),
+        "feePosition" to ("手续费位置" to "手数料の扱い"),
+        "feeAccountId" to ("手续费付款账户" to "手数料の支払口座"),
+        "feeAmount" to ("手续费" to "手数料"),
+        "feeCurrency" to ("手续费币种" to "手数料通貨"),
+        "feeAccountAmount" to ("手续费账户币金额" to "手数料の口座通貨額"),
+        "feeBaseAmount" to ("手续费本位币金额" to "手数料の基準通貨額"),
+        "feeDate" to ("手续费日期" to "手数料の日付"),
+        "feeConfirmed" to ("手续费已确认" to "手数料確定済み"),
+        "settlementConfirmed" to ("结算已确认" to "決済確定済み"),
+        "treatEnabled" to ("互请分摊" to "ごちそうの分担"),
+        "treatMode" to ("分摊方式" to "分担方法"),
+        "treatFriends" to ("分摊朋友" to "分担する友達"),
+        "__tail" to ("尾差承担人" to "端数の負担者"),
+        "treatWeights" to ("分摊份额" to "分担割合"),
+        "reserveAmount" to ("使用预留金额" to "使用する確保額"),
+        "estimateDirection" to ("估算方向" to "見積もりの方向"),
+        "receiptFileIds" to ("小票图片" to "レシート画像"),
+        "requestedMedia" to ("本机补充方式" to "端末での補完方法"),
+        "cardPaymentRecheck" to ("需要核对付款方式" to "支払方法の再確認"),
+        "cardPaymentFee" to ("付款费用" to "支払手数料"),
         "operation" to ("操作" to "操作"),"originalName" to ("来源原名" to "元の名前"),"targetName" to ("目标商户名称" to "保存先のお店名"),
         "normalRecords" to ("正常记录" to "通常の記録"),"affectedRecords" to ("受影响记录" to "対象記録"),"newlyLinkedRecords" to ("新关联记录" to "新規関連の記録"),"renamedRecords" to ("改名记录" to "名前を変更する記録"),
         "trashedRecords" to ("其中回收站记录" to "うちごみ箱の記録"),"linkedRefunds" to ("关联退款" to "関連する返金"),"templates" to ("模板" to "テンプレート"),

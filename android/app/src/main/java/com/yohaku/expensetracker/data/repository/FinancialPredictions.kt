@@ -141,7 +141,8 @@ internal fun LedgerRepository.prepareFinancialPrediction(state:FinancialReviewSt
     require(facts.retainedBills.all{it.number<=input.terms.paymentDates.size}){"重算范围须保留已确认、有付款关联或已过期的账期 / 再計算の範囲には確定・支払関連・期日経過の請求を含めてください"}
     val gross=if(incoming!=null)incoming.principalMinor else if(input.sourceEventId!=null)state.ledger.accountMoney(state.ledger.visibleEvents.first{it.id==input.sourceEventId}).minor else principal
     val baselineIssue=old?.let{arrangementBaselineIssue(state.ledger,state.finance,it)}
-    val result=if(cardIssue!=null)Calculation.Incomplete(listOf(cardIssue))
+    val result=if(cardSource!=null && requested.terms.hasPaymentBeforeSource())Calculation.Incomplete(listOf("plan.billBeforeSource"))
+        else if(cardIssue!=null)Calculation.Incomplete(listOf(cardIssue))
         else if(baselineIssue!=null)Calculation.Incomplete(listOf(baselineIssue))
         else if(principal<0)Calculation.Incomplete(listOf("plan.noPrincipal"))
         else if(gross<=0)Calculation.Incomplete(listOf("plan.noPrincipal"))

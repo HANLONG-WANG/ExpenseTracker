@@ -46,6 +46,7 @@ suspend fun LedgerRepository.previewFinancialRule(bookId:String,accountId:String
     val state=financialReviewState(bookId)
     val account=requireNotNull(state.ledger.accounts.firstOrNull{it.id==accountId}){"账户不属于本账本 / 別の帳簿の口座です"}
     requireMode(account,input.mode)
+    input.requireValidRates()
     LocalDate.parse(input.effectiveFrom);ZoneId.of(input.zoneId)
     requirePaymentAccount(bookId,input.billing?.paymentAccountId)
     input.deadlines.forEach{deadline->

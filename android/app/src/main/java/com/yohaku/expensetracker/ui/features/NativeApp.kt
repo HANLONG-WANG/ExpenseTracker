@@ -439,7 +439,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
         if(error!=null) YSheet(word("请检查","確認してください"),{vm.error.value=null}) {val language=LocalLanguage.current;YText(error!!.lineSequence().joinToString("\n"){line->if(language=="ja")line.substringAfter(" / ",line)else line.substringBefore(" / ")});YButton(word("知道了","確認"),{vm.error.value=null},primary=true)}
         notice?.takeIf{it.bookId==book?.id&&error==null}?.let{
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(bottom=95.dp),contentAlignment=Alignment.BottomCenter){
-                YToast(word(it.zh,it.ja),Modifier.widthIn(max=androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp*.9f))
+                YToast(word(it.zh,it.ja),Modifier.widthIn(max=androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp*.9f),tone=it.tone)
             }
         }
         }

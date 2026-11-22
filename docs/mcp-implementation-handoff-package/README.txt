@@ -57,3 +57,5 @@ Android 命令补充（2026-11-15）：流水确认/差异接受通过 postingId
 
 自由文本精简（2026-11-17）：
 手机不再在任务卡片和领取预览中显示服务端 validation.warnings（如“$.records[n]: 明细不完整或存在疑点”），小票与流水的实际状态由手机预览自行计算显示；服务端仍可保留这些检查供发布判断。流水与小票任务的 instructions 新增自由文本约定：issues 只写看了页面也看不出、需要用户处理的具体问题，不写规则复述、免责声明、日期/店名核对或与原记录的金额差；uncertain_fields 只列填了值但不确定的字段；小票 complete 与日期、店名无关；流水银行账户默认按入账日、信用卡按明细利用日，方向按金额栏判断，只有资料本身看不出时才要求补充。reference/lib/formats/README.md 已同步这些约定，JSON 结构、字段与版本不变。部署网站时建议同步替换该说明文件。
+
+手机办理任务的 records 附件现提供资金分录 ID 与转账两端日期、确认状态。statement.accept 和 statement.confirmActual 遇到同账户多笔同向分录时，从附件选取 postingId。命令字段及费率、日期和互请补丁的完整约定见任务随附的 yohaku-command-protocol-v1.md。

@@ -51,6 +51,16 @@ import kotlinx.serialization.json.*
                 DraftPreviewFact(label,value,key)
             }
         }
+        val settings=buildList {
+            for(key in listOf("historicalIncluded","budgetExcluded","fromConfirmed","toConfirmed","feeConfirmed","treatEnabled"))
+                if(draft[key]==JsonPrimitive(true))add(key)
+            if(draft["settlementConfirmed"]==JsonPrimitive(false))add("settlementConfirmed")
+            if(text("feeAmount")!=null)addAll(listOf("feePosition","feeAccountId"))
+            if(draft["treatEnabled"]==JsonPrimitive(true))addAll(listOf("treatMode","treatFriends","treatWeights"))
+        }
+        settings.forEach{key->draft[key]?.takeUnless{it==JsonNull}?.let{value->
+            DraftPreviewFact(fieldName(key),fieldValue(value to null,key,currency?:s.book.currency,s,model),key)
+        }}
         val files=listOf("attachmentIds","receiptFileIds").flatMap{key->(draft[key] as? JsonArray).orEmpty().map{it.jsonPrimitive.content}}.distinct()
         val media=text("requestedMedia")?:"NONE"
         DraftPreviewFact(word("将附上的文件","添付するファイル"),if(files.isEmpty()) {

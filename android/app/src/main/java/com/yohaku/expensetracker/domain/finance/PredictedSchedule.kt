@@ -18,6 +18,11 @@ internal fun FinancialScheduleTerms.paymentRule(date:String,base:RevolvingRule)=
     val overrides:List<PeriodOverride> = emptyList(),@SchemaRange(minimum=1) val firstPeriodNumber:Int=1,@SchemaRange(minimum=0,condition="When used to override the installment total fee; ignored by other modes.") val remainingFeeMinor:Long?=null,
     val additionalFees:List<AdditionalPeriodFee> = emptyList(),val paymentSettings:List<RevolvingPaymentSetting> = emptyList()
 )
+internal fun FinancialScheduleTerms.hasPaymentBeforeSource(known:List<ConfirmedSchedulePeriod> = emptyList()):Boolean {
+    val sourceDate=LocalDate.parse(agreementDate)
+    return paymentDates.any { LocalDate.parse(it)<sourceDate } || known.any { it.date<sourceDate }
+}
+
 data class EffectiveFinancialRule(val version:Int,val rule:FinancialRuleVersion)
 data class ConfirmedSchedulePeriod(val number:Int,val principalMinor:Long?,val feeMinor:Long?,val totalMinor:Long,val date:LocalDate)
 @Serializable data class InterestSegmentSnapshot(val start:String,val end:String,val balanceMinor:Long,val days:Long,val annualRate:String,val yearDays:Int,val ruleId:String?)
@@ -39,6 +44,7 @@ fun predictedSchedule(
     val agreement=LocalDate.parse(terms.agreementDate)
     if(mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)&&terms.accrualWindows.any{LocalDate.parse(it.start)<agreement})return Calculation.Incomplete(listOf("plan.accrualBeforeAgreement"))
     val dates=terms.paymentDates.map(LocalDate::parse)
+    if (terms.hasPaymentBeforeSource(confirmed)) return Calculation.Incomplete(listOf("plan.billBeforeSource"))
     require(dates.zipWithNext().all{(a,b)->a<b}){"请按付款日期顺序填写 / 支払日順に入力してください"}
     require(confirmed.map{it.number}.distinct().size==confirmed.size)
     val timeline=versions.filter{it.rule.mode==mode}.groupBy{it.rule.effectiveFrom}.values.map{it.maxBy{v->v.version}}
@@ -93,7 +99,7 @@ fun predictedSchedule(
             var details=period.interestCharge
             if(mode==FinanceMode.FIXED_LOAN&&contract.loanMethod!=LoanMethod.MANUAL) {
                 val start=if(index==0)agreement else dates[index-1]
-                fee=when(val charge=interestCharge(balance,start,dates[index],contract.loanInterest!!,firstPeriod=terms.firstPeriodNumber+index==1)) {
+                fee=when(val charge=interestCharge(balance,start,dates[index],contract.loanInterest!!.forLoanPeriod(index),firstPeriod=terms.firstPeriodNumber+index==1)) {
                     is Calculation.Ready->{details=charge.value;charge.value.feeMinor}
                     is Calculation.Incomplete->return charge
                     is Calculation.Unsupported->return charge

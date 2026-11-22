@@ -30,11 +30,7 @@ class MainActivity:ComponentActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         readReminderIntent(intent)
-        // All three app designs use light paper backgrounds, independently of system night mode.
-        enableEdgeToEdge(
-            statusBarStyle=SystemBarStyle.light(Color.TRANSPARENT,Color.TRANSPARENT),
-            navigationBarStyle=SystemBarStyle.light(Color.TRANSPARENT,Color.TRANSPARENT)
-        )
+        enablePaperSystemBars()
         val resultFile=java.io.File(noBackupFilesDir,"backup-result.txt")
         val resultText=resultFile.takeIf{it.exists()}?.readText()
         resultFile.delete()
@@ -47,4 +43,12 @@ class MainActivity:ComponentActivity() {
             ReceiptCameraHost(vm){NativeApp(vm,backupResult,{backupResult=null})}
         }
     }
+}
+
+internal fun ComponentActivity.enablePaperSystemBars() {
+    // All three app designs use light paper backgrounds, independently of system night mode.
+    enableEdgeToEdge(
+        statusBarStyle=SystemBarStyle.light(Color.TRANSPARENT,Color.TRANSPARENT),
+        navigationBarStyle=SystemBarStyle.light(Color.TRANSPARENT,Color.TRANSPARENT)
+    )
 }

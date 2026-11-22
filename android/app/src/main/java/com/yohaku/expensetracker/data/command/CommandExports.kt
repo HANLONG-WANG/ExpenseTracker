@@ -13,12 +13,15 @@ import com.yohaku.expensetracker.data.files.FileProtocols
 @Serializable data class LedgerContextExport(val format:String="yohaku.ledger-context",val version:Int=1,val book_id:String,
     val generatedAt:String,val coverage:List<String>,val items:List<ContextItem>,val contextDigest:String,
     val asOfDate:String?=null,val zoneId:String?=null)
+@Serializable data class RecordPosting(val id:String,val account:String,val deltaMinor:Long,val currency:String,val date:String,val confirmed:Boolean)
 @Serializable data class RecordExport(val id:String,val kind:String,val date:String,val account:String,val category:String?,
     val currency:String,val amountMinor:Long,val baseMinor:Long,val merchant:String,val note:String,val revision:Int,
     val accountMinor:Long?,val accountCurrency:String?,val confirmed:Boolean?,val historicalIncluded:Boolean,val budgetExcluded:Boolean,
     val cardPaymentChoice:String?,val cardPaymentPeriods:Int?,val cardPaymentMonth:String?,val cardPaymentFeeMinor:Long?,
     val settlementDate:String?=null,val originalEvent:String?=null,val toAccount:String?=null,val toMinor:Long?=null,val toCurrency:String?=null,
-    val activity:String?=null,val merchantId:String?=null,val cardPaymentMode:String?=null,val cardPaymentRule:String?=null,val financial:JsonObject?=null)
+    val activity:String?=null,val merchantId:String?=null,val cardPaymentMode:String?=null,val cardPaymentRule:String?=null,val financial:JsonObject?=null,
+    val fromDate:String?=null,val fromConfirmed:Boolean?=null,val toDate:String?=null,val toConfirmed:Boolean?=null,
+    val postings:List<RecordPosting> = emptyList())
 @Serializable data class RecordsExport(val format:String="yohaku.records",val version:Int=1,val book_id:String,val generatedAt:String,
     val scope:RecordScope,val records:List<RecordExport>,val activityTreats:List<ContextItem> = emptyList(),val workflows:List<ContextItem> = emptyList())
 data class CommandExportBundle(val context:LedgerContextExport,val records:RecordsExport?)
@@ -107,15 +110,24 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope,pref
         db.csvImportDao().batches(bookId).first().forEach{batch->val ids=db.csvImportDao().events(bookId,batch.id).filter{it.id in selectedIds}.map{it.id};if(ids.isNotEmpty())workflows+=ContextItem(batch.id,"csv_batch_records",batch.fileName,buildJsonObject{put("entries",encoded(ids.sorted()))})}
         RecordsExport(book_id=bookId,generatedAt=generated,scope=scope,activityTreats=treats,workflows=workflows.sortedWith(compareBy<ContextItem>{it.kind}.thenBy{it.id}),records=selected.map{e->
             val st=s.settlementByEvent[e.id];val transfer=s.transferByEvent[e.id]
-            RecordExport(e.id,e.kind,e.date,e.accountId,e.categoryId,e.currency,e.amountMinor,e.baseMinor,e.merchant,e.note,e.revision,st?.accountMinor,st?.accountCurrency,st?.confirmed,e.historicalIncluded,e.budgetExcluded,e.cardPaymentChoice,e.cardPaymentPeriods,e.cardPaymentMonth,e.cardPaymentFeeMinor,
-                st?.settlementDate,st?.originalEventId,transfer?.toAccountId,transfer?.toMinor,transfer?.toCurrency,s.activityByEvent[e.id],s.merchantByEvent[e.id],e.cardPaymentMode,e.cardPaymentRuleId,
+            val postings=s.storedPostingsByEvent[e.id].orEmpty()
+            // Older two-posting transfers predate the separate transfer detail table.
+            val legacyTransfer=e.kind=="TRANSFER" && transfer==null
+            val legacyFrom=if(legacyTransfer)postings.single{it.accountId==e.accountId} else null
+            val legacyTo=if(legacyTransfer)postings.single{it.accountId!=e.accountId} else null
+            val fromConfirmed=transfer?.fromConfirmed?:legacyFrom?.confirmed
+            RecordExport(e.id,e.kind,e.date,e.accountId,e.categoryId,e.currency,e.amountMinor,e.baseMinor,e.merchant,e.note,e.revision,st?.accountMinor,st?.accountCurrency,fromConfirmed?:st?.confirmed,e.historicalIncluded,e.budgetExcluded,e.cardPaymentChoice,e.cardPaymentPeriods,e.cardPaymentMonth,e.cardPaymentFeeMinor,
+                st?.settlementDate,st?.originalEventId,transfer?.toAccountId?:legacyTo?.accountId,transfer?.toMinor?:legacyTo?.deltaMinor,transfer?.toCurrency?:legacyTo?.currency,s.activityByEvent[e.id],s.merchantByEvent[e.id],e.cardPaymentMode,e.cardPaymentRuleId,
                 s.repayments.firstOrNull{it.eventId==e.id}?.let{repayment->buildJsonObject {
                     put("debtAccountId",repayment.debtAccountId);put("currency",s.accounts.first{it.id==repayment.debtAccountId}.currency)
                     put("receivedMinor",repayment.receivedMinor);put("principalMinor",repayment.principalMinor);put("interestMinor",repayment.interestMinor);put("feeMinor",repayment.feeMinor);put("feeBaseMinor",repayment.feeBaseMinor)
                     put("clearingDate",repayment.clearingDate);put("platformConfirmed",repayment.platformConfirmed);put("paymentType",repayment.paymentType);put("linkedTransferEventId",repayment.linkedTransferEventId)
                     put("sourceFeeMinor",repayment.sourceFeeMinor);put("sourceFeeBaseMinor",repayment.sourceFeeBaseMinor)
                     put("allocations",JsonArray(s.repaymentAllocations.filter{it.eventId==e.id}.map{a->buildJsonObject{put("id",a.id);put("billId",a.billId);put("contractId",a.contractId);put("principalMinor",a.principalMinor);put("interestMinor",a.interestMinor);put("feeMinor",a.feeMinor)}}))
-                }}?:s.contracts.firstOrNull{it.fundingEventId==e.id}?.let{c->buildJsonObject{put("contractId",c.id)}})
+                }}?:s.contracts.firstOrNull{it.fundingEventId==e.id}?.let{c->buildJsonObject{put("contractId",c.id)}},
+                fromDate=transfer?.fromDate?:legacyFrom?.date,fromConfirmed=fromConfirmed,
+                toDate=transfer?.toDate?:legacyTo?.date,toConfirmed=transfer?.toConfirmed?:legacyTo?.confirmed,
+                postings=postings.sortedBy{it.id}.map{p->RecordPosting(p.id,p.accountId,p.deltaMinor,p.currency,p.date,p.confirmed)})
         })
     }
     CommandExportBundle(context,records)

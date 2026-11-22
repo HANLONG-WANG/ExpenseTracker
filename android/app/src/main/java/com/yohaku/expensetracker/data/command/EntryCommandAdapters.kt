@@ -47,6 +47,16 @@ internal fun validateEntryValues(input:JsonObject) {
     require(v.estimateDirection==null||v.estimateDirection in listOf("TO","FROM"))
 }
 
+internal fun patchTreatWeights(old:Map<String,String>, shares:Map<String,String>?, tail:JsonElement?,
+    resolve:(JsonElement)->String):Map<String,String> {
+    val weights = shares?.plus(old.filterKeys { it == "__tail" }) ?: old
+    return when (tail) {
+        null -> weights
+        JsonNull -> weights - "__tail"
+        else -> weights + ("__tail" to resolve(tail))
+    }
+}
+
 internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,old:EntryDraft?=null,allowIncomplete:Boolean=false,preserveSettlementFact:Boolean=false):EntryDraft {
     val v=commandJson.decodeFromJsonElement<EntryValues>(input)
     val kind=v.kind?:old?.kind?:EntryKind.EXPENSE
@@ -100,12 +110,14 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
         }
         put(key,JsonPrimitive(money?.decimal?.toPlainString().orEmpty()))
     }
-    if("treatShares" in input) {
+    val shareWeights = if("treatShares" in input) {
         val shares=v.treatShares.orEmpty();val friends=shares.mapNotNull{it.friend?.let(run::resolve)}
         require(friends.distinct().size==friends.size)
         put("treatFriends",encoded(friends))
-        val weights=shares.associate{share->(share.friend?.let(run::resolve)?:"ME") to when(v.treatMode?:d.treatMode){TreatSplitMode.EQUAL->"1";TreatSplitMode.AMOUNTS->Money(v.amount?.currency?:d.originalCurrency?:accountCurrency,requireNotNull(share.minor)).decimal.toPlainString();TreatSplitMode.PERCENT->requireNotNull(share.percent)}}.toMutableMap()
-        v.treatTail?.let{weights["__tail"]=run.resolve(it)};put("treatWeights",encoded(weights))
+        shares.associate{share->(share.friend?.let(run::resolve)?:"ME") to when(v.treatMode?:d.treatMode){TreatSplitMode.EQUAL->"1";TreatSplitMode.AMOUNTS->Money(v.amount?.currency?:d.originalCurrency?:accountCurrency,requireNotNull(share.minor)).decimal.toPlainString();TreatSplitMode.PERCENT->requireNotNull(share.percent)}}
+    } else null
+    if ("treatShares" in input || "treatTail" in input) {
+        put("treatWeights",encoded(patchTreatWeights(d.treatWeights,shareWeights,input["treatTail"],run::resolve)))
     }
     d=commandJson.decodeFromJsonElement(JsonObject(fields))
     if(old?.accountId!=null&&s.accounts.single{it.id==old.accountId}.currency!=account.currency) {
@@ -145,7 +157,7 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
 
 internal class EntryWriteAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("entry.$action",if(action=="create")entryValueSchema else patchSchema(descriptorSchema(EntryEditInput.serializer().descriptor),mapOf("set" to entryValueSchema,"targets" to entryWriteTargetsSchema)),if(action=="create")mapOf("entry" to "entry")else emptyMap(),
-        "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Refund date is the occurrence date; settlementDate is the posting date. Edits may retain an inactive account only in its original role. Selectors freeze at first preview.",
+        "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. treatTail may be patched independently: omission preserves it when replacing treatShares, null restores the default last participant, and a friend reference selects the tail recipient. Explicit null also clears supported optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Refund date is the occurrence date; settlementDate is the posting date. Edits may retain an inactive account only in its original role. Selectors freeze at first preview.",
         (if(action=="create")"Create one new record; no targets field. "else"1–5000 fixed targets. ")+"For edits, category-only updates also accept explicitly identified trash records (preserve trash status); selectors and other edits remain live-only; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; use entry.prepareDraft for incomplete user input.",
         (when(action){"create"->"Create one ordinary expense/income/transfer/refund; no existing record is edited.";"confirmActual"->"Confirm actual amounts on fixed existing records; set must explicitly set at least one of settlementConfirmed/fromConfirmed/toConfirmed/feeConfirmed to true, with the actual amount/date for that side.";else->"Batch-edit fixed existing ordinary records using a field patch; omitted fields and attachments are preserved."})+" Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
         when(action){"create"->"""{"kind":"EXPENSE","account":"account-id","category":"category-id","amount":{"currency":"JPY","minor":900}}""";"confirmActual"->"""{"targets":{"ids":["entry-id"]},"set":{"accountAmount":{"currency":"JPY","minor":900},"settlementDate":"2026-11-02","settlementConfirmed":true}}""";else->"""{"targets":{"ids":["entry-id"]},"set":{"note":"已核对"}}"""})

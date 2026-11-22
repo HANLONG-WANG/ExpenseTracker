@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.data.repository.*
+import com.yohaku.expensetracker.domain.finance.rateValue
 import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.ui.components.*
@@ -42,10 +43,14 @@ import kotlinx.serialization.json.*
     if(key=="upToMinor"&&value==JsonNull)return word("无上限","上限なし")
     if(value==null)return word("已移除","削除済み")
     val raw=(value as? JsonPrimitive)?.contentOrNull
-    if(raw.isNullOrEmpty())return word("未填写","未入力")
+    if(raw==null)return word("未填写","未入力")
+    if(key in setOf("annualRate","totalRate")) {
+        val rate=raw.rateValue() ?: return word("无效费率","無効な料率")+" · "+raw
+        return rate.movePointRight(2).stripTrailingZeros().toPlainString()+"%"
+    }
+    if(raw.isEmpty())return word("未填写","未入力")
     if(key in setOf("paymentAccountId","billId"))return referenceName(raw)
     if(key.endsWith("Minor"))return Money(currency,raw.toLong()).display()
-    if(key in setOf("annualRate","totalRate"))return raw.toBigDecimal().movePointRight(2).stripTrailingZeros().toPlainString()+"%"
     if(raw=="true")return word("是","はい")
     if(raw=="false")return word("否","いいえ")
     if(key in setOf("frequency","balanceBasis","rounding","roundingMode","firstCharge","method","allocation","feeMethod","principalRemainder","feeRemainder","loanMethod","loanPrincipalRemainder","mode","changeType"))return financeLabel(raw)

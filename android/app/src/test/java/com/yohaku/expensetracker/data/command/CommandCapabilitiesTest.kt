@@ -46,6 +46,13 @@ class CommandCapabilitiesTest {
         }
     }
 
+    @Test fun categoryAndTemplateKindsMatchLedgerSupport() {
+        for(adapter in listOf(CategoryAdapter("save"),TemplateAdapter("save"))) {
+            val kind=adapter.capability.inputSchema.getValue("properties").jsonObject.getValue("kind").jsonObject
+            assertEquals(listOf("EXPENSE","INCOME"),kind.getValue("enum").jsonArray.map{it.jsonPrimitive.content})
+        }
+    }
+
     @Test fun merchantSaveModesUseTypedTargetsAndRejectMixedIntents() {
         val adapter=ContactAdapter("merchant")
         fun validate(input:String,prior:Map<String,Map<String,String>> = emptyMap()) {

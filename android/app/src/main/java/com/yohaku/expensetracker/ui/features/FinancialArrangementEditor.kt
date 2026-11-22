@@ -192,9 +192,8 @@ import java.time.*
                     firstDate=if(singleDateBasis=="BONUS")requireNotNull(bonusPaymentDate(LocalDate.parse(basisDate),singleRule.bonusPayments)){"需补齐ボーナス払い设置 / ボーナス払い設定の補完が必要です"}.toString()else deferredPaymentDate(LocalDate.parse(effective),YearMonth.parse(singleMonth),singleRule.billing!!).toString()
                 }
                 val end=LocalDate.parse(firstEnd);val payment=LocalDate.parse(firstDate);val start=LocalDate.parse(effective)
-                encoded=vm.repository.json.encodeToString(List(n){i->val previous=end.plusMonths(i-1L);val interest=rule?.revolving?.interest
-                    val nextStart=if(i==0)start else if(interest?.frequency==ChargeFrequency.MONTHLY||interest?.includeStart==true&&interest.includeEnd==true)previous.plusDays(1)else if(interest?.includeStart==false&&interest.includeEnd==false)previous.minusDays(1)else previous
-                    ArrangementDateDraft(payment.plusMonths(i.toLong()).toString(),nextStart.toString(),end.plusMonths(i.toLong()).toString())})
+                encoded=vm.repository.json.encodeToString(monthlyCandidates(n,start,payment,end,rule.takeUnless { manual },selected).map { (date,window) ->
+                    ArrangementDateDraft(date,window.start,window.end) })
             }},Modifier.testTag("arrangement-generate"),enabled=!busy,haptic=Haptic.Step)
             if(destinationPool==null)rows.forEachIndexed{i,row->key(row.calendarId){Panel(Modifier.testTag("arrangement-period-$i")) {
                 YText(word("第${i+1}期","第${i+1}回"),14)

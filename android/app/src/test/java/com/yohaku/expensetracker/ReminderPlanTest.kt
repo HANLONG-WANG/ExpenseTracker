@@ -10,6 +10,14 @@ class ReminderPlanTest {
     private val now=Instant.parse("2026-10-16T01:00:00Z")
     private val prefs=mapOf("a" to ReminderPreferences(enabled=true),"b" to ReminderPreferences(enabled=true))
     private fun bill(book:String="a")=ReminderItem(book,"bill:one","REPAYMENT","2026-10-17","JPY",10000,"Card")
+    @Test fun summaryKeepsOnlyVisibleLiveItemsAndNewDeliveries() {
+        val remaining=bill().copy(amountMinor=1500)
+        val new=bill().copy(key="new")
+        val live=listOf(remaining,new)
+        val prior=setOf("resolved",remaining.key)
+        assertEquals(listOf(remaining),displayedReminders(prior,live,emptyList()))
+        assertEquals(live,displayedReminders(prior,live,listOf(ReminderSlot("slot",0,new))))
+    }
     @Test fun daysDoNotCatchUpAndDeliverySurvivesRestart() {
         val plan=planReminders(listOf(bill(),bill("b")),prefs,ReminderDeliveryState(),now,zone)
         assertEquals(2,plan.due.size) // yesterday's seven-day alert is never replayed

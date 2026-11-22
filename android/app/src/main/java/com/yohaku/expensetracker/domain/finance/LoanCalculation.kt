@@ -5,6 +5,10 @@ import java.math.MathContext
 import java.math.RoundingMode
 import java.time.LocalDate
 
+/** An interior payment date belongs to exactly one of its adjacent daily periods. */
+internal fun InterestRule.forLoanPeriod(index:Int):InterestRule =
+    if (index > 0 && frequency == ChargeFrequency.DAILY) copy(includeStart = includeEnd?.not()) else this
+
 /** This pure schedule does not create a borrowing, expense, or account posting. */
 fun fixedLoanPlan(
     principalMinor: Long, start: LocalDate, paymentDates: List<LocalDate>, method: LoanMethod,
@@ -19,7 +23,7 @@ fun fixedLoanPlan(
     if (issues.isNotEmpty()) return Calculation.Incomplete(issues)
     if (method == LoanMethod.EQUAL_PRINCIPAL && principalRemainder == null) return Calculation.Incomplete(listOf("loan.principalRemainder"))
     if (method == LoanMethod.ANNUITY && (interest.frequency != ChargeFrequency.MONTHLY || interest.firstCharge != FirstCharge.NORMAL ||
-            paymentDates.withIndex().any { (index,date) -> date != start.plusMonths(index+1L) }))
+            paymentDates.withIndex().any { (index,date) -> date != monthlyDate(start,index+1L) }))
         return Calculation.Unsupported("loan.annuityRequiresRegularMonthlyInterest")
     val rounding = RoundingMode.valueOf(interest.roundingMode!!)
     val count = paymentDates.size
@@ -38,7 +42,7 @@ fun fixedLoanPlan(
     var previousDate = start
     val periods = mutableListOf<PaymentPeriod>()
     for ((index,date) in paymentDates.withIndex()) {
-        val charge = when (val result = interestCharge(remaining,previousDate,date,interest,firstPeriod=index == 0)) {
+        val charge = when (val result = interestCharge(remaining,previousDate,date,interest.forLoanPeriod(index),firstPeriod=index == 0)) {
             is Calculation.Ready -> result.value
             is Calculation.Incomplete -> return result
             is Calculation.Unsupported -> return result

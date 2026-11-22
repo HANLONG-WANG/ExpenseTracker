@@ -45,10 +45,10 @@ import java.io.File
         finally { busy = false }
     }
     ScanReviewPage(state, images, busy, failed, source, onUse = { onUse(state.result) }, onLeave, onCancel,
-        onChange = { geometryUnavailable = false; onState(state.copy(draft = it)) },
+        onChange = { failed = false; geometryUnavailable = false; onState(state.copy(draft = it)) },
         onEdit = { onState(state.copy(editing = true, draft = state.accepted ?: state.automatic)) },
         onRender = { run(ScanReviewOperation.RENDER) }, onRestore = { run(ScanReviewOperation.RESTORE) }, onRetry = { run(operation) },
-        onCancelEdit = { geometryUnavailable = false; if (state.hasResult) { failed = false; onState(state.copy(editing = false, draft = state.accepted ?: state.automatic)) } else onCancel() },
+        onCancelEdit = { geometryUnavailable = false; failed = false; onState(state.copy(editing = false, draft = state.accepted ?: state.automatic)) },
         geometryUnavailable = geometryUnavailable)
 }
 
@@ -60,28 +60,30 @@ import java.io.File
     onEdit: () -> Unit, onRender: () -> Unit, onRestore: () -> Unit, onRetry: () -> Unit, onCancelEdit: () -> Unit,
     geometryUnavailable: Boolean = false,
 ) {
+    val editable = state.editing && images != null && state.draft != null
     Column(Modifier.fillMaxSize().scanPaper().safeDrawingPadding().padding(16.dp).testTag("scan-review"),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ScanHeading(if (state.editing) word("调整轮廓", "輪郭を調整") else word("确认小票", "レシートを確認"),
             if (state.editing) "03" else "02", word("关闭", "閉じる"), "scan-review-close", onCancel)
         ScanFrame(Modifier.weight(1f).fillMaxWidth().testTag("scan-result-frame")) {
-            if (images != null && !busy && !failed) {
+            if (images != null && !busy && (!failed || editable)) {
                 if (state.editing) ScanContourCanvas(images.original, requireNotNull(state.frame), requireNotNull(state.draft), onChange, Modifier.fillMaxSize())
                 else images.result?.let { ScanResultImage(it, Modifier.fillMaxSize()) }
             }
             if (busy) ScanStatus(word("正在处理…", "補正中…"), Modifier.testTag("scan-review-processing"), processing = true)
-            if (failed) ScanStatus(word("处理失败，请重试或调整轮廓", "補正できませんでした。再試行するか輪郭を調整してください"),
+            if (failed && !editable) ScanStatus(word("无法读取或处理照片，请重试", "写真を読み込み・補正できませんでした。再試行してください"),
                 Modifier.testTag("scan-review-error"), action = { YButton(word("重试", "再試行"), onRetry, Modifier.testTag("scan-review-retry")) })
         }
-        if (!busy && !failed) {
+        if (!busy && (!failed || editable)) {
             if (state.editing) ScanCaption(
-                if (geometryUnavailable) word("轮廓不足以处理，请调整左右边缘和上下端线", "輪郭を補正できません。左右の縁と上下の端を調整してください")
+                if (failed) word("处理失败，可调整轮廓后重新处理", "補正できませんでした。輪郭を調整して再補正してください")
+                else if (geometryUnavailable) word("轮廓不足以处理，请调整左右边缘和上下端线", "輪郭を補正できません。左右の縁と上下の端を調整してください")
                 else if (state.notDetected && !state.hasResult) word("没找到小票，请拖动边框", "レシートが見つかりません。枠をドラッグしてください")
                 else word("拖动控制点贴合边缘 · 拖动时放大", "点を縁に合わせる・ドラッグ中に拡大"),
-                Modifier.fillMaxWidth().testTag("scan-review-hint"), attention = geometryUnavailable || (state.notDetected && !state.hasResult))
+                Modifier.fillMaxWidth().testTag("scan-review-hint"), attention = failed || geometryUnavailable || (state.notDetected && !state.hasResult))
             else ScanCaption(word("检查边缘与文字，确认后使用", "縁と文字を確かめてから使用してください"), Modifier.fillMaxWidth())
         }
-        ScanReviewActions(state, busy, failed, source, onUse, onLeave, onEdit, onRender, onRestore, onCancelEdit)
+        ScanReviewActions(state, busy, failed && !editable, source, onUse, onLeave, onEdit, onRender, onRestore, onCancelEdit)
     }
 }
 
@@ -98,19 +100,19 @@ import java.io.File
     val primary: @Composable (Modifier) -> Unit = { modifier ->
         YButton(if (state.editing) word("重新处理", "再補正") else word("使用", "使用する"),
             if (state.editing) onRender else onUse, modifier.testTag(if (state.editing) "scan-render" else "scan-use"),
-            primary = true, enabled = !busy && (state.editing || (!failed && state.hasResult)))
+            primary = true, enabled = !busy && !failed && (state.editing || state.hasResult))
     }
     val leave: @Composable (Modifier) -> Unit = { modifier ->
         YButton(if (source == ScanPhotoSource.CAMERA) word("重拍", "撮り直す") else word("取消", "キャンセル"),
             onLeave, modifier.testTag("scan-review-leave"))
     }
     val edit: @Composable (Modifier) -> Unit = { modifier ->
-        YButton(word("调整轮廓", "輪郭を調整"), onEdit, modifier.testTag("scan-edit"), enabled = !busy && state.initialized)
+        YButton(word("调整轮廓", "輪郭を調整"), onEdit, modifier.testTag("scan-edit"), enabled = !busy && !failed && state.initialized)
     }
     val cancelEdit: @Composable () -> Unit = {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            YButton(word("取消调整", "調整をキャンセル"), onCancelEdit, Modifier.weight(1f).testTag("scan-cancel-edit"), enabled = !busy)
-            if (source == ScanPhotoSource.CAMERA) leave(Modifier.weight(1f))
+            if (state.hasResult) YButton(word("取消调整", "調整をキャンセル"), onCancelEdit, Modifier.weight(1f).testTag("scan-cancel-edit"), enabled = !busy)
+            if (!state.hasResult || source == ScanPhotoSource.CAMERA) leave(Modifier.weight(1f))
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(if (t.id == "objects") 10.dp else 8.dp)) {

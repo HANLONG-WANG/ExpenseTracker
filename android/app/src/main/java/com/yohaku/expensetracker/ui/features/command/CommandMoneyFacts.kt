@@ -53,6 +53,11 @@ internal class CommandMoneyFacts(s:BookSnapshot,effects:List<ObjectEffect>,after
 }
 
 private fun JsonObject.text(key:String)=(get(key) as? JsonPrimitive)?.contentOrNull?.takeIf{it.isNotEmpty()}
+internal fun commandSummaryAmount(row:JsonObject?,value:JsonElement?,baseCurrency:String):String? =
+    (value as? JsonPrimitive)?.longOrNull?.let { minor ->
+        Money(Currency.valueOf(row?.text("currency")?:baseCurrency),minor).display()
+    }
+
 internal fun isCommandMoneyField(key:String)=key.endsWith("Minor")||key=="minor"
 internal fun commandMoneyDisplay(value:Pair<JsonElement,String?>):String =
     Money(Currency.valueOf(requireNotNull(value.second){"Missing currency for command amount"}),value.first.jsonPrimitive.long).display()
@@ -75,7 +80,7 @@ internal fun flattenCommandFacts(value:JsonElement,currencies:CommandMoneyFacts,
                 }else putAll(flattenCommandFacts(v,currencies,fieldCurrency?:unit,path))
             }
         }
-        is JsonArray->if(value.isEmpty())put(prefix,JsonPrimitive("EMPTY") to currency)else value.forEachIndexed{i,v->putAll(flattenCommandFacts(v,currencies,currency,if(prefix.isEmpty())"${i+1}"else"$prefix.${i+1}"))}
+        is JsonArray->if(value.isEmpty())put(prefix,value to currency)else value.forEachIndexed{i,v->putAll(flattenCommandFacts(v,currencies,currency,if(prefix.isEmpty())"${i+1}"else"$prefix.${i+1}"))}
         else->put(prefix.ifEmpty{"value"},value to currency)
     }
 }

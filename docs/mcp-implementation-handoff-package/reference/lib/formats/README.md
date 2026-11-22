@@ -9,7 +9,7 @@
 | `yohaku.receipt-bundle` | [schema](receipt-bundle.v1.schema.json) | 小票图片ZIP中的 `manifest.json` |
 | `yohaku.receipt-items` | [schema](receipt-items.v1.schema.json) | 回填已有小票商品，不改交易金额 |
 
-每种完整示例在 [examples](examples/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际导出必须计算小票图片字节的SHA-256和大小。
+每种完整示例在 [fixtures](../../../fixtures/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际导出必须计算小票图片字节的SHA-256和大小。
 
 ## 共通字段与约束
 

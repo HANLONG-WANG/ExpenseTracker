@@ -2,6 +2,7 @@ package com.yohaku.expensetracker.ui.features
 
 import com.yohaku.expensetracker.ui.haptics.*
 
+import com.yohaku.expensetracker.ui.components.NoticeTone
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -25,7 +26,7 @@ data class PendingEntrySave(val review:LedgerChangeReview,val needsReview:Boolea
 data class MediaImportProgress(val session:String,val current:Int,val total:Int)
 data class StatementImportSeed(val bookId:String,val accountId:String,val note:String)
 data class MediaImportOption(val session:String,val preserveOriginal:Boolean)
-data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String)
+data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String,val tone:NoticeTone=NoticeTone.SUCCESS)
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock),val reminders:com.yohaku.expensetracker.platform.ReminderCoordinator?=null,val locationSource:com.yohaku.expensetracker.platform.CurrentLocationSource?=null,val cloud:com.yohaku.expensetracker.data.cloud.CloudRepository?=null):ViewModel() {
     private val writes=Mutex()
@@ -165,7 +166,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     val desktopTarget=MutableStateFlow<com.yohaku.expensetracker.platform.desktop.DesktopTarget?>(null)
     val desktopTemplateEditor=MutableStateFlow<String?>(null)
-    fun desktopNotice(bookId:String,zh:String,ja:String) {notice.value=AppNotice(++noticeSequence,bookId,zh,ja)}
+    fun desktopNotice(bookId:String,zh:String,ja:String) {notice.value=AppNotice(++noticeSequence,bookId,zh,ja,NoticeTone.ATTENTION)}
     fun openDesktopBook(target:com.yohaku.expensetracker.platform.desktop.DesktopTarget)=execute(onSuccess={
         entry.value=null;backStack.clear();route.value="home";desktopTarget.value=target
     }) {
@@ -464,7 +465,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         haptic(when{success==0->Haptic.Error;failed>0->Haptic.Warning;else->Haptic.Done})
         val zh=listOfNotNull("已导入 $success 个文件",fallback.takeIf{it>0}?.let{"$it 张图片无法优化，已原样保存"},firstFailure?.let{"失败 $failed 个：${it.substringBefore(" / ")}"}).joinToString("；")
         val ja=listOfNotNull("$success 件を取り込みました",fallback.takeIf{it>0}?.let{"$it 枚は最適化できず、そのまま保存しました"},firstFailure?.let{"失敗 $failed 件：${it.substringAfter(" / ",it)}"}).joinToString("。")
-        notice.value=AppNotice(++noticeSequence,bookId,zh,ja)
+        notice.value=AppNotice(++noticeSequence,bookId,zh,ja,if(failed>0||fallback>0)NoticeTone.ATTENTION else NoticeTone.SUCCESS)
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {
         haptic(Haptic.Saved)

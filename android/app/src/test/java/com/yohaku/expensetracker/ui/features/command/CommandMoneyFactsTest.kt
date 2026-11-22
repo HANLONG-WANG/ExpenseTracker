@@ -24,6 +24,26 @@ class CommandMoneyFactsTest {
         assertEquals(path,text,commandMoneyDisplay(value))
     }
 
+    @Test fun summaryUsesEachSideCurrency() {
+        fun display(json:String):String? {
+            val row=j(json).jsonObject
+            return commandSummaryAmount(row,row["amountMinor"],"USD")
+        }
+        assertEquals("¥1,000",display("""{"currency":"JPY","amountMinor":1000}"""))
+        assertEquals("CN¥100.00",display("""{"currency":"CNY","amountMinor":10000}"""))
+    }
+
+    @Test fun historyUsesTheZoneOfEachPaymentChange() {
+        val root=j("""{"changes":[{"appliedAt":"2026-11-01T00:00:00Z","zoneId":"Asia/Tokyo"},{"appliedAt":"2026-11-02T00:00:00Z","zoneId":"Asia/Shanghai"}]}""").jsonObject
+        val paths=flatten(root).keys.filter{it.endsWith(".appliedAt")}
+        assertEquals(listOf("Asia/Tokyo","Asia/Shanghai"),paths.map{commandFieldZone(root,it,emptyList(),true)?.id})
+    }
+
+    @Test fun draftDetailsRetainBusinessFieldsAndHideSession() {
+        val row=j("""{"mediaSession":"session","budgetExcluded":true,"feeAccountId":"bank","treatWeights":{"ME":"3"}}""").jsonObject
+        assertEquals(row.keys-"mediaSession",workflowDisplayFacts("entryDraft",row).jsonObject.keys)
+    }
+
     @Test fun repaymentFeesAndNestedAllocationsKeepTheirOwnUnitsOnBothSides() {
         val entry=ObjectEffect("entry","payment",j("""{"currency":"CNY"}"""),j("""{"currency":"USD"}"""))
         val payment=ObjectEffect("repayment","payment",repayment,repayment)

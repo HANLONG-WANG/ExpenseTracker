@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.ui.components
 
+import com.yohaku.expensetracker.ui.haptics.Haptic
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,7 +63,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YText(places.joinToString(" · ").ifBlank{word("未保存地点","場所未保存")},12,color=LocalYohaku.current.muted)
         if(note.isNotBlank())YText(note,13)
         YActionRow {
-            YButton(word("记一笔","記録"),onEntry,Modifier.testTag("merchant-entry-$id"),enabled=active)
+            YButton(word("记一笔","記録"),onEntry,Modifier.testTag("merchant-entry-$id"),enabled=active,haptic=Haptic.Compose)
             YButton(word("查看商户资料","お店の情報を見る"),onOpen,Modifier.testTag("merchant-open-$id"))
         }
     }

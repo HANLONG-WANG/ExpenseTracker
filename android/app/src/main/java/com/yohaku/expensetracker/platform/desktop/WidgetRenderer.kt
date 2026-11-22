@@ -14,7 +14,6 @@ import com.yohaku.expensetracker.domain.category.resolveCategoryIcon
 import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.domain.model.Currency
 import java.time.LocalDate
-import java.time.YearMonth
 
 internal class WidgetRenderer(private val context:Context) {
     fun render(id:Int,s:BookSnapshot?,today:LocalDate,appearance:Pair<String,String>,options:Bundle):RemoteViews {
@@ -25,7 +24,7 @@ internal class WidgetRenderer(private val context:Context) {
                 else { @Suppress("DEPRECATION") options.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES).orEmpty() }
             val small=sizes.filter{it.width<250}.minOfOrNull{it.width}?:minOf(minimum,170).toFloat()
             val wide=sizes.filter{it.width>=250}.minOfOrNull{it.width}?:maxOf(maximum,250).toFloat()
-            return RemoteViews(mapOf(SizeF(140f,140f) to layout(id,s,today,appearance,false,small),SizeF(250f,140f) to layout(id,s,today,appearance,true,wide)))
+            return RemoteViews(mapOf(SizeF(140f,180f) to layout(id,s,today,appearance,false,small),SizeF(250f,180f) to layout(id,s,today,appearance,true,wide)))
         }
         return layout(id,s,today,appearance,minimum>=250,minimum.toFloat())
     }
@@ -59,7 +58,7 @@ internal class WidgetRenderer(private val context:Context) {
             rv.setOnClickPendingIntent(R.id.widget_root,WidgetConfigurationActivity.pendingIntent(context,id))
             return rv
         }
-        val m=widgetBudget(s.budgetProjection(YearMonth.from(today).toString()),today)
+        val m=widgetBudget(s,today)
         val normal=m.state==WidgetBudgetState.NORMAL
         val over=m.state==WidgetBudgetState.OVER_BUDGET
         fun money(value:Long?)=value?.let{Money(m.currency,it).display()}?:"—"

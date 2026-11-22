@@ -36,7 +36,7 @@ import com.yohaku.expensetracker.ui.theme.*
             listOf("home","analysis","add","life","accounts").forEachIndexed{index,page->
                 val selected=active==page
                 val label=when(page){"home"->word("今天","今日");"analysis"->word("分析","分析");"add"->word("记一笔","記録");"life"->word("生活","暮らし");else->word("账户","口座")}
-                val item=Modifier.weight(if(page=="add")1.3f else 1f).testTag("nav-"+page).then(if(page=="add")Modifier.clickable(role=Role.Button,onClick={haptics.perform(Haptic.Compose);onAdd()}) else Modifier.selectable(selected=selected,role=Role.Tab,onClick={if(page!=route)haptics.perform(Haptic.TabSwitch);onNavigate(page)}))
+                val item=Modifier.weight(if(page=="add")1.3f else 1f).testTag("nav-"+page).then(if(page=="add")Modifier.clickable(role=Role.Button,onClick={haptics.perform(Haptic.Compose);onAdd()}) else Modifier.selectable(selected=selected,role=Role.Tab,onClick={if(!selected)haptics.perform(Haptic.TabSwitch);onNavigate(page)}))
                 if(page=="add")Column(item,horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)){
                     val addShape=if(journal)RoundedCornerShape(3.dp,6.dp,2.dp,5.dp) else if(objects)RoundedCornerShape(13.dp,13.dp,18.dp,13.dp) else RoundedCornerShape(0.dp)
                     val addFrame=if(journal)Modifier.rotate(-4f).navShadow(addShape,2.dp,2.dp,Color(0x30a47755)) else if(objects)Modifier.navShadow(addShape,0.dp,4.dp,Color(0x378b5437)) else Modifier

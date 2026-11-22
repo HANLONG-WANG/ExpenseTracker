@@ -98,15 +98,19 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     }
     suspend fun testConnection() = connectionLock.withLock {
         val config=store.credentials() ?: error("请先导入连接配置 / 接続設定を読み込んでください")
-        authenticated(apiFactory(config)) { it.types() }; Unit
+        authenticated(apiFactory(config)) { it.types() }
+        if(connection.value?.let { !it.bound || it.needsReconnect } == true) {
+            store.markBound()
+            resumePending()
+        }
     }
     suspend fun unbind() = connectionLock.withLock { store.clear() }
     fun tasks(bookId:String):Flow<List<CloudTaskView>> = dao.tasks(bookId).map { rows ->
         rows.map { cloudTaskView(it.task,it.transfers,it.imports,it.acks) }
     }
     private suspend fun credentials():CloudConnectionConfig {
-        val config=store.credentials() ?: error("请先连接云端 / クラウドに接続してください")
-        check(connection.value?.bound == true && connection.value?.needsReconnect == false) { "请重新连接云端 / クラウドに再接続してください" }
+        val config=store.credentials() ?: throw CloudBlockedException("请先连接云端 / クラウドに接続してください")
+        if(connection.value?.bound != true || connection.value?.needsReconnect != false)throw CloudBlockedException("请重新连接云端 / クラウドに再接続してください")
         return config
     }
     private suspend fun api(task:CloudTaskEntity):CloudApi {
@@ -125,13 +129,24 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     private suspend fun remember(localId:String, remote:CloudTask) {
         val task=row(localId)
         check(task.taskId == remote.id && task.type == remote.type) { "云任务关联不一致 / クラウドタスクの関連が一致しません" }
-        dao.updateTask(task.copy(remoteStatus=remote.status,inputRevision=remote.inputRevision,
-            remoteJson=cloudJson.encodeToString(remote),lastError=null,updatedAt=now()))
+        val stage = when {
+            task.connectionBlocked -> task.resumeStage()
+            task.stage == "BLOCKED" && remote.status in confirmedStatuses + "archived" -> "SUBMITTED"
+            else -> task.stage
+        }
+        dao.updateTask(task.copy(stage=stage,remoteStatus=remote.status,inputRevision=remote.inputRevision,
+            remoteJson=cloudJson.encodeToString(remote),lastError=task.lastError.takeIf { stage.startsWith("TRANSFER_ERROR:") },updatedAt=now()))
     }
     internal suspend fun recordFailure(localId:String, error:Exception, block:Boolean=true) {
         if(error is CloudHttpException && error.status==401)store.markNeedsReconnect()
         val task=dao.task(localId) ?: return
-        dao.updateTask(task.copy(stage=if((block && !cloudRetryable(error)) || error is CloudBlockedException || error is CloudHttpException && error.status==401)"BLOCKED" else task.stage,
+        val stage = when {
+            error is CloudBlockedException || error is CloudHttpException && error.status==401 ->
+                if(task.stage.startsWith("TRANSFER_ERROR:")) task.stage else "CONNECTION:"+task.resumeStage()
+            block && !cloudRetryable(error) -> "TRANSFER_ERROR:"+task.resumeStage()
+            else -> task.stage
+        }
+        dao.updateTask(task.copy(stage=stage,
             lastError=error.message ?: "云端操作失败 / クラウド操作に失敗しました",updatedAt=now()))
     }
     private suspend fun <T> taskOperation(localId:String, block:Boolean=false, action:suspend ()->T):T = locked(localId) {
@@ -308,7 +323,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         var task=row(localId)
         task=task.copy(attempts=task.attempts+1,updatedAt=now()); dao.updateTask(task)
         val api=api(task)
-        if(task.stage=="BLOCKED") { task=task.copy(stage=if(task.taskId==null)"PREPARED" else "UPLOADING",lastError=null,updatedAt=now()); dao.updateTask(task) }
+        if(task.stage!=task.resumeStage()) { task=task.copy(stage=task.resumeStage(),lastError=null,updatedAt=now()); dao.updateTask(task) }
         if(task.taskId==null) {
             val created=authenticated(api) { it.createTask(task.idempotencyKey,task.requestJson) }
             task=task.copy(taskId=created.id,stage="UPLOADING",updatedAt=now())
@@ -427,22 +442,46 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     }
     internal suspend fun resumePending() {
         commands.followups.resume()
-        store.credentials()
+        val config=store.credentials() ?: return
         if(connection.value?.let { it.bound && !it.needsReconnect } != true)return
-        dao.unfinished().forEach { enqueue(it.localId) }
+        dao.connectionBlocked(config.baseUrl).forEach { localId ->
+            locked(localId) {
+                val task=dao.task(localId) ?: return@locked
+                if(task.connectionBlocked || task.stage=="BLOCKED") {
+                    // Old BLOCKED rows lost their stage. A needs_info task is waiting for the user
+                    // unless local supplement files still need uploading. Do not submit it on bind.
+                    val stage=if(task.stage=="BLOCKED" && task.remoteStatus=="needs_info") {
+                        val additions=dao.transfers(localId).filter { it.supplement }
+                        when {
+                            additions.isEmpty() -> "SUBMITTED"
+                            additions.any { it.fileId==null } -> "UPLOADING"
+                            else -> return@locked // Cannot tell whether the last supplement was submitted.
+                        }
+                    } else task.resumeStage()
+                    dao.updateTask(task.copy(stage=stage,lastError=null,updatedAt=now()))
+                }
+            }
+        }
+        dao.unfinished().filter { it.origin==config.baseUrl }.forEach { enqueue(it.localId) }
         if(dao.pendingAcks().isNotEmpty())scheduleAcknowledgements()
     }
     internal suspend fun sendPendingAcks():Boolean {
         var retry=false
         for(ack in dao.pendingAcks()) {
             try {
-                authenticated(api(row(ack.localId))) { it.ack(ack.taskId,ack.resultId,ack.status) }
-                dao.updateAck(ack.copy(sentAt=now(),lastError=null))
+                locked(ack.localId) {
+                    val task=row(ack.localId)
+                    authenticated(api(task)) { it.ack(ack.taskId,ack.resultId,ack.status) }
+                    db.withTransaction {
+                        dao.updateAck(ack.copy(sentAt=now(),lastError=null))
+                        if(task.connectionBlocked)dao.updateTask(task.copy(stage=task.resumeStage(),lastError=null,updatedAt=now()))
+                    }
+                }
             } catch(e:CancellationException) { throw e }
             catch(e:Exception) {
                 if(e is CloudHttpException && e.status==409) {
                     try { refresh(ack.localId) } catch(refresh:Exception) { if(refresh is CancellationException)throw refresh }
-                    dao.updateAck(ack.copy(sentAt=now(),lastError="回执版本冲突，本地保存仍有效 / 受領通知のバージョンが競合しています。ローカル保存は有効です"))
+                    dao.updateAck(ack.copy(sentAt=now(),lastError="回执版本冲突，请核对云端状态 / 受領通知のバージョンが競合しています。クラウドの状態を確認してください"))
                 } else {
                     if(e is CloudBlockedException || e is CloudHttpException && e.status==401)
                         locked(ack.localId) { recordFailure(ack.localId,e) }

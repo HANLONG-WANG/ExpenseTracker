@@ -1,5 +1,4 @@
 TERMS AND CONDITIONS OF USE
-
 AI Stack License
 THESE TERMS AND CONDITIONS OF USE (THE “AGREEMENT”) ARE A LEGALLY BINDING AGREEMENT BETWEEN QUALCOMM
 TECHNOLOGIES, INC. ("QTI") AND YOU (AS AN INDIVIDUAL) OR, WHERE APPLICABLE, THE LEGAL ENTITY YOU REPRESENT (“YOU”
@@ -11,18 +10,12 @@ AGREE TO THESE TERMS, QTI IS UNWILLING TO AND DOES NOT LICENSE THE SOFTWARE TO Y
 TERMS YOU MUST DISCONTINUE THE DOWNLOAD PROCESS AND YOU SHALL NOT USE THE SOFTWARE OR RETAIN ANY COPIES OF
 THE SOFTWARE. ANY USE OR POSSESSION OF THE SOFTWARE BY YOU IS SUBJECT TO THE TERMS AND CONDITIONS SET FORTH IN
 THIS AGREEMENT.
-enforcement; (7) migration, asylum, and border control
-management; (8) recommender systems of social media platforms;
+
 1. GRANT OF LICENSE. Subject to and conditioned upon Your
-(9) administration of justice and democratic processes; and/or (10)
 compliance with the terms and conditions of this Agreement, QTI
-any other AI system that when deployed, makes, or is a substantial
 grants to You a non-exclusive, non-transferable, revocable,
-factor in making, a consequential decision. QuIC (and its Affiliates)
 limited royalty-and-fee-free license solely under QTI’s and/or its
-advise against using the Software or derivatives of the Software for
 Affiliates’ copyrights and trade secrets in the Software to (i) use
-or in connection with High-Risk Applications.
 and copy the Software solely to develop Your software
 applications; (ii) demonstrate portions of the Software provided in
 object code format to showcase AI related use cases; (iii) modify
@@ -58,25 +51,17 @@ related to or in connection with the Software.
 d. Prohibited Use Cases. You agree not to use the Software or
 derivatives of the Software for or in connection with any of the
 following applications (“Unacceptable Risk Applications”):
-•
-Unfair, manipulative or deceptive acts;
-•
-Exploit vulnerabilities of age, disability or social or economic
+• Unfair, manipulative or deceptive acts;
+• Exploit vulnerabilities of age, disability or social or economic
 situation;
-•
-Predictive policing;
-•
-Social scoring;
-•
-Emotion recognition in workplace and education;
-•
-Real-time remote biometric identification in publicly
+• Predictive policing;
+• Social scoring;
+• Emotion recognition in workplace and education;
+• Real-time remote biometric identification in publicly
 accessible spaces for law enforcement;
-•
-Biometric categorization system (sensitive characteristics);
+• Biometric categorization system (sensitive characteristics);
 and/or
-•
-Generating facial recognition databases by scraping images
+• Generating facial recognition databases by scraping images
 from the internet or CCTV footage.
 e. High-Risk Use Cases. The following applications are considered
 high-risk (the “High-Risk Applications”): (1) biometric identification
@@ -84,10 +69,14 @@ high-risk (the “High-Risk Applications”): (1) biometric identification
 critical infrastructure; (3) education and vocational training; (4)
 employment; (5) access to and enjoyment of essential private
 services and essential public services and benefits; (6) law
-QTI Proprietary/Confidential
 
-1
-
+enforcement; (7) migration, asylum, and border control
+management; (8) recommender systems of social media platforms;
+(9) administration of justice and democratic processes; and/or (10)
+any other AI system that when deployed, makes, or is a substantial
+factor in making, a consequential decision. QuIC (and its Affiliates)
+advise against using the Software or derivatives of the Software for
+or in connection with High-Risk Applications.
 3. OWNERSHIP.
 a. QTI retains all of its right, title and interest in and to the Software
 This is a license, nothing contained herein shall be construed as the
@@ -141,7 +130,9 @@ by contract or otherwise.
 shall not use the Software made available by QTI to You under this
 Agreement for the purpose of identifying or providing evidence to
 
-support any potential intellectual property infringement claim
+QTI Proprietary/Confidential 1
+
+support any potential intellectual property infringement claim
 against QTI, its Affiliates, or any of QTI’s or its Affiliates’ suppliers
 or direct or indirect customers, and (ii) neither You nor any of
 your Affiliates, will assert any action for the infringement of Your
@@ -213,9 +204,6 @@ b. If any third party asserts a claim or initiates an action against an
 Indemnified Party for which You are responsible under this
 Section, QTI shall promptly notify You when it becomes aware
 of such claim or action, provided, however, that any delay in
-QTI Proprietary/Confidential
-
-2
 
 notification shall not relieve You from your indemnification
 obligations under this Agreement. QTI shall have the right to
@@ -290,7 +278,9 @@ government authorization. The U.S. government currently maintains
 comprehensive economic sanctions or an embargo against Cuba,
 Iran, North Korea, Syria, and the Crimea and so-called Donetsk
 
-People’s Republic and Luhansk People’s Republic regions of
+QTI Proprietary/Confidential 2
+
+People’s Republic and Luhansk People’s Republic regions of
 Ukraine. The U.S. government also has imposed extensive export
 control and economic sanctions on, inter alia, Belarus, the
 Russian Federation, and Venezuela. The list of impacted
@@ -360,7 +350,8 @@ g. Compliance with Anti-Corruption Laws. You represent and warrant
 to QTI that, in connection with the transactions contemplated by this
 Agreement or in connection with any other business transactions
 involving QTI, You, and everyone acting on Your behalf, will comply
-with and will not violate any anti-corruption law or international anticorruption standards, including but not limited to the U.S. Foreign
+with and will not violate any anti-corruption law or international anti-
+corruption standards, including but not limited to the U.S. Foreign
 Corrupt Practices Act. You represent and warrant to QTI that You
 have not, and covenant and agree that You will not, in connection
 with the transactions contemplated by this Agreement or in
@@ -400,9 +391,8 @@ any conflict between the terms and conditions of this Agreement and
 any third party license included in the Notice File, this Agreement
 shall control except as otherwise expressly provided for in the Notice
 File.
-i.
 
-Survival. The following Sections of this Agreement survive any
+i. Survival. The following Sections of this Agreement survive any
 expiration or termination of this Agreement: 2 (License Restrictions),
 3 (Ownership), 4 (Covenant Not to Assert), 5 (Suggestions), 6
 (Warranty), 7 (Limitation of Liability), 8 (Term and Termination), 9
@@ -413,8 +403,4 @@ EIGHTEEN YEARS OLD, AN AUTHORIZED REPRESENTATIVE OF THE LEGAL ENTITY YOU REPRESE
 AGREEMENT AND UNDERSTAND IT; YOU HAVE THE AUTHORITY TO BIND THE LEGAL ENTITY YOU REPRESENT TO THE TERMS
 AND CONDITIONS OF THIS AGREEMENT; AND YOU AGREE TO BE BOUND BY ITS TERMS AND CONDITIONS.
 
-QTI Proprietary/Confidential
-
-3
-
-
+QTI Proprietary/Confidential 3

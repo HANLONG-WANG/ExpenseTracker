@@ -14,7 +14,7 @@ fun calculateRulePreview(rule:FinancialRuleVersion,input:RulePreviewInput):Calcu
     return when(rule.mode) {
         FinanceMode.SINGLE->{val date=billingDates(input.start,rule.billing!!).paymentDate
             Calculation.Ready(listOf(PaymentPeriod(1,date,input.principalMinor,0,0,listOf("billing.single"))))}
-        FinanceMode.INSTALLMENT->installmentPlan(input.principalMinor,input.periods,List(input.periods){input.paymentDate.plusMonths(it.toLong())},rule.installment!!)
+        FinanceMode.INSTALLMENT->installmentPlan(input.principalMinor,input.periods,List(input.periods){monthlyDate(input.paymentDate,it.toLong(),rule.billing?.paymentDay)},rule.installment!!)
         FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE->when(val period=revolvingPeriod(1,input.principalMinor,input.start,input.end,input.paymentDate,rule.revolving!!)) {
             is Calculation.Ready->Calculation.Ready(listOf(period.value))
             is Calculation.Incomplete->period
@@ -22,6 +22,6 @@ fun calculateRulePreview(rule:FinancialRuleVersion,input:RulePreviewInput):Calcu
             is Calculation.CannotSettle->period
         }
         FinanceMode.FIXED_LOAN->if(rule.loanMethod==LoanMethod.MANUAL)Calculation.Unsupported("loan.manual")else
-            fixedLoanPlan(input.principalMinor,input.start,List(input.periods){input.paymentDate.plusMonths(it.toLong())},rule.loanMethod!!,rule.loanInterest,rule.loanPrincipalRemainder)
+            fixedLoanPlan(input.principalMinor,input.start,List(input.periods){monthlyDate(input.paymentDate,it.toLong(),input.start.dayOfMonth)},rule.loanMethod!!,rule.loanInterest,rule.loanPrincipalRemainder)
     }
 }

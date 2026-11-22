@@ -84,3 +84,7 @@ fun recordReminderDelivery(state:ReminderDeliveryState,slots:List<ReminderSlot>,
     }
     return ReminderDeliveryState(state.sent.filterValues{it>now.minusSeconds(400L*86400).toEpochMilli()}+slots.filterNot{it.item.risk}.associate{it.key to now.toEpochMilli()},risks)
 }
+
+/** Keep already visible live items when a sibling is resolved or a new slot arrives. */
+internal fun displayedReminders(priorKeys:Set<String>,live:List<ReminderItem>,due:List<ReminderSlot>):List<ReminderItem> =
+    (live.filter{it.key in priorKeys}+due.map{it.item}).distinctBy{it.key}
