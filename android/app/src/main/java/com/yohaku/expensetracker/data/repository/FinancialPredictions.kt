@@ -28,6 +28,18 @@ fun BookSnapshot.financialSourcePrincipal(eventId:String,accountId:String):Money
     return original.copy(minor=Math.addExact(original.minor,delta))
 }
 
+/** Fixed contracts lock the rule on agreement. Revolving periods use each version in their accrual window. */
+internal fun FinancialPredictionInput.ruleWindow(bill:FinancialBillEntity,basis:FinancialCalculationBasis):AccrualWindow {
+    if(mode!=FinanceMode.REVOLVING&&mode!=FinanceMode.CREDIT_LINE) {
+        val agreement=basis.agreementDate?:terms.agreementDate
+        return AccrualWindow(agreement,agreement)
+    }
+    if(basis.start!=null&&basis.end!=null)return AccrualWindow(basis.start,basis.end)
+    // Pool bill numbers remain stable across replanning. The payment date locates the terms for that period.
+    val index=if(pool==null)bill.number-1 else terms.paymentDates.indexOf(bill.date)
+    return terms.accrualWindows[index]
+}
+
 fun LedgerRepository.financialPredictionStale(s:BookSnapshot,finance:FinancialGraph,plan:FinancialPlanEntity):Boolean {
     if(plan.origin=="POOL_MEMBER")return arrangementBaselineIssue(s,finance,plan)!=null
     if(plan.origin=="POOL_RETAINED")return arrangementBaselineIssue(s,finance,plan)!=null
@@ -51,10 +63,8 @@ fun LedgerRepository.financialPredictionStale(s:BookSnapshot,finance:FinancialGr
     fun at(date:String)=rules.filter{it.effectiveFrom<=date}.maxByOrNull{it.effectiveFrom}?.id
     return finance.bills.filter{it.planId==plan.id&&it.active&&!it.confirmed&&it.basisJson!=null}.any{bill->
         val basis=json.decodeFromString<FinancialCalculationBasis>(bill.basisJson!!)
-        val expected=if(plan.mode in listOf(FinanceMode.REVOLVING.name,FinanceMode.CREDIT_LINE.name)) {
-            val w=input.terms.accrualWindows[bill.number-1]
-            (listOfNotNull(at(w.start),at(w.end))+rules.filter{it.effectiveFrom>w.start&&it.effectiveFrom<=w.end}.map{it.id}).toSet()
-        }else setOfNotNull(at(input.terms.agreementDate))
+        val w=input.ruleWindow(bill,basis)
+        val expected=(listOfNotNull(at(w.start))+rules.filter{it.effectiveFrom>w.start&&it.effectiveFrom<=w.end}.map{it.id}).toSet()
         basis.ruleIds.toSet()!=expected||finance.rules.filter{it.id in basis.ruleIds}.any{json.decodeFromString<FinancialRuleVersion>(it.json).readiness()!=RuleReadiness.Complete}
     }
 }

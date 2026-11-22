@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "4a21f1a62a1326de0e09bdee60812803261c84ed7f057d54f08cc4ae49944469",
+    "catalogDigest": "975498f076ab392a480e00fc87cea674157ee88a27759d4e89497fce01f5d8d5",
     "commands": [
         {
             "comparisonFields": [
@@ -2892,7 +2892,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+            "defaults": "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Refund date is the occurrence date; settlementDate is the posting date. Edits may retain an inactive account only in its original role. Selectors freeze at first preview.",
             "description": "Create one ordinary expense/income/transfer/refund; no existing record is edited. Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
             "example": {
                 "account": "account-id",
@@ -3996,7 +3996,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+            "defaults": "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Refund date is the occurrence date; settlementDate is the posting date. Edits may retain an inactive account only in its original role. Selectors freeze at first preview.",
             "description": "Batch-edit fixed existing ordinary records using a field patch; omitted fields and attachments are preserved. Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
             "example": {
                 "set": {
@@ -5414,7 +5414,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+            "defaults": "Missing patch fields preserve the editor's full reconstructed values. Expense names uniquely matching a saved merchant (including disabled) auto-link and use its formal name; ambiguous/unmatched names stay unlinked. Income/transfer text does not auto-link; income accepts an explicit merchant ID. An explicit ID and conflicting name are rejected. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Refund date is the occurrence date; settlementDate is the posting date. Edits may retain an inactive account only in its original role. Selectors freeze at first preview.",
             "description": "Confirm actual amounts on fixed existing records; set must explicitly set at least one of settlementConfirmed/fromConfirmed/toConfirmed/feeConfirmed to true, with the actual amount/date for that side. Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
             "example": {
                 "set": {
@@ -8571,7 +8571,7 @@
                 "RISK"
             ],
             "defaults": "Full replacement: name/start/end required; activity omitted/null creates, budget=null, categoryBudgets=[], excludeMonthly=false, ended=false.",
-            "description": "Save all activity fields and category caps via previewActivity/commitActivity. Ending releases unused reservations and clears current selection; actual records remain. Replacing categoryBudgets edits relationships and supports category migration.",
+            "description": "Save all activity fields and category caps via previewActivity/commitActivity. Ending releases unused reservations, clears current selection, restricts linked schedules to the activity dates and withdraws out-of-period pending tasks; in-period tasks and recorded facts remain. Replacing categoryBudgets edits relationships and supports category migration.",
             "example": {
                 "budget": {
                     "currency": "JPY",
@@ -8731,7 +8731,7 @@
                 "RISK"
             ],
             "defaults": "activity required; preserves other fields/category caps while ending and releasing unused reservations.",
-            "description": "End an activity, preserving its fields/category caps; release unused reservations and clear current selection via the same activity confirmation.",
+            "description": "End an activity, preserving its fields/category caps; release unused reservations, clear current selection, restrict linked schedules to the activity dates and withdraw out-of-period pending tasks via the same activity confirmation.",
             "example": {
                 "activity": "activity-id"
             },
@@ -8836,7 +8836,7 @@
                 "RISK"
             ],
             "defaults": "Full save: reserve omitted/null creates; account/accountAmount/occurrence omitted/null unassigned. Existing released amount preserved.",
-            "description": "Create/edit a reservation without a ledger posting; preserve already released amount and show held/available and budget changes.",
+            "description": "Create/edit a reservation without a ledger posting; preserve already released amount and show held/available and budget changes for both affected months when moved.",
             "example": {
                 "activity": "activity-id",
                 "amount": {
@@ -9022,7 +9022,7 @@
             "outputs": {
                 "reserve": "reserve"
             },
-            "prerequisites": "Activity mode on, live unended activity; positive book-currency amount; account/amount paired with matching currency. Optional pending occurrence belongs to activity and is unique to this reserve. New total >= used+released.",
+            "prerequisites": "Activity mode on, live unended activity; positive book-currency amount; account/amount paired; account must be an active fund account, amount in its currency and equal to the reservation amount when currencies match. Optional pending occurrence belongs to activity and is unique to this reserve. New total >= used+released.",
             "unavailable": "Reject the entire batch on missing required facts, invalid relationships or a false/null domain commit. Unknown optional estimates stay unknown; never infer a payment or create an incomplete interactive draft.",
             "undo": "Restore exact recorded existing rows; remove only execution-owned new objects and dependent rows, if unchanged and without external FK/JSON/draft references. Full row/relationship conflicts block the entire undo.",
             "version": 1
@@ -9392,7 +9392,7 @@
             "outputs": {
                 "treat": "treat"
             },
-            "prerequisites": "Activity mode enabled; valid activity/date, positive total and book-currency base; selected friends belong to activity, payer among selected, ME share positive. Ended activity allows facts only within its dates. Existing other-paid treat must stay in the same activity.",
+            "prerequisites": "Activity mode enabled; valid activity/date, positive total and book-currency base (equal amounts when currencies match); selected friends belong to activity, payer among selected, ME share positive. Ended activity allows facts only within its dates. Existing other-paid treat must stay in the same activity.",
             "unavailable": "Reject the entire batch on missing required facts, invalid relationships or a false/null domain commit. Unknown optional estimates stay unknown; never infer a payment or create an incomplete interactive draft.",
             "undo": "Restore exact recorded existing rows; remove only execution-owned new objects and dependent rows, if unchanged and without external FK/JSON/draft references. Full row/relationship conflicts block the entire undo.",
             "version": 1

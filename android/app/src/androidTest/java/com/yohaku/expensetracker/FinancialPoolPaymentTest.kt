@@ -19,18 +19,30 @@ class FinancialPoolPaymentTest {
     private val context get()=InstrumentationRegistry.getInstrumentation().targetContext
     private val clock=Clock.fixed(Instant.parse("2026-10-25T00:00:00Z"),ZoneId.of("Asia/Tokyo"))
     private data class Fixture(val b:String,val bank:String,val card:String,val pool:String,val rule:FinancialRuleVersion)
-    private suspend fun fixture(r:LedgerRepository):Fixture {
+    private suspend fun fixture(r:LedgerRepository,opening:Long=3000):Fixture {
         val b=r.createBook("共同月付",Currency.JPY,startDate="2026-10-01")
         val bank=r.saveAccount(b,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
-        val card=r.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,3000),"2026-10-01")
+        val card=r.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,opening),"2026-10-01")
         val rule=FinancialRuleVersion("",b,card,FinanceMode.REVOLVING,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,5,bank),revolving=RevolvingRule(InterestRule("0",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL),PaymentMethod.FIXED_PRINCIPAL,1000,allocation=AllocationOrder.FEES_FIRST,automatic=true))
         r.commitFinancialRule(r.previewFinancialRule(b,card,rule))
         val dates=listOf("2026-11-05","2026-12-05","2027-01-05","2027-02-05","2027-03-05")
         val windows=(0..4).map{n->val d=LocalDate.parse("2026-10-01").plusMonths(n.toLong());AccrualWindow(d.toString(),d.withDayOfMonth(d.lengthOfMonth()).toString())}
-        val pool=r.commitFinancialPrediction(r.previewFinancialPool(b,FinancialPredictionInput(card,"原共同池",FinanceMode.REVOLVING,FinancialScheduleTerms("2026-10-01",dates,windows),paymentAccountId=bank,currentArrangementConfirmed=true,pool=FinancialPoolInput(3000,PoolSourceDate.TRANSACTION))))!!
+        val pool=r.commitFinancialPrediction(r.previewFinancialPool(b,FinancialPredictionInput(card,"原共同池",FinanceMode.REVOLVING,FinancialScheduleTerms("2026-10-01",dates,windows),paymentAccountId=bank,currentArrangementConfirmed=true,pool=FinancialPoolInput(opening,PoolSourceDate.TRANSACTION))))!!
         return Fixture(b,bank,card,pool,rule)
     }
     private suspend fun definition(r:LedgerRepository,x:Fixture)=r.json.decodeFromString<FinancialPredictionInput>(r.db.financialDao().graph(x.b).first()!!.plans.first{it.id==x.pool}.termsJson!!).copy(planId=x.pool)
+    @Test fun emptyPoolCanChangeMonthlyPaymentBeforeFirstPurchase()=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        try {
+            val r=LedgerRepository(db,clock);val x=fixture(r,opening=0)
+            val review=r.previewPoolPaymentChange(x.b,PoolPaymentChangeInput(x.pool,"2026-10-25",
+                RevolvingPaymentSetting("2026-11-05",PaymentMethod.TOTAL_PAYMENT,600),0))
+            val comparison=requireNotNull(review.comparison)
+            assertTrue(comparison.original.isEmpty()&&comparison.proposed.isEmpty())
+            assertEquals("2027-03-05",comparison.fundingThrough)
+            assertEquals(x.pool,r.commitPoolPaymentChange(review,clock.instant().toString(),true))
+        }finally{db.close()}
+    }
     @Test fun changingMonthlyPaymentKeepsPoolActualsAndRetainedBillAndArchivesAnAtomicApplication()=runBlocking {
         val file="pool-payment-reopen.db";context.deleteDatabase(file)
         var db=Room.databaseBuilder(context,YohakuDatabase::class.java,file).build()

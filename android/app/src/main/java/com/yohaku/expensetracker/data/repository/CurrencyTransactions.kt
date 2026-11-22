@@ -10,7 +10,7 @@ import java.time.LocalDate
 /** Refund original amount is in the purchase currency; settlement and statistics are independent. */
 data class RefundInput(val originalEventId:String,val originalAmount:Money,val accountId:String,
     val accountAmount:Money,val baseAmount:Money,val date:String,val confirmed:Boolean,
-    val id:String?=null,val note:String="",val rateSource:String="manual",val rateDate:String=date)
+    val id:String?=null,val note:String="",val rateSource:String="manual",val rateDate:String=date,val settlementDate:String=date)
 
 data class SettlementConfirmation(val eventId:String,val revision:Int,val accountAmount:Money,
     val baseAmount:Money,val date:String,val source:String="manual",val rateDate:String=date)
@@ -29,10 +29,10 @@ fun BookSnapshot.netExpense(event:EventEntity):Long {
 /** Net spending per day: refunds reduce their original day, confirmed components use their own date.
  * budgetOnly applies the shared monthly/category exclusion to the original purchase and its fees. */
 fun BookSnapshot.dailyExpense(events:Collection<EventEntity>,budgetOnly:Boolean=false):Map<String,Long> {
-    val expenses=events.filter{it.kind==EntryKind.EXPENSE.name&&it.deletedAt==null&&(!budgetOnly||!excludedFromMonthly(it))}
-    val ids=expenses.map{it.id}.toSet()
+    val included=events.filter{it.id in visibleById&&(!budgetOnly||!excludedFromMonthly(it))}
+    val ids=included.map{it.id}.toSet()
     val days=HashMap<String,Long>()
-    expenses.forEach{e->days[e.date]=Math.addExact(days[e.date]?:0L,confirmedRefunds[e.id].orEmpty().fold(e.baseMinor){total,r->Math.subtractExact(total,r.baseMinor)})}
+    included.filter{it.kind==EntryKind.EXPENSE.name}.forEach{e->days[e.date]=Math.addExact(days[e.date]?:0L,netExpense(e))}
     expenseComponents.filter{it.confirmed&&it.eventId in ids}.forEach{c->days[c.date]=Math.addExact(days[c.date]?:0L,c.baseMinor)}
     return days
 }
@@ -99,21 +99,22 @@ internal suspend fun LedgerRepository.prepareRefund(bookId:String,input:RefundIn
     val original=dao.event(bookId,input.originalEventId) ?: error("原消费不存在 / 元の支出がありません")
     require(original.kind==EntryKind.EXPENSE.name&&original.deletedAt==null)
     val account=dao.account(bookId,input.accountId) ?: error("账户不属于本账本 / 別の帳簿の口座です")
-    require(account.active)
     require(input.originalAmount.currency.name==original.currency && input.accountAmount.currency.name==account.currency && input.baseAmount.currency.name==book.currency)
     require(input.originalAmount.minor>0&&input.accountAmount.minor>0&&input.baseAmount.minor>0)
     require(account.currency!=book.currency||input.accountAmount.minor==input.baseAmount.minor)
     LocalDate.parse(input.date);LocalDate.parse(input.rateDate)
     val old=input.id?.let{dao.event(bookId,it) ?: error("退款不存在 / 返金がありません")}
     require(old==null||old.kind==EntryKind.REFUND.name&&old.deletedAt==null&&dao.settlement(bookId,old.id)?.originalEventId==original.id)
+    require(account.active||account.id==old?.accountId)
+    LocalDate.parse(input.settlementDate)
     val refunded=dao.refunds(bookId,original.id).filter{it.deletedAt==null&&it.id!=old?.id}.fold(0L){sum,e->Math.addExact(sum,e.amountMinor)}
     require(Math.addExact(refunded,input.originalAmount.minor)<=original.amountMinor){"累计退款不能超过原币消费 / 返金総額は元の支出額以下にしてください"}
     val event=EventEntity(bookId,old?.id?:id(),EntryKind.REFUND.name,account.id,original.categoryId,input.originalAmount.minor,original.currency,
         input.baseAmount.minor,input.date,original.merchant,input.note,revision=(old?.revision?:0)+1,createdAt=old?.createdAt?:clock.millis())
     val prior=old?.let{dao.settlement(bookId,it.id)}
-    val settlement=SettlementEntity(bookId,event.id,input.accountAmount.minor,account.currency,input.confirmed,input.date,input.rateSource,input.rateDate,
+    val settlement=SettlementEntity(bookId,event.id,input.accountAmount.minor,account.currency,input.confirmed,input.settlementDate,input.rateSource,input.rateDate,
         prior?.expectedAccountMinor?:input.accountAmount.minor,prior?.expectedBaseMinor?:input.baseAmount.minor,original.id,expectedAccountCurrency=prior?.expectedMoney()?.currency?.name?:account.currency)
     val delta=if(AccountType.valueOf(account.type).debt)-input.accountAmount.minor else input.accountAmount.minor
-    val postings=listOf(PostingEntity(bookId,event.id+":settlement",event.id,account.id,delta,account.currency,input.date,input.confirmed))
+    val postings=listOf(PostingEntity(bookId,event.id+":settlement",event.id,account.id,delta,account.currency,input.settlementDate,input.confirmed))
     return PreparedLedgerChange(old,event,settlement,postings,activityId=dao.eventActivity(bookId,original.id)?.activityId)
 }

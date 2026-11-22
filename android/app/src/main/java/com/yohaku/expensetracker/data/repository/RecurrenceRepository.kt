@@ -38,13 +38,19 @@ suspend fun LedgerRepository.saveRecurrence(bookId:String,input:RecurrenceInput)
     months.forEach{ensureOccurrences(bookId,it)}
     rule.id
 }
+private fun RecurrenceEntity.scheduledDates(month:YearMonth,activity:ActivityEntity?):List<LocalDate> {
+    if(!active)return emptyList()
+    val dates=recurrenceDates(LocalDate.parse(anchorDate),endDate?.let(LocalDate::parse),RecurrenceFrequency.valueOf(frequency),month)
+    return if(activity?.ended==true)dates.filter{it.toString() in activity.startDate..activity.endDate}else dates
+}
+
 /** Stable scheduled-date identity; materialization creates tasks only, never ledger events. */
 suspend fun LedgerRepository.ensureOccurrences(bookId:String,month:String,recurrenceId:String?=null)=db.withTransaction {
     val period=YearMonth.parse(month)
     require(dao.book(bookId)!=null)
     val existing=dao.occurrences(bookId).associateBy{it.id}
     dao.recurrences(bookId).filter{recurrenceId==null||it.id==recurrenceId}.forEach{rule->
-        val dates=if(rule.active)recurrenceDates(LocalDate.parse(rule.anchorDate),rule.endDate?.let{LocalDate.parse(it)},RecurrenceFrequency.valueOf(rule.frequency),period).map{it.toString()}else emptyList()
+        val dates=rule.scheduledDates(period,rule.activityId?.let{dao.activity(bookId,it)}).map{it.toString()}
         existing.values.filter{it.recurrenceId==rule.id&&it.scheduledDate.startsWith(month)&&it.status=="PENDING"&&it.scheduledDate !in dates}.forEach{dao.putOccurrence(it.copy(status="WITHDRAWN"))}
         dates.forEach{date->
             val id=UUID.nameUUIDFromBytes("$bookId/${rule.id}/$date".toByteArray(Charsets.UTF_8)).toString()
@@ -60,34 +66,37 @@ suspend fun LedgerRepository.cancelOccurrence(bookId:String,id:String)=db.withTr
     val old=dao.occurrence(bookId,id)?:error("周期实例不存在 / 定期予定がありません")
     dao.putOccurrence(old.copy(status="CANCELLED"))
 }
-fun RecurrenceEntity.includesScheduledDate(value:String):Boolean {
+fun RecurrenceEntity.includesScheduledDate(value:String,activity:ActivityEntity?):Boolean {
     val date=LocalDate.parse(value)
-    return active&&date in recurrenceDates(LocalDate.parse(anchorDate),endDate?.let{LocalDate.parse(it)},RecurrenceFrequency.valueOf(frequency),YearMonth.from(date))
+    return date in scheduledDates(YearMonth.from(date),activity)
 }
+
+private fun OccurrenceEntity.pendingFrom(rule:RecurrenceEntity)=
+    copy(status="PENDING",name=rule.name,accountId=rule.accountId,categoryId=rule.categoryId,currency=rule.currency,amountMinor=rule.amountMinor,baseMinor=rule.baseMinor,estimated=rule.estimated,activityId=rule.activityId)
 
 /** Explicitly undo a user's cancellation; old releases also lacked cancellation reasons. */
 suspend fun LedgerRepository.restoreOccurrence(bookId:String,id:String)=db.withTransaction {
     val old=dao.occurrence(bookId,id)?:error("周期实例不存在 / 定期予定がありません")
     require(old.status=="CANCELLED"){"这次待办未被取消 / この予定は取消されていません"}
     val rule=dao.recurrence(bookId,old.recurrenceId)!!
-    require(rule.includesScheduledDate(old.scheduledDate)){"请先启用规则并确认该日期仍在安排范围内 / ルールを有効にし、この日が予定の範囲内か確認してください"}
+    require(rule.includesScheduledDate(old.scheduledDate,rule.activityId?.let{dao.activity(bookId,it)})){"请先启用规则并确认该日期仍在安排范围内 / ルールを有効にし、この日が予定の範囲内か確認してください"}
     val recorded=old.eventId?.let{dao.event(bookId,it)}?.let{it.deletedAt==null&&it.kind==EntryKind.EXPENSE.name}==true
-    dao.putOccurrence(if(recorded)old.copy(status="COMPLETED")else old.copy(status="PENDING",name=rule.name,accountId=rule.accountId,categoryId=rule.categoryId,currency=rule.currency,amountMinor=rule.amountMinor,baseMinor=rule.baseMinor,estimated=rule.estimated,activityId=rule.activityId))
+    dao.putOccurrence(if(recorded)old.copy(status="COMPLETED")else old.pendingFrom(rule))
 }
 suspend fun LedgerRepository.unlinkOccurrence(bookId:String,id:String)=db.withTransaction {
     val old=dao.occurrence(bookId,id)?:error("周期实例不存在 / 定期予定がありません")
     val rule=dao.recurrence(bookId,old.recurrenceId)!!
-    dao.putOccurrence(old.copy(status=if(rule.includesScheduledDate(old.scheduledDate))"PENDING"else"WITHDRAWN",eventId=null))
+    dao.putOccurrence(if(rule.includesScheduledDate(old.scheduledDate,rule.activityId?.let{dao.activity(bookId,it)}))old.pendingFrom(rule).copy(eventId=null)else old.copy(status="WITHDRAWN",eventId=null))
 }
 internal suspend fun LedgerRepository.recheckOccurrences(bookId:String,eventId:String) {
     val event=dao.event(bookId,eventId)
     dao.eventOccurrences(bookId,eventId).filter{it.status!="CANCELLED"}.forEach{old->
         val rule=dao.recurrence(bookId,old.recurrenceId)!!
-        val status=if(event?.deletedAt==null&&event?.kind==EntryKind.EXPENSE.name)"COMPLETED"else if(rule.includesScheduledDate(old.scheduledDate))"PENDING"else"WITHDRAWN"
+        val status=if(event?.deletedAt==null&&event?.kind==EntryKind.EXPENSE.name)"COMPLETED"else if(rule.includesScheduledDate(old.scheduledDate,rule.activityId?.let{dao.activity(bookId,it)}))"PENDING"else"WITHDRAWN"
         if(old.status!=status)dao.putOccurrence(old.copy(status=status))
     }
 }
-fun BookSnapshot.pendingOccurrences()=occurrences.filter{o->o.status in listOf("PENDING","COMPLETED")&&(o.eventId==null||visibleEvents.none{it.id==o.eventId&&it.kind==EntryKind.EXPENSE.name})}
+fun BookSnapshot.pendingOccurrences()=occurrences.filter{o->o.status in listOf("PENDING","COMPLETED")&&!activities.any{it.id==o.activityId&&it.ended&&o.scheduledDate !in it.startDate..it.endDate}&&(o.eventId==null||visibleEvents.none{it.id==o.eventId&&it.kind==EntryKind.EXPENSE.name})}
 
 data class OccurrenceLinkReview(val snapshot:BookSnapshot,val occurrence:OccurrenceEntity,val event:EventEntity,val before:BudgetProjection,val after:BudgetProjection)
 suspend fun LedgerRepository.previewOccurrenceLink(bookId:String,occurrenceId:String,eventId:String):OccurrenceLinkReview=db.withTransaction {
@@ -166,7 +175,7 @@ internal fun BookSnapshot.forecastOccurrences(from:LocalDate,through:LocalDate):
     val known=occurrences.associateBy{it.id};val result=occurrences.toMutableList()
     var month=YearMonth.from(from);val last=YearMonth.from(through)
     while(month<=last) {
-        for(rule in recurrences.filter{it.active})for(date in recurrenceDates(LocalDate.parse(rule.anchorDate),rule.endDate?.let{LocalDate.parse(it)},RecurrenceFrequency.valueOf(rule.frequency),month)) {
+        for(rule in recurrences.filter{it.active})for(date in rule.scheduledDates(month,activities.find{it.id==rule.activityId})) {
             if(date>through)continue
             val id=UUID.nameUUIDFromBytes("${book.id}/${rule.id}/$date".toByteArray(Charsets.UTF_8)).toString()
             if(id !in known)result+=OccurrenceEntity(book.id,id,rule.id,date.toString(),rule.name,rule.accountId,rule.categoryId,rule.currency,rule.amountMinor,rule.baseMinor,rule.estimated,activityId=rule.activityId)

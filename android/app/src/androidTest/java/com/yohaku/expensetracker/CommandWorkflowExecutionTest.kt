@@ -91,6 +91,19 @@ class CommandWorkflowExecutionTest {
         undo(good);assertEquals(before,CommandUndoJournal(r,book).snapshot())
     }
 
+    @Test fun statementRefundUsesOccurrenceAndPostingDatesIndependently()=runBlocking<Unit> {
+        val (book,bank,category)=setup()
+        val original=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="500",date="2026-11-01"))
+        val row=StatementRow(r.id(),"2026-11-02","in",FileMoney("JPY","200"),"退款")
+        val file=StatementFile("yohaku.statement",1,r.id(),book,bank,"JPY","2026-11-01","2026-11-02","posted_date",true,"银行",emptyList(),listOf(row))
+        r.saveStatement(book,r.previewStatement(book,FileProtocols.json.encodeToString(file)))
+        execute(receive(book,listOf(step("refund","statement.supplement","""{"batch":"${file.file_id}","row":"${row.row_id}","kind":"REFUND","originalEvent":"$original","occurredDate":"2026-11-01","postedDate":"2026-11-02"}"""))))
+        val s=snapshot(book);val refund=s.events.single{it.kind=="REFUND"}
+        assertEquals("2026-11-01",refund.date)
+        assertEquals("2026-11-02",s.settlements.single{it.eventId==refund.id}.settlementDate)
+        assertEquals("2026-11-02",s.storedPostings.single{it.eventId==refund.id}.date)
+    }
+
     @Test fun statementActualConfirmsSeparateTransferFeeWithoutChangingPrincipal()=runBlocking<Unit> {
         val (book,bank,_)=setup()
         val target=r.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")

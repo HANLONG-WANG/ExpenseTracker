@@ -96,7 +96,7 @@ internal suspend fun LedgerRepository.refreshCardEntryPrediction(event:EventEnti
         }
     }
     // A trashed source keeps no unprotected local prediction; restoring it regenerates one from current rules.
-    if(event.deletedAt!=null||event.historicalIncluded||account.type!=AccountType.CREDIT.name||event.cardPaymentMode !in listOf("SINGLE","INSTALLMENT"))return
+    if(!account.active||event.deletedAt!=null||event.historicalIncluded||account.type!=AccountType.CREDIT.name||event.cardPaymentMode !in listOf("SINGLE","INSTALLMENT"))return
     // Inactive applied members still own the source; editing it must not recreate a standalone plan.
     if(state.financialSourceOwned(event.id,old?.id))return
     val mode=FinanceMode.valueOf(event.cardPaymentMode!!)

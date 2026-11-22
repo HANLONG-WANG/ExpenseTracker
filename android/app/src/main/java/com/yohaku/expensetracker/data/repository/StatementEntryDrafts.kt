@@ -74,7 +74,7 @@ fun BookSnapshot.statementActualDraft(seed:StatementActualSeed):EntryDraft {
     }else {
         require(event.kind in listOf("EXPENSE","INCOME","REFUND")&&event.accountId==account.id)
         current.copy(amount=if(event.currency==account.currency)seed.row.settlement.amount else current.amount,
-            date=if(event.kind==EntryKind.REFUND.name)seed.postedDate else current.date,accountAmount=seed.row.settlement.amount,settlementDate=seed.postedDate,settlementConfirmed=true,
+            accountAmount=seed.row.settlement.amount,settlementDate=seed.postedDate,settlementConfirmed=true,
             baseAmount=if(seed.row.settlement.currency==book.currency)seed.row.settlement.amount else "",rateSource="statement",rateDate=seed.postedDate)
     }
 }

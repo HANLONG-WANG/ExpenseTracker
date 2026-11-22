@@ -40,6 +40,15 @@ class BudgetExclusionTest {
         val future=standalone.copy(events=standalone.events.map{if(it.id=="excluded")it.copy(date="2026-10-20")else it},expenseComponents=standalone.expenseComponents.map{it.copy(date="2026-10-20")})
         assertEquals(0L,future.budgetPace(LocalDate.parse(date)).knownFutureMinor)
     }
+    @Test fun dailyExpenseIncludesConfirmedFeesFromNonPurchaseEvents() {
+        val original=snapshot()
+        val events=listOf("TRANSFER","BORROWING","REPAYMENT").map{kind->expense(kind,1000,kind=="BORROWING").copy(kind=kind)}
+        val fee=original.expenseComponents.single()
+        val feeDate="2026-10-11"
+        val fees=events.map{fee.copy(id=it.id+"-fee",eventId=it.id,date=feeDate)}
+        val s=original.copy(events=events,expenseComponents=fees+fee.copy(eventId=events.first().id,confirmed=false))
+        assertEquals(mapOf(feeDate to 150L),s.dailyExpense(events));assertEquals(mapOf(feeDate to 100L),s.dailyExpense(events,budgetOnly=true))
+    }
     @Test fun draftAndTemplateRoundTripPreserveExclusionAndOldDraftDefaultsFalse() {
         val s=snapshot().copy(accounts=listOf(AccountEntity("b","bank","銀行","BANK","JPY",0,"2026-01-01")))
         val d=EntryDraft(accountId="bank",categoryId="c",budgetExcluded=true,amount="100")

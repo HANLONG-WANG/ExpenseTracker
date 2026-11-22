@@ -40,6 +40,16 @@ class CardRecurrenceForecastTest {
         val annual=s.copy(recurrences=listOf(insurance)).cashTimeline(graph(single),today,through).steps.single().item
         assertEquals("2027-02-10",annual.scheduledDate);assertEquals(-4000L,annual.accountDeltaMinor)
     }
+    @Test fun bankReserveOnlyAddsThePortionAboveTheLinkedCardDebit() {
+        val s=snapshot()
+        val scene=ActivityEntity("b","trip","京都","2026-12-01","2026-12-31",null)
+        val rule=s.recurrences.single().copy(activityId=scene.id)
+        val linked=s.copy(recurrences=listOf(rule),activities=listOf(scene))
+        val occurrence=linked.forecastOccurrences(today,through).single()
+        val reserve=ActivityReserveEntity("b","reserve",scene.id,"住宿",occurrence.scheduledDate,1500,bank.id,1500,"JPY",occurrence.id)
+        val timeline=linked.copy(reserves=listOf(reserve)).cashTimeline(graph(single),today,through)
+        assertEquals(listOf(-409L,-1091L),timeline.steps.map{it.item.accountDeltaMinor})
+    }
     @Test fun installmentAndBonusUseTheRecordedPurchaseScheduleAndAmounts() {
         val installment=single.copy(id="installment",mode=FinanceMode.INSTALLMENT,installment=InstallmentRule(listOf(3),InstallmentFeeMethod.TOTAL_AMOUNT,totalFeeMinor=201,principalRemainder=RemainderPlacement.LAST,feeRemainder=RemainderPlacement.FIRST,roundingMode="DOWN"))
         val s=snapshot("INSTALLMENT",3)
@@ -52,11 +62,13 @@ class CardRecurrenceForecastTest {
         val b=snapshot("BONUS").cashTimeline(graph(bonus),today,through).steps.single().item
         assertEquals("2027-03-10",b.date);assertEquals(-1091L,b.accountDeltaMinor)
     }
-    @Test fun automaticAndExplicitRevolvingDoNotCreateSeparateCashOrAttention() {
+    @Test fun automaticAndExplicitRevolvingKeepUncoveredCashRisk() {
         val revolving=single.copy(id="revolving",mode=FinanceMode.REVOLVING,revolving=RevolvingRule(automatic=true))
         for(choice in listOf("REVOLVING","ACCOUNT_RULE")) {
             val s=snapshot(choice);val f=graph(single,revolving);val t=s.cashTimeline(f,today,through)
-            assertTrue(t.steps.isEmpty());assertTrue(s.financialAttention(f,today.toString(),t,emptySet()).isEmpty())
+            val item=t.steps.single().item
+            assertEquals(1091L,item.amountMinor);assertNull(item.accountDeltaMinor)
+            assertEquals("REVOLVING_OCCURRENCE_UNCOVERED",s.financialAttention(f,today.toString(),t,emptySet()).single().reason)
         }
         val f=graph(single,revolving.copy(revolving=RevolvingRule(automatic=false)))
         assertEquals(-1091L,snapshot("ACCOUNT_RULE").cashTimeline(f,today,through).steps.single().item.accountDeltaMinor)

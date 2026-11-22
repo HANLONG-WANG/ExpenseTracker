@@ -85,6 +85,10 @@ class ActivityTreatTest {
         repo.deleteEntry(book,event);repo.restoreEntry(book,event)
         assertEquals("Tea",snapshot().treatDisplayName(snapshot().treats.single{it.eventId==event}))
     }
+    @Test fun rejectsConflictingSameCurrencyOtherTreat()=runBlocking<Unit> {
+        val input=OtherTreatInput(activity,a,Money(Currency.JPY,1000),Money(Currency.JPY,10000),"2026-10-15","",listOf(a))
+        assertThrows(IllegalArgumentException::class.java){runBlocking{repo.previewOtherTreat(book,input)}}
+    }
     @Test fun percentagesUseActualSharesAndRejectActivityOutsideBook()=runBlocking {
         repo.saveEntry(book,draft("10000").copy(treatEnabled=true,treatFriends=listOf(a),treatMode=TreatSplitMode.PERCENT,treatWeights=mapOf("ME" to "70",a to "30")))
         val r=repo.previewOtherTreat(book,OtherTreatInput(activity,a,Money(Currency.JPY,6000),Money(Currency.JPY,6000),"2026-10-15","晚餐",listOf(a),TreatSplitMode.PERCENT,mapOf("ME" to "50",a to "50")))
@@ -98,7 +102,7 @@ class ActivityTreatTest {
         repo.saveRecurrence(book,RecurrenceInput("旅馆",account,category,Money(Currency.JPY,20000),null,false,RecurrenceFrequency.MONTHLY,"2026-10-20",activityId=activity))
         val o=snapshot().pendingOccurrences().single()
         val review=repo.previewReserve(book,ReserveInput(activity,"住宿","2026-10-20",Money(Currency.JPY,30000),account,Money(Currency.JPY,30000),o.id))
-        assertEquals(20000L,review.before.reserveMinor);assertEquals(30000L,review.after.reserveMinor)
+        assertEquals(20000L,review.months.single().first.reserveMinor);assertEquals(30000L,review.months.single().second.reserveMinor)
         assertTrue(repo.commitReserve(review));assertEquals(200000L,snapshot().balance(snapshot().accounts.single()))
         val event=repo.saveEntry(book,draft("20000").copy(occurrenceId=o.id))
         assertEquals(10000L,snapshot().budgetProjection("2026-10").reserveMinor);assertEquals(70000L,snapshot().budgetProjection("2026-10").availableMinor)

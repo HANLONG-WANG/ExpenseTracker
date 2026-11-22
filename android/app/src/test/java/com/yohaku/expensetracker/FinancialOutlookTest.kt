@@ -25,8 +25,10 @@ class FinancialOutlookTest {
     @Test fun laterUnknownDoesNotEraseAnEarlierKnownDeficitOrBecomeZero() {
         val timeline=CashTimeline("2026-10-15","2026-11-30",listOf(CashAccountOpening(bank,100)),listOf(
             CashTimelineStep(item("known","2026-11-05",-250),-150,-150),
-            CashTimelineStep(item("unknown","2026-11-20",null),null,null)))
+            CashTimelineStep(item("unknown","2026-11-20",null),null,null,baselineEstimated=true)))
         val risk=timeline.accountRisks().single()
+        val reminder=requireNotNull(CashProjectionFixture().snapshot().fundsReminder(risk))
+        assertFalse(reminder.estimated);assertEquals(150L,reminder.amountMinor);assertEquals("2026-11-05",reminder.date)
         assertEquals(150L,risk.currentGapMinor);assertNull(risk.maximumGapMinor)
         assertEquals("2026-11-05",risk.firstRiskDate);assertEquals("2026-11-20",risk.incompleteDate)
     }

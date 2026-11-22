@@ -63,7 +63,10 @@ internal fun commandSummaryChanged(effect:ObjectEffect):Boolean {
         val row=raw as? JsonObject
         return when(effect.type) {
             "creditLimit"->(row?.get("total") as? JsonObject)?.get("availableMinor")?:JsonNull
-            "budget"->row?.get("remainingMinor")?:JsonNull
+            "budget"->buildJsonObject {
+                put("remainingMinor",row?.get("remainingMinor")?:JsonNull)
+                put("reserveMinor",(row?.get("projection") as? JsonObject)?.get("reserveMinor")?:JsonNull)
+            }
             "balance"->row?.get("ledgerMinor")?:JsonNull
             "bill"->if(row==null)JsonNull else buildJsonObject {
                 val confirmed=row["confirmed"]?.jsonPrimitive?.booleanOrNull==true

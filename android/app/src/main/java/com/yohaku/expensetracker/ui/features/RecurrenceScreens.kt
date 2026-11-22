@@ -66,12 +66,12 @@ import java.time.YearMonth
         if(recorded!=null)YText(word("原预计：","元の見込み：")+(o.amountMinor?.let{Money(Currency.valueOf(o.currency),it).display()}?:word("金额未定","金額未定")),10,color=LocalYohaku.current.muted)
         if(o.status=="WITHDRAWN")YText(word("规则已撤下","ルール対象外"),11,color=LocalYohaku.current.muted)
         if(o.status=="CANCELLED") {
-            if(rule.includesScheduledDate(o.scheduledDate))YLink(word("恢复这次待办","この予定を復元"),{vm.execute{vm.repository.restoreOccurrence(s.book.id,o.id);vm.haptic(Haptic.Restored)}},Modifier.testTag("restore-occurrence-${o.id}"))
+            if(rule.includesScheduledDate(o.scheduledDate,s.activities.find{it.id==rule.activityId}))YLink(word("恢复这次待办","この予定を復元"),{vm.execute{vm.repository.restoreOccurrence(s.book.id,o.id);vm.haptic(Haptic.Restored)}},Modifier.testTag("restore-occurrence-${o.id}"))
             else YText(word("先启用规则，并确认这次日期仍在安排范围内。","ルールを有効にし、予定日が範囲内か確認してください。"),10,color=LocalYohaku.current.muted)
         }
         o.eventId?.let{id->s.visibleEvents.find{it.id==id}?.let{event->
             YButton(word("查看已存记录","保存済みの記録を見る"),{onRecord(event)})
-            YLink(if(rule.includesScheduledDate(o.scheduledDate))word("解除关联，重新待确认","関連を解除して確認待ちへ")else word("解除关联，保留已记账事实","関連を解除し、記録済みの事実を保持"),{vm.execute{vm.repository.unlinkOccurrence(s.book.id,o.id);vm.haptic(Haptic.Removed)}})
+            YLink(if(rule.includesScheduledDate(o.scheduledDate,s.activities.find{it.id==rule.activityId}))word("解除关联，重新待确认","関連を解除して確認待ちへ")else word("解除关联，保留已记账事实","関連を解除し、記録済みの事実を保持"),{vm.execute{vm.repository.unlinkOccurrence(s.book.id,o.id);vm.haptic(Haptic.Removed)}})
         }}
         }
     }
@@ -109,6 +109,9 @@ import java.time.YearMonth
     s.recurrences.forEach{rule->Panel(Modifier.testTag("recurrence-rule-${rule.id}")) {
         YText(rule.name,if(journal)18 else if(LocalYohaku.current.id=="objects")16 else 17,weight=if(LocalYohaku.current.id=="objects")androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal)
         YText(word("规则：","ルール：")+frequencyName(RecurrenceFrequency.valueOf(rule.frequency))+" · "+rule.anchorDate+" · "+if(rule.active)word("启用","有効")else word("停用","停止"),11,color=LocalYohaku.current.muted)
+        s.activities.find{it.id==rule.activityId&&it.ended}?.let{a->
+            YText(word("限活动期间","シーン期間内のみ")+" · "+a.startDate+" — "+a.endDate,11,color=LocalYohaku.current.muted)
+        }
         YButton(word("编辑规则","ルールを編集"),{editor=rule.id})
     }}
     when {

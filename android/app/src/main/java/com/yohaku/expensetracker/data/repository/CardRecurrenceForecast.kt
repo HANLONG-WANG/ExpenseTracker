@@ -19,8 +19,8 @@ internal fun BookSnapshot.cardRecurrenceForecast(o:OccurrenceEntity,finance:Fina
     val choice=recurrence.cardPaymentChoice?.let{CardPaymentChoice.valueOf(it)}?:return failed("CARD_PAYMENT_CHOICE_REQUIRED")
     val automatic=if(choice==CardPaymentChoice.ACCOUNT_RULE)rules.cardRule(card.id,o.scheduledDate,"REVOLVING")?.let{Json.decodeFromString<FinancialRuleVersion>(it.json).revolving?.automatic}else null
     val mode=resolvedCardPaymentMode(choice,automatic)?:return failed("CARD_AUTOMATIC_RULE_INCOMPLETE")
-    // These purchases enter the revolving balance; there is no separate bank debit.
-    if(mode==FinanceMode.REVOLVING.name)return emptyList()
+    // Pool bills cover posted principal. An unposted occurrence has no known incremental debit.
+    if(mode==FinanceMode.REVOLVING.name)return failed("REVOLVING_OCCURRENCE_UNCOVERED")
     val event=EventEntity(book.id,o.id,EntryKind.EXPENSE.name,card.id,o.categoryId,o.amountMinor?:0,o.currency,o.baseMinor?:0,o.scheduledDate,o.name,"",
         cardPaymentChoice=choice.name,cardPaymentMode=mode,cardPaymentPeriods=recurrence.cardPaymentPeriods)
     val schedule=cardEntrySchedule(event,accounts,rules)

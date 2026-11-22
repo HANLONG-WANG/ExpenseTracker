@@ -57,8 +57,18 @@ suspend fun LedgerRepository.previewFinancialRule(bookId:String,accountId:String
     val rule=input.copy(id=id())
     val old=state.finance.rules.filter{it.accountId==accountId&&it.mode==input.mode.name}
     val version=Math.addExact(old.maxOfOrNull{it.version}?:0,1)
-    val plans=state.finance.plans.filter{it.active&&it.accountId==accountId&&it.mode==input.mode.name}.map{it.id}.toSet()
-    val affected=state.finance.bills.filter{it.active&&it.planId in plans&&it.date>=input.effectiveFrom}
+    val plans=state.finance.plans.filter{it.active&&it.accountId==accountId&&it.mode==input.mode.name}
+        .associate{it.id to it.termsJson?.let{terms->json.decodeFromString<FinancialPredictionInput>(terms)}}
+    val nextVersionDate=old.filter{it.effectiveFrom>rule.effectiveFrom}.minOfOrNull{it.effectiveFrom}
+    val affected=state.finance.bills.filter{bill->
+        if(!bill.active||bill.planId !in plans)return@filter false
+        // Manual confirmed amounts are shown as retained facts, with no prediction to recalculate.
+        if(bill.basisJson==null)return@filter bill.confirmed&&bill.date>=rule.effectiveFrom
+        val definition=plans[bill.planId]?:return@filter false
+        val basis=json.decodeFromString<FinancialCalculationBasis>(bill.basisJson)
+        val window=definition.ruleWindow(bill,basis)
+        rule.effectiveFrom<=window.end&&(nextVersionDate==null||window.start<nextVersionDate)
+    }
     FinancialRuleReview(state,rule,version,affected.filterNot{it.confirmed},affected.filter{it.confirmed})
 }
 

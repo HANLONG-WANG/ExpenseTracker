@@ -32,23 +32,24 @@ fun BookSnapshot.cashTimeline(finance:FinancialGraph?,asOf:LocalDate,through:Loc
         add(CashTimelineItem("posting:${p.id}",if(transfers.any{it.eventId==e.id})"TRANSFER"else "ACTUAL",e.id,p.date,e.merchant.ifBlank{e.note.ifBlank{e.kind}},p.accountId,p.currency,kotlin.math.abs(p.deltaMinor),p.deltaMinor>0,p.deltaMinor,!p.confirmed,if(!p.confirmed)"PENDING_POSTING"else null))
     }
     val pending=copy(occurrences=forecastOccurrences(asOf,through)).pendingOccurrences()
+    val occurrenceDebits=mutableMapOf<String,List<CashTimelineItem>>()
     for(o in pending) {
         val a=accounts.first{it.id==o.accountId}
-        if(a.type==AccountType.CREDIT.name) {
-            cardRecurrenceForecast(o,finance,asOf,referenceRates).forEach(::add)
-            continue
-        }
-        add(CashTimelineItem("occurrence:${o.id}","RECURRENCE",o.id,o.scheduledDate,o.name,o.accountId,o.currency,o.amountMinor,false,
+        val forecast=if(a.type==AccountType.CREDIT.name)cardRecurrenceForecast(o,finance,asOf,referenceRates)
+        else listOf(CashTimelineItem("occurrence:${o.id}","RECURRENCE",o.id,o.scheduledDate,o.name,o.accountId,o.currency,o.amountMinor,false,
             o.amountMinor?.takeIf{a.id in fundIds&&a.active&&a.currency==o.currency}?.let{Math.negateExact(it)},o.estimated,
             when{a.id !in fundIds->"DEBT_PAYMENT_UNSCHEDULED";!a.active->"PAYMENT_ACCOUNT_INACTIVE";o.amountMinor==null->"UNKNOWN_AMOUNT";a.currency!=o.currency->"UNKNOWN_CONVERSION";else->null}))
+        occurrenceDebits[o.id]=forecast.filter{it.date<=end}
+        forecast.forEach(::add)
     }
     for(r in reserves.filter{it.active&&reserveRemaining(it)>0&&activities.any{a->a.id==it.activityId&&!a.ended}}) {
         val amount=reserveAccountRemaining(r)
         // The linked pending fixed payment already consumes this portion of this same cash pool.
-        val duplicate=pending.firstOrNull{it.id==r.occurrenceId&&it.accountId==r.accountId&&it.currency==amount?.currency?.name}
-        val held=amount?.minor?.let{n->duplicate?.amountMinor?.let{(n-it).coerceAtLeast(0)}?:n}
+        val debits=occurrenceDebits[r.occurrenceId].orEmpty().filter{it.accountId==r.accountId}
+        val covered=debits.fold(0L){sum,item->subtractExact(sum,item.accountDeltaMinor?:0L)}
+        val held=amount?.minor?.let{(it-covered).coerceAtLeast(0)}
         if(held==0L)continue
-        val issue=when{r.accountId !in fundIds->"RESERVE_ACCOUNT_REQUIRED";accounts.first{it.id==r.accountId}.active.not()->"PAYMENT_ACCOUNT_INACTIVE";amount==null->"UNKNOWN_CONVERSION";duplicate!=null&&duplicate.amountMinor==null->"UNKNOWN_AMOUNT";else->null}
+        val issue=when{r.accountId !in fundIds->"RESERVE_ACCOUNT_REQUIRED";accounts.first{it.id==r.accountId}.active.not()->"PAYMENT_ACCOUNT_INACTIVE";amount==null->"UNKNOWN_CONVERSION";debits.any{it.accountDeltaMinor==null}->"UNKNOWN_AMOUNT";else->null}
         add(CashTimelineItem("reserve:${r.id}","RESERVE",r.activityId,r.date,r.name,r.accountId,amount?.currency?.name?:book.currency,held?:reserveRemaining(r),false,if(issue==null)held?.let{Math.negateExact(it)}else null,true,issue))
     }
     if(finance!=null)for(b in finance.bills.filter{it.active&&finance.plans.any{p->p.id==it.planId&&p.active}}) {

@@ -42,6 +42,8 @@ class FinancialPredictionTest {
             val plan=repo.commitFinancialPrediction(preview)!!
             assertNull(repo.commitFinancialPrediction(preview))
             val original=db.financialDao().bills(book,plan)
+            val laterRule=rule(book,card,bank).copy(effectiveFrom="2026-11-01")
+            assertTrue(repo.previewFinancialRule(book,card,laterRule).affectedPredictions.isEmpty())
             val first=original.first()
             assertTrue(repo.commitFinancialBillConfirmation(repo.previewFinancialBillConfirmation(book,first.id,KnownBillInput(first.date,3567,3500,67,bank))))
             val confirmed=db.financialDao().bill(book,first.id)!!

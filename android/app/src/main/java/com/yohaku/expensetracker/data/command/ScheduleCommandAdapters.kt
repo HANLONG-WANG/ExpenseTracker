@@ -66,7 +66,7 @@ internal class OccurrenceAdapter(private val action:String):LedgerAdapter() {
         when(action) {
             "resolve"->{val v=commandJson.decodeFromJsonElement<OccurrenceResolveCommand>(step.input);val id=run.resolve(v.recurrence);val rule=s.recurrences.single{it.id==id}
                 val old=s.occurrences.firstOrNull{it.recurrenceId==id&&it.scheduledDate==v.date}
-                require(old!=null||rule.includesScheduledDate(v.date)){"该日期不在周期安排内 / この日は定期予定の範囲外です"}
+                require(old!=null||rule.includesScheduledDate(v.date,s.activities.find{it.id==rule.activityId})){"该日期不在周期安排内 / この日は定期予定の範囲外です"}
                 if(old==null)r.ensureOccurrences(run.bookId,v.date.take(7),id)
                 val occurrence=old?:r.dao.occurrences(run.bookId).single{it.recurrenceId==id&&it.scheduledDate==v.date}
                 run.output(step.id,"occurrence",occurrence.id,old==null)}

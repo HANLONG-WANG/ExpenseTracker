@@ -65,6 +65,22 @@ class CurrencyTransactionsTest {
         repo.restoreEntry(book,event)
         assertEquals(3,snapshot().visibleEvents.size);assertEquals(200L,snapshot().monthExpense("2026-09"))
     }
+    @Test fun editsRetainInactiveAccountsOnlyInTheirOriginalRoles()=runBlocking<Unit> {
+        val bank=repo.saveAccount(book,"银行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,5000),"2026-09-01")
+        val target=repo.saveAccount(book,"钱包",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-09-01")
+        val transfer=EntryDraft(kind=EntryKind.TRANSFER,accountId=bank,toAccountId=target,amount="100",toAmount="100",
+            date="2026-10-01",feeAmount="5",feePosition=TransferFeePosition.SEPARATE,feeAccountId=bank)
+        val transferId=requireNotNull(repo.commitEntryReview(book,repo.previewEntry(book,transfer)))
+        val refund=RefundInput(purchase(),Money(Currency.USD,100),target,Money(Currency.JPY,150),Money(Currency.JPY,150),"2026-10-01",true)
+        val refundId=repo.saveRefund(book,refund)
+        for(id in listOf(bank,target))assertTrue(repo.commitAccountOperation(repo.previewAccountOperation(book,id,AccountOperation.DEACTIVATE)))
+        val s=snapshot()
+        val edit=s.editingEntryDraft(s.events.single{it.id==transferId}).copy(note="补充备注")
+        assertEquals(transferId,repo.commitEntryReview(book,repo.previewEntry(book,edit)))
+        assertEquals(refundId,repo.saveRefund(book,refund.copy(id=refundId,note="补充备注")))
+        assertThrows(IllegalArgumentException::class.java){runBlocking{repo.previewEntry(book,edit.copy(feeAccountId=target))}}
+        assertThrows(IllegalArgumentException::class.java){runBlocking{repo.saveRefund(book,refund.copy(id=refundId,accountId=bank))}}
+    }
     @Test fun threeCurrenciesAndBooksKeepTheirOwnAmounts()=runBlocking {
         val bank=repo.saveAccount(book,"人民币",AccountType.BANK,Currency.CNY,Money(Currency.CNY,100000),"2026-09-01")
         val event=repo.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="20",originalCurrency=Currency.USD,accountAmount="145.50",baseAmount="2900",date="2026-09-10"))

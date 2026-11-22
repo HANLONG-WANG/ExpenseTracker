@@ -9,8 +9,8 @@ fun BookSnapshot.defaultEntryAccount(kind:EntryKind):String? {
     val eligible=entryAccounts(kind);val last=lastSavedEntry{it.kind==kind.name}
     return eligible.firstOrNull{it.id==last?.accountId}?.id?:eligible.firstOrNull()?.id
 }
-fun BookSnapshot.transferSources()=accounts.filter{it.active&&it.type!=AccountType.LOAN.name}
-fun BookSnapshot.transferTargets()=accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}
+fun BookSnapshot.transferSources(originalAccountId:String?=null)=accounts.filter{(it.active||it.id==originalAccountId)&&it.type!=AccountType.LOAN.name}
+fun BookSnapshot.transferTargets(originalAccountId:String?=null)=accounts.filter{(it.active||it.id==originalAccountId)&&!AccountType.valueOf(it.type).debt}
 fun BookSnapshot.newTransferDraft(date:String,fromId:String?=null,toAccountId:String?=null):EntryDraft {
     val sources=transferSources();val targets=transferTargets();val last=lastSavedEntry{it.kind==EntryKind.TRANSFER.name}
     val destination=targets.firstOrNull{it.id==toAccountId}

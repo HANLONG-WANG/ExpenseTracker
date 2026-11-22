@@ -118,6 +118,6 @@ internal suspend fun LedgerRepository.prepareEntryDraft(snapshot:BookSnapshot,dr
         val originalAmount=Money.parse(draft.amount,Currency.valueOf(original.currency))
         val accountAmount=Money.parse(draft.accountAmount,Currency.valueOf(account.currency))
         val base=if(account.currency==book.currency)accountAmount else Money.parse(draft.baseAmount,Currency.valueOf(book.currency))
-        prepareRefund(bookId,RefundInput(original.id,originalAmount,account.id,accountAmount,base,draft.date,draft.settlementConfirmed,draft.id,draft.note,draft.rateSource,draft.rateDate))
+        prepareRefund(bookId,RefundInput(original.id,originalAmount,account.id,accountAmount,base,draft.date,draft.settlementConfirmed,draft.id,draft.note,draft.rateSource,draft.rateDate,draft.settlementDate))
     }else prepareEntry(bookId,draft,snapshot)
 }

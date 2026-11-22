@@ -150,6 +150,11 @@ class BudgetRecurrenceTest {
         assertEquals("COMPLETED",snapshot().occurrences.single{it.id==paid.id}.status);assertTrue(snapshot().pendingOccurrences().isEmpty())
         repo.unlinkOccurrence(book,paid.id)
         assertEquals("WITHDRAWN",snapshot().occurrences.single{it.id==paid.id}.status);assertTrue(snapshot().pendingOccurrences().isEmpty())
+        repo.saveRecurrence(book,input.copy(id=id))
+        repo.commitOccurrenceLink(repo.previewOccurrenceLink(book,paid.id,event))
+        repo.saveRecurrence(book,input.copy(id=id,amount=Money(Currency.JPY,5000)))
+        repo.unlinkOccurrence(book,paid.id)
+        assertEquals(5000L,snapshot().pendingOccurrences().single{it.id==paid.id}.amountMinor)
         assertEquals(197000L,snapshot().balance(snapshot().accounts.single()));assertEquals(3000L,snapshot().monthExpense("2026-10"))
     }
 

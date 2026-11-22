@@ -60,6 +60,7 @@ import java.time.LocalDate
     }
 }
 @Composable internal fun cashIssue(code:String)=when(code) {
+    "REVOLVING_OCCURRENCE_UNCOVERED"->word("这笔周期消费尚未记账，循环还款预测尚未覆盖其扣款。","この定期支払は未記帳のため、リボ返済予測に含まれていません。")
     "CARD_PAYMENT_CHOICE_REQUIRED"->word("周期付款尚未指定信用卡付款方式，请编辑周期规则。","定期支払のカード支払方法が未指定です。定期ルールを編集してください。")
     "CARD_AUTOMATIC_RULE_INCOMPLETE"->word("自动循环还款设置未补齐，请核对消费日期有效的卡规则。","自動リボ設定が未補完です。利用日に有効なカード条件を確認してください。")
     "CARD_SINGLE_RULE_INCOMPLETE"->word("一次付规则未补齐，请核对结账日和扣款日。","一括払い条件が未補完です。締め日と引落日を確認してください。")

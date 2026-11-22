@@ -17,9 +17,9 @@
 | `activity.setMode` | enabled 必填 | setActivityMode；关闭清当前活动，开启保留有效当前活动 | book_features 完整原行或新行 |
 | `activity.setCurrent` | activity 必填，可 null 退出当前活动 | 模式开启，当前活动须未结束/未删除 | 当前活动及模式、引用活动 |
 | `activity.save` | name/start/end 必填；activity 省略新建；budget=null、categoryBudgets=[]、excludeMonthly=false、ended=false；完整保存；输出 activity | previewActivity/commitActivity；日期、分类、币种校验；已结束不可重开；分类预算全量替换 | 活动/分类预算、相关月预算、活动已用/预留/可用、互请金额 |
-| `activity.end` | activity 必填 | 保留现有字段及分类预算，经活动保存确认结束；释放未用预留、清当前活动 | 活动、预留、模式及派生金额 |
+| `activity.end` | activity 必填 | 保留现有字段及分类预算，经活动保存确认结束；释放未用预留、清当前活动，关联规则限于活动期间 | 活动、撤下的期间外待办、预留、模式及派生金额 |
 | `activity.lifecycle` | activity、TRASH/RESTORE 必填 | TRASH 复用删除影响确认；RESTORE 恢复显示与历史预算归属 | 活动、规则/实例、预留、模板、模式及匹配新记账草稿；撤销精确恢复全部原值 |
-| `activityReserve.save` | activity/name/date/amount；reserve 省略新建；account/accountAmount/occurrence 默认 null；输出 reserve | previewReserve/commitReserve；模式开启、未结束活动、正金额、账户金额成对、实例关系唯一；总额不能低于已用+已释放 | 完整预留、相关实例/账户、活动余量及月预算 |
+| `activityReserve.save` | activity/name/date/amount；reserve 省略新建；account/accountAmount/occurrence 默认 null；输出 reserve | previewReserve/commitReserve；模式开启、未结束活动、正金额、启用的资金账户与其金额成对、同币种金额相等、实例关系唯一；总额不能低于已用+已释放 | 完整预留、相关实例/账户、活动余量及修改前后月份的预算 |
 | `activityReserve.release` | reserve、amount 必填 | previewRelease/commitReserve；正数且不超过剩余预留 | 释放前后原行、可用与预留；无实际入账 |
 | `activityParticipant.add` | activity、friend 必填 | addParticipant；本账本未删除活动、启用朋友；已有关系不重复增加 | 参与关系及顺序，朋友/活动依据；新关系移除不删除既有朋友 |
 | `activityTreat.save` | activity/payer/total/base/date/name/shares；mode=EQUAL，treat 省略新建；输出 treat | previewOtherTreat/commitOtherTreat，复用均分/比例/金额分摊和尾差；付款朋友在参与人中，本人份额须正；结束活动仅补录期间事实 | 请客/完整分摊、参与人、互请往来前后金额；不入资金账 |

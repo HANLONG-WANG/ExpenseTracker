@@ -35,6 +35,7 @@ import com.yohaku.expensetracker.data.db.EventEntity
 import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.data.repository.budgetLimit
 import com.yohaku.expensetracker.data.repository.dailyExpense
+import com.yohaku.expensetracker.data.repository.visibleComponents
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.*
@@ -131,7 +132,8 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
         }
         CalendarLegend(dailyBudget?.let{Money(currency,it.toLong()).display()})
         selectedText?.let{LocalDate.parse(it)}?.takeIf{YearMonth.from(it)==month}?.let{day->
-            CalendarDayPanel(s,day,events.filter{it.date==day.toString()},Money(currency,amounts[day]?:0L),onSelect,{onStartOn(day.toString())})
+            val feeEvents=s.visibleComponents().filter{it.date==day.toString()}.map{it.eventId}.toSet()
+            CalendarDayPanel(s,day,events.filter{it.date==day.toString()||it.id in feeEvents},Money(currency,amounts[day]?:0L),onSelect,{onStartOn(day.toString())})
         } ?: YText(word("点选日期，查看当天的流水。","日付を選ぶと、その日の記録が表示されます。"),if(t.id=="journal")13 else 11,Modifier.padding(top=26.dp),color=t.muted)
     }
 }

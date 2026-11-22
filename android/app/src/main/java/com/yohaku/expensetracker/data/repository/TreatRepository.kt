@@ -36,6 +36,7 @@ internal suspend fun LedgerRepository.prepareTreat(bookId:String,activityId:Stri
     val base=event?.let{Money(Currency.valueOf(book.currency),it.baseMinor)}?:input!!.base
     val date=event?.date?:input!!.date
     require(base.currency.name==book.currency&&total.minor>0&&base.minor>0)
+    require(input==null||total.currency!=base.currency||total.minor==base.minor){"同币种的整单金额和本位币金额须一致 / 同一通貨の合計額と基準通貨額を一致させてください"}
     LocalDate.parse(date)
     require(!activity.ended||date in activity.startDate..activity.endDate){"已结束活动只补录活动期间的事实 / 終了済みシーンは期間内の事実のみ記録できます"}
     if(event!=null)require(event.kind==EntryKind.EXPENSE.name)

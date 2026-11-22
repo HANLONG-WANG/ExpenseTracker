@@ -359,7 +359,7 @@ Kotlin 每组存为独立字符串常量并懒解析，提供 `categoryIconGroup
 - 账户详情→账户状态与停用。停用保留历史与债务处理；有记录、计划、核对、预留或草稿引用时不能删除。
 - 分类编辑→「归档、调整归属或删除」。一级和二级分类都可归档：归档后不出现在记账、预算、常用及 CSV 对应等选择中，记录、预算与周期安排保留；归档一级连同子分类一起收起，子分类各自的归档状态不变。分类管理页每个用途末尾有「已归档」折叠区（杂志索引行/手账信封/小物抽屉），列出归档的一级组和仍在使用的一级下单独归档的二级，可直接「取消归档」或点开管理。数据沿用 `categories.active`（false 即已归档），无迁移。
 - 迁移需选择同用途目标和预算处理方式，确认页展示历史月份/活动预算影响，金额与原记录ID保持。
-- 活动详情→查看删除影响。列出跨月回归日常后的预算，保留记录/资金/文件及原互请历史；停止该活动安排并释放未用预留。结束活动与删除活动为不同操作。
+- 活动详情→查看删除影响。列出跨月回归日常后的预算，保留记录/资金/文件及原互请历史；停止该活动安排并释放未用预留。结束活动保留期间内的周期待办及历史，关联规则只在活动期间生成实例，结束预览列出撤下的期间外待办数量。活动预留可指定启用的资金账户，同币种金额须一致，跨月调整分别显示两个月的预算影响。
 - 原记录→移至回收站。原消费与本次关联退款、转账两端按组处理；以前独立删除的退款不混入。恢复旧人工核对后须重新确认；信用卡消费未确认、未到期且未还款的本地预测随记录停用，恢复时按当前规则重新生成；独立合同、确认账单和实际还款不因清理来源消费而抹去。
 - 设置→商户与地点，或分析→商户资料与保存地点。地点在地图上选（拖动地图，图钉固定在中央）并确认保存；记账页主动启用定位，拒绝/系统关闭仍可手填商户。
 - 设置→重要提醒。保存开启才请求权限；系统不允许时可进入系统通知设置。
@@ -487,9 +487,15 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 ### 金融预测修正（2026-11-04）
 
 - 未分配清偿提醒扣除有效余额池登记份额；池失效时恢复提示，编辑器原始份额口径不变。
-- 信用卡周期付款按与真实 CARD_ENTRY 相同的规则预测银行扣款，一次付/奖金付/分期逐期列出，リボ不单列；首页、重要事项、备款和云端确认共用时间线。缺规则/账户时显示具体处理原因，点击按原因进入周期付款或卡规则。提醒仍在刷卡日提醒记账，银行扣款预测本身不发提醒（记账后由 CARD_ENTRY 账单提醒还款）。
+- 信用卡周期付款按与真实 CARD_ENTRY 相同的规则预测银行扣款，一次付/奖金付/分期逐期列出，未记账的リボ（含自动循环）按消费计划日显示未覆盖的还款风险，记账后再按循环池推算；首页、重要事项、备款和云端确认共用时间线。缺规则/账户时显示具体处理原因，点击按原因进入周期付款或卡规则。提醒仍在刷卡日提醒记账，银行扣款预测本身不发提醒（记账后由 CARD_ENTRY 账单提醒还款）。
 - 修改债务期初日期或金额后，借还与消费仍可保存；余额池保留原预测并等待显式核对/重算。
 - JVM 回归：`FinancialOutlookTest`、`CardRecurrenceForecastTest`、`FinancialPoolOpeningTest`。设备回归（已运行通过）：`FinancialPoolTest`、`CardPaymentTest`（含刷卡日提醒）、`CommandPlanningExecutionTest` 及相关金融/提醒数据测试；视觉：`FinancialOutlookFlowTest.cardRecurringPaymentsForecastBankDebitsAndNameMissingRulesInEveryThemeAndLanguage`（`looks=all visual=true`，截图 `phase-c-outlook/*-card-recurring-*.png`，已查看）。
+
+### 仓库层问题修正（2026-11-22）
+
+- 修正对象为 `docs/bug-reports-other.md` 分区 01/02，涉及额度基准、日历/按日小计的费用口径、预留与周期扣款去重、リボ周期消费风险、结束活动后的期间外规则、活动预留和他人请客的同币种金额、预留跨月预览、退款入账日、解除周期关联、已知资金缺口提醒、停用账户的历史转账/退款编辑、空余额池调整月付、规则变更影响范围。手机和云端命令共用同一仓库校验。
+- JVM：`CreditLimitBasisTest`、`ActivityPlanningReviewTest`、`BudgetExclusionTest`、`CardRecurrenceForecastTest`、`FinancialOutlookTest` 及全量通过。仪器默认参数：`ActivityTreatTest`、`BudgetRecurrenceTest`、`CommandWorkflowExecutionTest`、`CommandPlanningExecutionTest`、`CurrencyTransactionsTest`、`TransferTransactionsTest`、`FinancialPoolPaymentTest`、`FinancialPredictionTest`、`CardPaymentTest`、`FinancialPoolTest`、`ActivityManagementStorageTest`（61 项）通过；`EntryFlowTest`、`TransferFlowTest`、`ActivityFlowTest`、`StatementFileWorkflowTest`、`LedgerCalendarTest`、`FinancialOutlookFlowTest`、`BudgetRecurrenceFlowTest`、`EntryLifecycleFlowTest` 通过。
+- 视觉（S24 Ultra 尺寸，`looks=all visual=true`，截图已查看）：新增 `ActivityFlowTest#crossMonthReserveAndEndedActivityRuleInEveryThemeAndLanguage`（`phase-b-p11/*-reserve-cross-month.png`、`*-activity-end-preview.png`、`*-ended-activity-rule.png`）；退款表单发生日/入账日两栏见 `phase-b-p08/*-refund-form.png`；另跑 `LedgerCalendarTest`、`FinancialOutlookFlowTest#cardRecurring…`、`TransferFlowTest`。
 
 ## 构建与验证
 

@@ -175,6 +175,65 @@ class ActivityFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.features?.activeActivityId==null&&!vm.busy.value}
         }
     }
+    @Test fun crossMonthReserveAndEndedActivityRuleInEveryThemeAndLanguage() {
+        for((theme,language) in testLooks(this@ActivityFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val (book,activity,rule)=runBlocking {
+                val book=repo.createBook("旅 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=100000,theme=theme,language=language)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val account=repo.saveAccount(book,text("银行","銀行"),AccountType.BANK,Currency.JPY,Money(Currency.JPY,200000),"2026-10-01")
+                val category=repo.saveCategory(book,text("交通","交通費"),EntryKind.EXPENSE,null)
+                repo.setActivityMode(book,true)
+                val activity=repo.saveActivity(book,text("秋季旅行","秋の旅"),"2026-10-01","2026-11-30",Money(Currency.JPY,40000))
+                val reserve=ReserveInput(activity,text("住宿","宿泊"),"2026-10-20",Money(Currency.JPY,10000))
+                assertTrue(repo.commitReserve(repo.previewReserve(book,reserve)))
+                val rule=repo.saveRecurrence(book,RecurrenceInput(text("交通月票","定期券"),account,category,Money(Currency.JPY,2000),
+                    null,false,RecurrenceFrequency.MONTHLY,"2026-10-20",endDate="2026-12-20",activityId=activity))
+                repo.ensureOccurrences(book,"2026-12")
+                vm.preferences.select(book)
+                Triple(book,activity,rule)
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.openActivity.value=activity;vm.navigate("life")}
+            tap(text("调整预留","確保を調整"))
+            ui.onNodeWithTag("date-field-0").performScrollTo().performClick()
+            ui.onNodeWithContentDescription(text("下一月","次の月")).performScrollTo().performClick()
+            ui.onNodeWithContentDescription("2026-11-20").performScrollTo().performClick()
+            val preview=text("预览影响","影響を確認")
+            tap(preview)
+            val sheet=hasAnyAncestor(hasTestTag("sheet-scroll"))
+            val confirm=text("确认","確定")
+            val confirmButton=ui.onNode(hasText(confirm) and sheet)
+            ui.waitUntil(10000){ui.onAllNodes(hasText(confirm) and sheet).fetchSemanticsNodes().isNotEmpty()}
+            ui.onNode(hasText("2026-10") and sheet).assertExists()
+            ui.onNode(hasText("2026-11") and sheet).assertExists()
+            shot("$theme-$language-reserve-cross-month",true)
+            if(visualEnabled() && confirmButton.getUnclippedBoundsInRoot().bottom>ui.onNodeWithTag("theme-sheet").getUnclippedBoundsInRoot().bottom) {
+                confirmButton.performScrollTo()
+                shot("$theme-$language-reserve-cross-month-bottom",true,reset=false)
+            }
+            tap(confirm)
+            ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("sheet-close").fetchSemanticsNodes().isEmpty()}
+            tap(text("编辑活动与预算","シーンと予算を編集"))
+            tap(text("结束活动并释放预留","終了して確保を解放"))
+            tap(preview)
+            val impact=text("释放剩余预留。关联的 1 条启用规则只在活动期间生成待办，撤下期间外 1 项。期间内待办仍可补记。",
+                "残りの確保を解放します。関連する有効なルール 1 件は期間内のみ予定を生成し、期間外の 1 件を取り下げます。期間内の予定は引き続き記帳できます。")
+            ui.waitUntil(10000){ui.onAllNodesWithText(impact).fetchSemanticsNodes().isNotEmpty()}
+            clearHeader(ui.onNodeWithText(impact)).assertIsDisplayed()
+            shot("$theme-$language-activity-end-preview",true,reset=false)
+            tap(text("确认保存","保存を確定"))
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.activities?.any{it.id==activity&&it.ended}==true&&!vm.busy.value}
+
+            ui.runOnIdle{vm.navigate("recurring")}
+            val card=hasTestTag("recurrence-rule-$rule")
+            ui.onNode(card).performScrollTo()
+            val period=text("限活动期间","シーン期間内のみ")+" · 2026-10-01 — 2026-11-30"
+            ui.onNode(hasText(period) and hasAnyAncestor(card)).assertIsDisplayed()
+            shot("$theme-$language-ended-activity-rule",false,reset=false)
+        }
+    }
+
     @Test fun categoryBudgetsAddParentAndChildSaveOverTotalAndRemove() {
         for((theme,language) in testLooks(this@ActivityFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh

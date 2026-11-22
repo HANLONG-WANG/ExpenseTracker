@@ -131,7 +131,7 @@ fun creditLimitMovements(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,acco
 private data class LimitDelta(val total:Long?,val split:Long?,val revo:Long?,val issues:List<String>)
 private fun delta(anchor:List<LimitMovement>,current:List<LimitMovement>,basisDate:String):LimitDelta {
     val now=current.associateBy{it.id}
-    if(anchor.any{old->now[old.id]?.let{it.date==old.date&&it.total==old.total&&it.kind==old.kind}!=true})return LimitDelta(null,null,null,listOf("limit.basisChanged"))
+    if(anchor.any{old->now[old.id]!=old})return LimitDelta(null,null,null,listOf("limit.basisChanged"))
     val ids=anchor.map{it.id}.toSet();val added=current.filter{it.id !in ids}
     if(added.any{it.date<basisDate})return LimitDelta(null,null,null,listOf("limit.backdated"))
     fun sum(value:(LimitMovement)->Long?):Long? {var n=0L;for(m in added)n=addExact(n,value(m)?:return null);return n}

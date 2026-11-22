@@ -173,7 +173,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
                 when(item.kind) {
                     "BILL"->openFinancial(item.sourceId,item.scheduledDate.take(7))
                     "CARD_RECURRENCE"->when(item.issue) {
-                        "CARD_PAYMENT_CHOICE_REQUIRED","CARD_INSTALLMENT_PERIODS_UNSUPPORTED","UNKNOWN_AMOUNT"->{recurringInitialMonth=item.scheduledDate.take(7);vm.navigate("recurring")}
+                        "REVOLVING_OCCURRENCE_UNCOVERED","CARD_PAYMENT_CHOICE_REQUIRED","CARD_INSTALLMENT_PERIODS_UNSUPPORTED","UNKNOWN_AMOUNT"->{recurringInitialMonth=item.scheduledDate.take(7);vm.navigate("recurring")}
                         "CARD_AUTOMATIC_RULE_INCOMPLETE","CARD_SINGLE_RULE_INCOMPLETE","CARD_BONUS_RULE_INCOMPLETE","CARD_INSTALLMENT_RULE_INCOMPLETE","CARD_PAYMENT_ACCOUNT_REQUIRED","CARD_PAYMENT_ACCOUNT_INACTIVE"->{openFinancial(item.sourceId,target="rules")}
                         else->openFinancial(item.sourceId)
                     }

@@ -11,17 +11,18 @@ internal suspend fun LedgerRepository.prepareTransfer(bookId:String,d:EntryDraft
     val from=dao.account(bookId,d.accountId?:"")?:error("请选择转出账户 / 出金口座を選択してください")
     val to=dao.account(bookId,d.toAccountId?:"")?:error("请选择转入账户 / 入金口座を選択してください")
     require(from.id!=to.id){"请选择两个不同账户 / 別の口座を選択してください"}
-    require(from.active&&to.active&&from.type!=AccountType.LOAN.name&&!AccountType.valueOf(to.type).debt){"转出可选资金账户或信用卡，转入须为资金账户 / 出金は資金口座・カード、入金は資金口座を選択してください"}
+    val old=d.id?.let{dao.event(bookId,it)?:error("原转账不存在 / 元の振替がありません")}
+    require(old==null||old.kind==EntryKind.TRANSFER.name&&old.deletedAt==null)
+    val previous=old?.let{dao.transfer(bookId,it.id)}
+    val originalTarget=previous?.toAccountId?:old?.let{event->dao.eventPostings(bookId,event.id).firstOrNull{it.accountId!=event.accountId}?.accountId}
+    require((from.active||from.id==old?.accountId)&&(to.active||to.id==originalTarget)&&from.type!=AccountType.LOAN.name&&!AccountType.valueOf(to.type).debt){"转出可选资金账户或信用卡，转入须为资金账户 / 出金は資金口座・カード、入金は資金口座を選択してください"}
     val source=Money.parse(d.amount,Currency.valueOf(from.currency))
     val target=Money.parse(d.toAmount,Currency.valueOf(to.currency))
     require(source.minor>0&&target.minor>0){"两端金额应大于零 / 両側の金額は0より大きくしてください"}
     LocalDate.parse(d.date);LocalDate.parse(d.toDate);LocalDate.parse(d.rateDate)
-    val old=d.id?.let{dao.event(bookId,it)?:error("原转账不存在 / 元の振替がありません")}
-    require(old==null||old.kind==EntryKind.TRANSFER.name&&old.deletedAt==null)
     val merchantDecision=d.resolveEditingMerchant(bookId,old?.let{MerchantBaseline(it.merchant,null)},emptyList())
     val event=cardPayment(EventEntity(bookId,old?.id?:id(),EntryKind.TRANSFER.name,from.id,null,source.minor,source.currency.name,0,d.date,merchantDecision.value.name.trim(),d.note,
         revision=(old?.revision?:0)+1,createdAt=old?.createdAt?:clock.millis()),d,old,from)
-    val previous=old?.let{dao.transfer(bookId,it.id)}
     val priorSettlement=old?.let{dao.settlement(bookId,it.id)}
     val transfer=TransferEntity(bookId,event.id,to.id,target.minor,from.currency,to.currency,d.date,d.toDate,d.fromConfirmed,d.toConfirmed,
         previous?.expectedToMinor?:d.referenceExpectedToMinor?:target.minor,previous?.expectedToCurrency?:to.currency,d.manualRate,d.rateDate)
@@ -32,7 +33,9 @@ internal suspend fun LedgerRepository.prepareTransfer(bookId:String,d:EntryDraft
         PostingEntity(bookId,event.id+":to",event.id,to.id,target.minor,to.currency,d.toDate,d.toConfirmed))
     val components=if(d.feeAmount.isBlank())emptyList()else {
         val payer=when(d.feePosition){TransferFeePosition.INCLUDED_FROM->from;TransferFeePosition.DEDUCTED_TO->to;TransferFeePosition.SEPARATE->dao.account(bookId,d.feeAccountId?:"")?:error("请选择手续费账户 / 手数料の口座を選択してください")}
-        require(payer.active)
+        if(d.feePosition==TransferFeePosition.SEPARATE && !payer.active) {
+            require(old!=null&&dao.components(bookId,old.id).any{it.position==TransferFeePosition.SEPARATE.name&&it.accountId==payer.id})
+        }
         val originalFee=Money.parse(d.feeAmount,d.feeCurrency?:Currency.valueOf(payer.currency))
         val fee=if(originalFee.currency.name==payer.currency)originalFee else Money.parse(d.feeAccountAmount,Currency.valueOf(payer.currency))
         require(originalFee.minor>0&&fee.minor>0){"已知手续费应大于零；没有明细时留空 / 手数料は0より大きく、不明なら空欄にしてください"}

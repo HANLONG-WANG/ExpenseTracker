@@ -117,17 +117,21 @@ import kotlinx.serialization.json.*
             word("预留后可用 ","確保後の残額 ")+(amount(before?.get("availableMinor"))?:unset)+" → "+(amount(after?.get("availableMinor"))?:unset)
         "budget"->{
             fun remaining(v:JsonObject?)=amount(v?.get("remainingMinor"))?:unset
-            word("剩余 ","残り ")+remaining(before)+" → "+remaining(after)
+            fun held(v:JsonObject?)=(v?.get("projection") as? JsonObject)?.get("reserveMinor")
+            val balance=word("剩余 ","残り ")+remaining(before)+" → "+remaining(after)
+            if(held(before)==held(after))balance else balance+"\n"+word("月预算预留 ","月予算の確保 ")+(amount(held(before))?:unknown)+" → "+(amount(held(after))?:unknown)
         }
         "budgetSetting","activityBudget"->(amount(before?.get("amountMinor"))?:unset)+" → "+(amount(after?.get("amountMinor"))?:unset)
         "activity","reserve","treat","recurrence","occurrence","expectedIncome"->{
             val removed=word("移除本方案新建对象","このプランで作成した対象を削除")
             val created=word("尚未创建","未作成")
-            val ended=word("已结束","終了済み")
+            val ended=word("已结束，周期待办仅保留活动期间内的安排","終了済み・定期予定はシーン期間内のみ")
+            val withdrawn=word("规则已撤下","ルール対象外")
             fun facts(v:JsonObject?):String?=v?.let{value->
                 listOfNotNull(value["name"]?.jsonPrimitive?.contentOrNull,
                     (value["scheduledDate"]?:value["date"]?:value["startDate"])?.jsonPrimitive?.contentOrNull,
                     amount(value[if(effect.type=="activity")"budgetMinor"else"amountMinor"]),
+                    value["status"]?.jsonPrimitive?.contentOrNull?.takeIf{effect.type=="occurrence"&&it=="WITHDRAWN"}?.let{withdrawn},
                     if(value["ended"]==JsonPrimitive(true))ended else null).joinToString(" · ")
             }
             (facts(before)?:created)+" → "+(facts(after)?:removed)

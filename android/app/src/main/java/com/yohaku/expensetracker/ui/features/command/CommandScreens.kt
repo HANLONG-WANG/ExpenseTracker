@@ -349,6 +349,6 @@ import java.time.format.DateTimeFormatter
 @Composable internal fun localizedCommand(text:String)=if(LocalLanguage.current=="ja")text.substringAfter(" / ",text)else text.substringBefore(" / ")
 @Composable internal fun commandIssue(text:String)=when(text){"prediction.firstPeriodNumber"->word("缺少原合同起始期数","元の契約の開始回数が不足しています");"prediction.cannotSettle"->word("当前还款金额无法覆盖费用，不能生成可清偿预测","現在の支払額では手数料を賄えず、返済可能な予測を作成できません");"prediction.dates"->word("缺少付款日期或计息区间","支払日または計算期間が不足しています");"prediction.openingPrincipal"->word("缺少期初本金或来源记录","期首元金または対象記録が不足しています");"previousStep.incomplete"->word("前一步资料不足，此步骤尚未试运行","前のステップの情報不足により、まだ試算できません");else->when {
     text.startsWith("limit.")->limitLabel(text)
-    text in setOf("PAYMENT_ACCOUNT_INACTIVE","INCOME_RECEIPT_CHANGED","REFERENCE_CONVERSION","STALE_PLAN","PENDING_POSTING","DEBT_PAYMENT_UNSCHEDULED","PAYMENT_ACCOUNT_REQUIRED","RESERVE_ACCOUNT_REQUIRED","UNKNOWN_CONVERSION","PENDING_CLEARING_AMOUNT","PENDING_CLEARING")->cashIssue(text)
+    text in setOf("REVOLVING_OCCURRENCE_UNCOVERED","PAYMENT_ACCOUNT_INACTIVE","INCOME_RECEIPT_CHANGED","REFERENCE_CONVERSION","STALE_PLAN","PENDING_POSTING","DEBT_PAYMENT_UNSCHEDULED","PAYMENT_ACCOUNT_REQUIRED","RESERVE_ACCOUNT_REQUIRED","UNKNOWN_CONVERSION","PENDING_CLEARING_AMOUNT","PENDING_CLEARING")->cashIssue(text)
     else->financialIssueName(text)
 }}

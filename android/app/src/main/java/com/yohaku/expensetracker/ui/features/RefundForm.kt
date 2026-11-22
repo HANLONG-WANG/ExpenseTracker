@@ -14,11 +14,13 @@ import com.yohaku.expensetracker.ui.theme.*
     busy:Boolean,onCancel:()->Unit,mediaContent:@Composable ()->Unit={},mediaOption:@Composable ()->Unit={}) {
     val original=s.visibleEvents.find{it.id==d.originalEventId}
     if(original==null){YText(word("原消费已被删除，请先恢复。","元の支出を復元してください。"));YButton(word("返回","戻る"),onCancel);return}
-    val account=s.accounts.find{it.id==d.accountId}
+    val originalAccount=d.id?.let{s.eventById[it]?.accountId}
+    val accounts=s.accounts.filter{it.active||it.id==originalAccount}
+    val account=accounts.find{it.id==d.accountId}
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         RefundSource(s,original)
         YField(word("商户退回原币金额","お店が返金した原通貨額")+" · "+original.currency,d.amount,{onChange(d.copy(amount=it))},numeric=true)
-        YSelect(word("实际退款到账账户","実際の返金口座"),d.accountId,s.accounts.filter{it.active||it.id==d.accountId}.map{it.id as String? to it.name},{id->
+        YSelect(word("实际退款到账账户","実際の返金口座"),account?.id,accounts.map{it.id as String? to it.name},{id->
             val next=s.accounts.first{it.id==id}
             onChange(d.copy(accountId=id,accountAmount=if(next.currency==account?.currency)d.accountAmount else "",baseAmount=if(next.currency==account?.currency)d.baseAmount else ""))
         },columns=2)
@@ -28,7 +30,10 @@ import com.yohaku.expensetracker.ui.theme.*
             {onChange(d.copy(baseAmount=it))},numeric=true,readOnly=account?.currency==s.book.currency)
         if(account?.currency==s.book.currency)YText(word("与到账金额相同，无需折算。","入金額と同額で、換算は不要です。"),11,color=LocalYohaku.current.muted)
         var owner by remember{mutableStateOf<YDateSelection?>(null)}
-        YDateFields(listOf(YDateField("date",word("实际 / 预计到账日期","実際・予定入金日"),d.date)),owner,{owner=it},{_,date->onChange(d.copy(date=date,settlementDate=date,rateDate=date))})
+        YDateFields(listOf(YDateField("date",word("退款发生日期","返金発生日"),d.date),
+            YDateField("settlementDate",word("实际 / 预计到账日期","実際・予定入金日"),d.settlementDate)),owner,{owner=it},{key,date->
+            onChange(if(key=="date")d.copy(date=date)else d.copy(settlementDate=date,rateDate=date))
+        })
         YSelect(word("退款状态","返金の状態"),if(d.settlementConfirmed)"confirmed" else "pending",listOf(
             "confirmed" as String? to word("已实际到账","実際に入金済"),"pending" as String? to word("待到账，不提前冲减消费","未入金・支出をまだ控除しない")
         ),{onChange(d.copy(settlementConfirmed=it=="confirmed"))})

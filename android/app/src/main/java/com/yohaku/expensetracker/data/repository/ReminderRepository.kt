@@ -30,14 +30,7 @@ suspend fun LedgerRepository.reminderItems(preferences:AppPreferences):List<Remi
         }
         // Risks use the existing 90-day view, rather than extending its advertised forecast horizon.
         val riskTimeline=s.cashTimeline(f,today,today.plusDays(90),stale,rates)
-        for(risk in riskTimeline.accountRisks()) {
-            val amount=risk.maximumGapMinor?:continue
-            val date=risk.firstRiskDate?:continue
-            val a=risk.opening.account
-            result+=ReminderItem(book.id,"funds:${a.id}","FUNDS",date,a.currency,amount,
-                if(book.language=="ja")"引落口座の資金不足"else"扣款账户资金缺口",a.name,risk.estimated,
-                risk=true,basisMinor=risk.nextNeedMinor?:0,mergeKey=risk.firstRiskItemId?:"funds:${a.id}",targetAccountId=a.id)
-        }
+        result+=riskTimeline.accountRisks().mapNotNull{s.fundsReminder(it)}
         val pace=s.budgetPace(today,f,rates)
         val actual=pace.actualOverMinor?.takeIf{it>0}
         val amount=actual?:pace.projectedOverMinor?.takeIf{it>0}
@@ -45,6 +38,18 @@ suspend fun LedgerRepository.reminderItems(preferences:AppPreferences):List<Remi
             if(book.language=="ja")"今月の予算超過"else"本月预算超支",estimated=actual==null,risk=true,basisMinor=pace.limitMinor?:0)
     }
     result
+}
+
+internal fun BookSnapshot.fundsReminder(risk:CashAccountRisk):ReminderItem? {
+    val amount=risk.maximumGapMinor?:risk.firstGapMinor?:return null
+    val date=risk.firstRiskDate?:return null
+    val a=risk.opening.account
+    val title=if(risk.maximumGapMinor==null) {
+        if(book.language=="ja")"最初の資金不足額"else"首次已知资金缺口"
+    }else if(book.language=="ja")"引落口座の資金不足"else"扣款账户资金缺口"
+    return ReminderItem(book.id,"funds:${a.id}","FUNDS",date,a.currency,amount,title,a.name,
+        estimated=if(risk.maximumGapMinor==null)risk.firstGapEstimated else risk.estimated,
+        risk=true,basisMinor=risk.nextNeedMinor?:0,mergeKey=risk.firstRiskItemId?:"funds:${a.id}",targetAccountId=a.id)
 }
 
 /** Shared bill groups feed repayment reminders; recurring purchases retain their own identity. */

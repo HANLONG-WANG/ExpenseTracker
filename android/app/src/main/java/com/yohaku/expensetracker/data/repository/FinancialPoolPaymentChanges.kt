@@ -55,7 +55,7 @@ private fun LedgerRepository.poolPaymentComparison(state:FinancialReviewState,ol
     val original=bills.map(::row)
     val proposed=(bills.filter{it.planId!=old.id}+prediction.bills).filter{it.active}.map(::row)
     val first=(original+proposed).filter{it.date>=input.setting.fromPaymentDate&&it.totalMinor>0}.minOfOrNull{it.date}
-    val through=maxOf(LocalDate.now(clock),LocalDate.parse((original.map{it.date}+proposed.map{it.date}).max()))
+    val through=maxOf(LocalDate.now(clock),LocalDate.parse((prediction.input.terms.paymentDates+original.map{it.date}+proposed.map{it.date}).max()))
     val stale=f.plans.filter{financialPredictionStale(s,f,it)}.map{it.id}.toSet()
     val before=s.cashTimeline(f,LocalDate.now(clock),through,stale,input.referenceRates).accountRisks()
     val after=s.cashTimeline(next,LocalDate.now(clock),through,stale-old.id,input.referenceRates).accountRisks()

@@ -5,7 +5,7 @@ import com.yohaku.expensetracker.domain.model.*
 
 data class CashAccountRisk(val opening:CashAccountOpening,val nextDate:String?,val nextNeedMinor:Long?,val currentGapMinor:Long?,
     val maximumGapMinor:Long?,val includingIncomeGapMinor:Long?,val firstRiskDate:String?,val firstRiskItemId:String?,val incompleteDate:String?,
-    val estimated:Boolean,val includingEstimated:Boolean)
+    val estimated:Boolean,val includingEstimated:Boolean,val firstGapMinor:Long?,val firstGapEstimated:Boolean)
 
 /** A maximum needs the whole prefix to be known; an already observed deficit is still reported. */
 fun CashTimeline.accountRisks():List<CashAccountRisk> = openings.map{opening->
@@ -21,8 +21,10 @@ fun CashTimeline.accountRisks():List<CashAccountRisk> = openings.map{opening->
     }
     val first=rows.firstOrNull{it.baselineAfterMinor?.let{n->n<0}==true}
     CashAccountRisk(opening,next,need,need?.let{Math.subtractExact(it,opening.actualMinor).coerceAtLeast(0)},gap(false),gap(true),
-        if(opening.actualMinor<0)asOf else first?.item?.date,first?.item?.id,rows.firstOrNull{it.baselineAfterMinor==null}?.item?.date,
-        rows.any{it.baselineEstimated},rows.any{it.includingEstimated})
+        if(opening.actualMinor<0)asOf else first?.item?.date,if(opening.actualMinor<0)null else first?.item?.id,rows.firstOrNull{it.baselineAfterMinor==null}?.item?.date,
+        rows.any{it.baselineEstimated},rows.any{it.includingEstimated},
+        (if(opening.actualMinor<0)opening.actualMinor else first?.baselineAfterMinor)?.let{Math.negateExact(it)},
+        opening.actualMinor>=0&&first?.baselineEstimated==true)
 }
 
 data class FinancialAttention(val id:String,val kind:String,val accountId:String?,val sourceId:String,val reason:String)

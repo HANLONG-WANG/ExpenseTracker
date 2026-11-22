@@ -221,6 +221,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
         require(kind in listOf(EntryKind.TRANSFER,EntryKind.REPAYMENT,EntryKind.BORROWING));require(fromId!=toId)
         val from=dao.account(bookId,fromId) ?: error("付款账户不存在")
         val to=dao.account(bookId,toId) ?: error("到账账户不存在")
+        if(kind==EntryKind.TRANSFER)require(from.active&&to.active)
         require(from.currency==fromAmount.currency.name && to.currency==toAmount.currency.name)
         require(fromAmount.minor>0 && toAmount.minor>0);LocalDate.parse(date)
         val fromDebt=AccountType.valueOf(from.type).debt;val toDebt=AccountType.valueOf(to.type).debt

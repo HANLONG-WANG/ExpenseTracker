@@ -15,7 +15,10 @@ import com.yohaku.expensetracker.ui.theme.*
 import com.yohaku.expensetracker.ui.haptics.*
 
 @Composable internal fun TransferForm(s:BookSnapshot,d:EntryDraft,vm:AppViewModel,busy:Boolean,onAccount:()->Unit,onCancel:()->Unit) {
-    val eligible=s.transferSources();val targets=s.transferTargets()
+    val original=remember(s,d.id){d.id?.let{s.eventById[it]}?.let{s.editingEntryDraft(it)}}
+    val eligible=s.transferSources(original?.accountId)
+    val targets=s.transferTargets(original?.toAccountId)
+    val originalFeeAccount=original?.takeIf{it.feePosition==TransferFeePosition.SEPARATE}?.feeAccountId
     val from=eligible.find{it.id==d.accountId};val to=targets.find{it.id==d.toAccountId}
     val source=Currency.valueOf(from?.currency?:s.book.currency);val target=Currency.valueOf(to?.currency?:s.book.currency)
     val different=source!=target
@@ -45,11 +48,11 @@ import com.yohaku.expensetracker.ui.haptics.*
                 else d.copy(accountId=id,toAccountId=if(id==d.toAccountId)null else d.toAccountId,toAmount=if(id==d.toAccountId)""else d.toAmount,toConfirmed=if(id==d.toAccountId)false else d.toConfirmed))
         },columns=2)
         YSelect(word("转入账户","入金口座"),d.toAccountId,targets.filter{it.id!=from?.id}.map{it.id as String? to it.name},{id->
-            val account=eligible.first{it.id==id};val currencyChanged=account.currency!=to?.currency
+            val account=targets.first{it.id==id};val currencyChanged=account.currency!=to?.currency
             change(if(currencyChanged)d.copy(toAccountId=id,toAmount="",manualRate="",rateSource="manual",referenceExpectedFromMinor=null,referenceExpectedToMinor=null,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList(),toConfirmed=false,
                 feeCurrency=preservedFeeCurrency,feeAccountAmount=if(d.feePosition==TransferFeePosition.DEDUCTED_TO)""else d.feeAccountAmount,feeBaseAmount=if(d.feePosition==TransferFeePosition.DEDUCTED_TO)""else d.feeBaseAmount)else d.copy(toAccountId=id))
         },columns=2)
-        if(targets.isEmpty()||eligible.size<2)YButton(word("添加资金账户","資金口座を追加"),onAccount,primary=true)
+        if(eligible.none{sourceAccount->targets.any{it.id!=sourceAccount.id}})YButton(word("添加资金账户","資金口座を追加"),onAccount,primary=true)
         if(from?.type==AccountType.CREDIT.name){YText(word("从信用卡充值：计入该卡账单，不计消费","カードからチャージ：カードの請求に計上し、支出には含めません"),11,color=LocalYohaku.current.muted);CardPaymentFields(d,::change)}
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             YField(word("实际扣款总额","実際の出金総額")+" · "+(from?.currency?:"—"),d.amount,{if(knownPair)vm.changeTransferAmount(s.book.id,d.copy(amount=it),source,target,"TO")else change(d.copy(amount=it))},Modifier.weight(1f),numeric=true,compactNumber=true,
@@ -79,14 +82,15 @@ import com.yohaku.expensetracker.ui.haptics.*
         var feeOpen by rememberSaveable(s.book.id,d.id){mutableStateOf(true)}
         YLink((if(feeOpen)"− "else "+ ")+word("手续费 · 避免重复扣款","手数料・二重控除しない"),{feeOpen=!feeOpen})
         if(feeOpen) {
-            val payer=when(d.feePosition){TransferFeePosition.INCLUDED_FROM->from;TransferFeePosition.DEDUCTED_TO->to;TransferFeePosition.SEPARATE->s.accounts.find{it.id==d.feeAccountId}}
+            val feeAccounts=s.accounts.filter{it.active||it.id==originalFeeAccount}
+            val payer=when(d.feePosition){TransferFeePosition.INCLUDED_FROM->from;TransferFeePosition.DEDUCTED_TO->to;TransferFeePosition.SEPARATE->feeAccounts.find{it.id==d.feeAccountId}}
             val feeCurrency=d.feeCurrency?:Currency.valueOf(payer?.currency?:source.name)
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
                 YField(word("明确收取的手续费 / 可留空","確定手数料・空欄可")+" · "+feeCurrency.name,d.feeAmount,{change(d.copy(feeAmount=it))},Modifier.weight(1f),numeric=true)
                 YSelect(word("费用币种","手数料通貨"),feeCurrency.name,Currency.entries.map{it.name as String? to it.name},{change(d.copy(feeCurrency=Currency.valueOf(it!!),feeAccountAmount="",feeBaseAmount=""))},Modifier.weight(1f))
             }
             YSelect(word("手续费如何扣收","手数料の扱い"),d.feePosition.name,TransferFeePosition.entries.map{it.name as String? to feePositionName(it)},{change(d.copy(feePosition=TransferFeePosition.valueOf(it!!),feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))})
-            if(d.feePosition==TransferFeePosition.SEPARATE)YSelect(word("另扣手续费的账户","別途手数料の口座"),d.feeAccountId,s.accounts.filter{it.active}.map{it.id as String? to it.name},{change(d.copy(feeAccountId=it,feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))},columns=2)
+            if(d.feePosition==TransferFeePosition.SEPARATE)YSelect(word("另扣手续费的账户","別途手数料の口座"),payer?.id,feeAccounts.map{it.id as String? to it.name},{change(d.copy(feeAccountId=it,feeCurrency=preservedFeeCurrency,feeAccountAmount="",feeBaseAmount=""))},columns=2)
             if(d.feeAmount.isNotBlank()&&payer!=null) {
                 if(feeCurrency.name!=payer.currency)YField(word("费用在账户中的金额","口座通貨での手数料額")+" · "+payer.currency,d.feeAccountAmount,{change(d.copy(feeAccountAmount=it))},numeric=true)
                 if(payer.currency!=s.book.currency)YField(word("手续费本位币统计金额","手数料の基準通貨集計額")+" · "+s.book.currency,d.feeBaseAmount,{change(d.copy(feeBaseAmount=it))},numeric=true)

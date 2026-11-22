@@ -40,7 +40,11 @@ internal class TransactionRows(val days:List<Pair<String,List<EventEntity>>>,val
 @Composable internal fun rememberTransactionRows(s:BookSnapshot,entries:List<EventEntity>,accountId:String?,byDay:Boolean)=remember(s,entries,accountId,byDay) {
     fun date(e:EventEntity)=if(accountId==null)e.date else s.accountEventPostings(e,accountId).maxOfOrNull{p->p.date}?:e.date
     val ordered=if(accountId==null)entries else entries.sortedByDescending{date(it)}
-    TransactionRows(if(byDay)ordered.groupBy{date(it)}.toList() else emptyList(),ordered,if(byDay)s.dailyExpense(entries) else emptyMap(),byDay)
+    val spent=if(byDay)s.dailyExpense(entries)else emptyMap()
+    val groups=if(byDay)ordered.groupBy{date(it)}else emptyMap()
+    // A confirmed fee can have its own date without a transaction starting on that day.
+    val days=(groups.keys+spent.keys).sortedDescending().map{it to groups[it].orEmpty()}
+    TransactionRows(days,ordered,spent,byDay)
 }
 
 /** Lazy counterpart of [TransactionList]: one item per day (or per row), each carrying the list's own spacing. */

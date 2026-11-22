@@ -210,7 +210,11 @@ import java.time.LocalDate
             if(refreshed)ActivityReviewRefreshed()
             YText(name,21);YText(start+" — "+end,12)
             review!!.months.forEach{(before,after)->YText(before.month+word(" 月预算消费："," 月予算の支出：")+Money(currency,before.spentMinor).display()+" → "+Money(currency,after.spentMinor).display(),12)}
-            if(ended)YText(word("结束保留全部历史，并释放剩余预留。","終了後も履歴を保存し、残りの確保を解放します。"),12)
+            if(ended) {
+                val rules=review!!.snapshot.recurrences.count{it.active&&it.activityId==review!!.activity.id}
+                val withdrawn=review!!.withdrawn.size
+                YText(word("释放剩余预留。关联的 $rules 条启用规则只在活动期间生成待办，撤下期间外 $withdrawn 项。期间内待办仍可补记。","残りの確保を解放します。関連する有効なルール $rules 件は期間内のみ予定を生成し、期間外の $withdrawn 件を取り下げます。期間内の予定は引き続き記帳できます。"),12)
+            }
             YActionRow {
                 YButton(word("确认保存","保存を確定"),{val r=review!!;var saved=false;vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Done);onDismiss()}else vm.haptic(Haptic.Warning)}){saved=vm.repository.commitActivity(r);if(!saved){review=preview();refreshed=true}}},primary=true,enabled=!busy)
                 YLink(word("返回修改","編集に戻る"),{review=null})
@@ -232,14 +236,20 @@ import java.time.LocalDate
     var occurrenceId by rememberSaveable{mutableStateOf(old?.occurrenceId)}
     var review by remember{mutableStateOf<ReserveReview?>(null)}
     var refreshed by remember{mutableStateOf(false)}
-    suspend fun preview()=if(releasing)vm.repository.previewRelease(s.book.id,old!!.id,Money.parse(amount,currency))else vm.repository.previewReserve(s.book.id,ReserveInput(activityId,name,date,Money.parse(amount,currency),accountId,accountId?.let{id->Money.parse(accountAmount,Currency.valueOf(s.accounts.first{it.id==id}.currency))},occurrenceId,old?.id))
+    val accountCurrency=accountId?.let{id->Currency.valueOf(s.accounts.first{it.id==id}.currency)}
+    suspend fun preview():ReserveReview {
+        val base=Money.parse(amount,currency)
+        if(releasing)return vm.repository.previewRelease(s.book.id,old!!.id,base)
+        val held=accountCurrency?.let{if(it==currency)base else Money.parse(accountAmount,it)}
+        return vm.repository.previewReserve(s.book.id,ReserveInput(activityId,name,date,base,accountId,held,occurrenceId,old?.id))
+    }
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(if(releasing)word("释放预留","確保を解放")else word("主动预留资金","資金を確保"),onDismiss) {
         if(review==null) {
             if(!releasing) {
                 YField(word("预留名称","確保の名前"),name,{name=it});ActivityDate(word("使用月份日期","使用予定日"),date,{date=it})
                 YSelect(word("来源账户 / 可选","元の口座・任意"),accountId,listOf(null to word("未指定","未指定"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{accountId=it;accountAmount=""},columns=2)
-                accountId?.let{id->YField(word("账户币种预留金额","口座通貨の確保額")+" · "+s.accounts.first{it.id==id}.currency,accountAmount,{accountAmount=it},numeric=true)}
+                if(accountCurrency!=null&&accountCurrency!=currency)YField(word("账户币种预留金额","口座通貨の確保額")+" · "+accountCurrency.name,accountAmount,{accountAmount=it},numeric=true)
                 YSelect(word("关联固定账单 / 可选","定期予定との関連・任意"),occurrenceId,listOf(null to word("无","なし"))+s.occurrences.filter{it.activityId==activityId&&(it.status=="PENDING"||it.id==old?.occurrenceId)}.map{it.id as String? to it.name+" · "+it.scheduledDate},{occurrenceId=it})
             }
             YField(word("本位币金额","基準通貨の金額")+" · "+currency.name,amount,{amount=it},numeric=true)
@@ -247,9 +257,13 @@ import java.time.LocalDate
         }else {
             if(refreshed)ActivityReviewRefreshed()
             val r=review!!
-            YText(r.before.month,17)
-            YText(word("月预算预留：","月予算の確保：")+(r.before.reserveMinor?.let{Money(currency,it).display()}?:"—")+" → "+(r.after.reserveMinor?.let{Money(currency,it).display()}?:"—"),15)
-            YText(word("资金总预留：","資金の確保総額：")+Money(currency,r.before.fundReserveMinor).display()+" → "+Money(currency,r.after.fundReserveMinor).display(),15)
+            r.months.forEach{(before,after)->
+                YText(before.month,17)
+                YText(word("月预算预留：","月予算の確保：")+(before.reserveMinor?.let{Money(currency,it).display()}?:"—")+" → "+(after.reserveMinor?.let{Money(currency,it).display()}?:"—"),15)
+                YText(word("预留后预算可用：","確保後の利用可能額：")+(before.availableMinor?.let{Money(currency,it).display()}?:"—")+" → "+(after.availableMinor?.let{Money(currency,it).display()}?:"—"),15)
+            }
+            val (before,after)=r.months.first()
+            YText(word("资金总预留：","資金の確保総額：")+Money(currency,before.fundReserveMinor).display()+" → "+Money(currency,after.fundReserveMinor).display(),15)
             YText(word("账户余额保持不变。","口座残高は変わりません。"),12)
             YActionRow {
                 YButton(word("确认","確定"),{var saved=false;vm.execute(onSuccess={if(saved){vm.haptic(Haptic.Done);onDismiss()}else vm.haptic(Haptic.Warning)}){saved=vm.repository.commitReserve(r);if(!saved){review=preview();refreshed=true}}},primary=true,enabled=!busy)

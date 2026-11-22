@@ -107,7 +107,7 @@
 - `category.save`：name、kind 必填；category 省略新建，parent 有类型引用/null根分类，favorite，icon。已有项省略 parent/favorite/icon 保留，新增默认为根分类/未收藏/自动图标；icon:null 清除手选图标。`category.setFavorite`、`category.lifecycle`（ARCHIVE/UNARCHIVE）、`category.reparent`（parent:null移为一级）复用本机校验与层级影响预览。
 - 商户与地点命令见「商户归属、原名整理与追溯」。`friend.save` 保存朋友名称并保留已有启停状态，`friend.setActive` 只改启停。
 - `entry.create` 创建 EXPENSE/INCOME/TRANSFER/REFUND，缺省 kind=EXPENSE。账户/日期/活动/信用卡付款选择采用表单默认值，**手机不会自动补分类和消费金额**；助手可以根据用户陈述和现有资料提出合理分类并在message列出假设，不可编造消费。金额字段 amount/accountAmount/baseAmount/toAmount/feeAmount/feeAccountAmount/feeBaseAmount/reserveAmount/cardPaymentFee 使用 `{currency,minor}`。同币种精确复制；外币提供实际或预计金额及状态，或明确手填十进制 manualRate。`useReferenceRates=true` 可使用本机预览冻结的参考汇率与现有换算函数；不能覆盖实际金额，缺参考报价时整批失败，不填0。默认不自动套参考汇率。
-- 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。付款选择及指定月、费用、分期期数与普通表单同规则。
+- 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款 date 为发生日，settlementDate 为实际／预计入账日；新建时省略入账日沿用发生日，编辑时省略字段保留原值。转账两端、独立手续费账户和退款账户可在原角色保留已停用账户。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。付款选择及指定月、费用、分期期数与普通表单同规则。
 - 普通记录字段 `budgetExcluded`：新建默认 false，编辑省略保留、false 取消，不能为 null；只有 EXPENSE 可以设 true。排除月/分类预算（含待确认数、节奏、提醒及原支出的退款/费用），仍计入分析、账户余额、日历实际金额和活动自身预算。记录导出包含该字段。`template.save` 完整替换时默认 false，支出模板可保存并通过 `template.createEntry` 带入；周期规则、实例及固定预留不加字段。
 - `entry.update` 批量字段补丁；`entry.confirmActual` 采用相同 targets/set，但必须明确至少一个实际确认标志为 true。账户负余额加重在预览中单独要求勾选，列明具体账户、币种和金额。记录缺必填项则整批失败；待用户补完用 entry.prepareDraft（interactive，不代用户提交）。
 - `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；信用卡消费的本地预测若未确认、未到期且未分配还款，随 TRASH 停用归档（原因 SOURCE_TRASHED），RESTORE 按当前规则重新生成，已确认、已到期或已还款的账单保留待重核；恢复会重查30天期限、原消费、退款上限及预留可用性；还款恢复还要校验恢复后账单、合同和循环池的剩余本金（账单容量只扣除其他有效还款，还款在回收站期间办理安排转出的本金不占容量，恢复后该安排标为待重核并由重核退回本金），冲突时先调整关联。PURGE/EMPTY 禁止。
@@ -132,14 +132,14 @@
 
 - `budget.save`：month、amount 必填；category 省略/null 为月总预算，amount:null 是清额度、保留行。设置自该月延续。`budget.saveBook` 将账本 name/currency/startDate 的可选更改与指定月总预算一起确认。预算必须为账本币种、非负；禁止物理清空预算表；未初始化账本改币种如果会删除已有预算行，同样拒绝，不能以编辑绕过。
 - `activity.setMode` enabled 开关；关闭会清当前活动。`activity.setCurrent` activity 必填、null 退出当前活动。当前活动必须未结束/未删除，模式已开启。
-- `activity.save`：name/start/end 必填；activity 省略新建；budget=null、categoryBudgets=[]、excludeMonthly=false、ended=false 是默认值；编辑须给出要保留的完整值。categoryBudgets 是 `{category,amount}` 列表，不能重复分类；替换此列表可迁移活动分类预算。`activity.end` 保留原设置后结束、释放未用预留、清当前活动。
+- `activity.save`：name/start/end 必填；activity 省略新建；budget=null、categoryBudgets=[]、excludeMonthly=false、ended=false 是默认值；编辑须给出要保留的完整值。categoryBudgets 是 `{category,amount}` 列表，不能重复分类；替换此列表可迁移活动分类预算。`activity.end` 保留原设置后结束、释放未用预留、清当前活动。结束后关联规则只在活动期间生成实例，撤下已生成的期间外待办，期间内仍可补记。
 - `activity.lifecycle` TRASH 使用手机同一删除影响：停止规则、取消待付实例、停用预留、转换模板和匹配的新记账草稿。RESTORE 仅恢复活动显示及历史预算归属，不自动重启上述对象。旧活动没有到期清理期限。要精确恢复删除前全部状态，应由用户从本机方案历史整批撤销。PURGE/EMPTY 永远禁止。
-- `activityReserve.save`：activity/name/date/amount；reserve 省略新建，account/accountAmount 成对，occurrence 可选；编辑保留原释放金额。`activityReserve.release` 给 reserve 和明确 amount，不能超过剩余。两者都不写实际支出，预览显示预算/活动余量前后值。
+- `activityReserve.save`：activity/name/date/amount；reserve 省略新建，account/accountAmount 成对，只能使用启用的资金账户，账户币种与账本相同时两金额必须一致；occurrence 可选；编辑保留原释放金额。`activityReserve.release` 给 reserve 和明确 amount，不能超过剩余。两者都不写实际支出，预览显示预算/活动余量前后值，修改预留月份时包含原月和新月。
 - `activityParticipant.add`：activity/friend；朋友须已启用且属本账本，可先 friend.save 后引用。不会重复加入；不提供物理删除参与历史。
-- `activityTreat.save`：他人付款的请客，activity/payer/total/base/date/name/shares；treat 省略新建。复用手机份额计算，base 不能猜。shares 中 friend:null 表示本人；mode 默认 EQUAL，PERCENT 用逐人 percent 字符串合计100，AMOUNTS 用逐人 minor 合计 total，后两者必须明确本人份额。tail 省略沿用分摊器最后参与人，显式 null 为本人。`activityTreat.lifecycle` TRASH/RESTORE 软删除/恢复。本人付款的互请继续用 entry.update，不伪造他人付款。
+- `activityTreat.save`：他人付款的请客，activity/payer/total/base/date/name/shares；treat 省略新建。复用手机份额计算，total 与 base 同币种时金额必须相等，外币折算须有依据。shares 中 friend:null 表示本人；mode 默认 EQUAL，PERCENT 用逐人 percent 字符串合计100，AMOUNTS 用逐人 minor 合计 total，后两者必须明确本人份额。tail 省略沿用分摊器最后参与人，显式 null 为本人。`activityTreat.lifecycle` TRASH/RESTORE 软删除/恢复。本人付款的互请继续用 entry.update，不伪造他人付款。
 - `recurrence.save` 完整保存规则；name/account/category/frequency/anchorDate 必填，amount/baseAmount 默认未知，estimated=true、active=true，其余可选项为空/null。只生成待办，不入账。`recurrence.setActive` 明确启停，保留其他字段。完成/取消实例的历史字段不随规则保存覆盖，分类迁移需另用 occurrence.update。
 - `occurrence.resolve` 用 recurrence 引用和 date 选择确定实例；必要时物化该规则所在月份，输出 occurrence。新规则后的实例操作先用它，不能推测实例UUID。
-- `occurrence.update` 指定 occurrences 列表及 category 批量调整历史/待付实例分类；不代替实际记录分类更新。`occurrence.lifecycle` CANCEL/RESTORE；恢复要求规则启用且仍安排该日。`occurrence.link` 的 links 为 occurrence/entry 对，一次准备后关联已有支出，不能重复完成另一实例；`occurrence.unlink` 保留原记录并解除关联。
+- `occurrence.update` 指定 occurrences 列表及 category 批量调整历史/待付实例分类；不代替实际记录分类更新。`occurrence.lifecycle` CANCEL/RESTORE；恢复要求规则启用且仍安排该日。`occurrence.link` 的 links 为 occurrence/entry 对，一次准备后关联已有支出，不能重复完成另一实例；`occurrence.unlink` 保留原记录并解除关联；仍在安排范围内的实例立即按当前规则刷新待办，范围外的实例撤回。
 - `occurrence.pay` 给 occurrence 和可选 set 记录补丁。有匹配的已存支付草稿时复用其输入与本地附件，否则采用手机同一支付表单默认值；再应用 set，走普通记账确认与支付草稿协调。只消费匹配草稿，其前后内容及附件关系参与确认/撤销，不新增云端文件操作。草稿已选择关联已有记录时，应明确使用 occurrence.link。金额/换算资料不足则整批失败。不能改 kind 或 occurrence；关联已有付款请用 occurrence.link。
 - `expectedIncome.save`：name/amount/date/account，income 省略新建；外币 accountAmount 省略/null 为未知，useReferenceRates=true 才选本次冻结的本机参考报价。`expectedIncome.cancel` 仅取消未到账安排。`expectedIncome.arrive` 的 income 必填，entry（已有实际收入）与 set（新建实际收入字段）二选一；新增必须给实际 amount/category，不从预计金额猜实际金额；外币须补齐实际 accountAmount，保留到账草稿的已确认状态，不套用普通外币新建的待确认默认值。入账记录须同账户、已确认、非期初、非未来且未关联其他预计项；不重复增加余额，原预计金额保留。金融草稿放弃已下沉到业务层；这些命令不消费未明确提交的金融表单草稿，草稿分类可用 financialDraft.reclassify 迁移。
 
@@ -166,7 +166,7 @@
 
 ## 信用卡周期预测与余额池核对
 
-- 手机的 `cashForecast.periods[].item.kind` 可为 `CARD_RECURRENCE`：`sourceId` 为信用卡账户，`name` 包含卡名与周期付款名，`accountId` 为银行等实际扣款账户，`date` / `scheduledDate` 为银行扣款日（逾期展示时 date 推进至 asOf，scheduledDate 保留原扣款日），`estimated=true`。一次付、奖金付与分期复用真实 CARD_ENTRY 的规则选取、日期和金额计算；多期逐期列出，范围外不列出。已记账的实例由实际 CARD_ENTRY 账单接替；リボ/自动リボ无独立扣款，非自动 ACCOUNT_RULE 按一次付。
+- 手机的 `cashForecast.periods[].item.kind` 可为 `CARD_RECURRENCE`：`sourceId` 为信用卡账户，`name` 包含卡名与周期付款名，`accountId` 为银行等实际扣款账户，`date` / `scheduledDate` 为银行扣款日（逾期展示时 date 推进至 asOf，scheduledDate 保留原扣款日），`estimated=true`。一次付、奖金付与分期复用真实 CARD_ENTRY 的规则选取、日期和金额计算；多期逐期列出，范围外不列出。已记账的实例由实际 CARD_ENTRY 账单接替；未记账的リボ/自动リボ在消费安排行显示 REVOLVING_OCCURRENCE_UNCOVERED，日期为消费计划日，原消费金额保留，实际扣款账户与增量扣款额未知，非自动 ACCOUNT_RULE 按一次付。
 - 云端确认在尚无真实账单时也纳入这些周期预测的扣款账户；扣款账户尚未确定的条目归在来源卡的 cashForecast 下，余额为未知，不计作现金。跨币种沿用冻结的参考汇率及 `REFERENCE_CONVERSION` / `UNKNOWN_CONVERSION`。
 - 可操作 issue：`CARD_PAYMENT_CHOICE_REQUIRED`（编辑周期付款方式）、`CARD_AUTOMATIC_RULE_INCOMPLETE`、`CARD_SINGLE_RULE_INCOMPLETE`、`CARD_BONUS_RULE_INCOMPLETE`、`CARD_INSTALLMENT_RULE_INCOMPLETE`（补相应卡规则）、`CARD_INSTALLMENT_PERIODS_UNSUPPORTED`（核对回数）、`CARD_PAYMENT_ACCOUNT_REQUIRED`、`CARD_PAYMENT_ACCOUNT_INACTIVE`（核对扣款账户）、`CARD_ACCOUNT_INACTIVE`（核对卡账户）。这些为确认结果中的字符串值，不新增命令输入字段或枚举 schema。
 - 当前有效 POOL 的 `unallocatedShares` 已指定还款归属，提醒中的未分配清偿须扣除此部分；池 facts 过期时旧份额不再有效。原始份额与实际分配仍分别导出。账户期初日期/金额变化后，实际借还照常保存，原池预测保持待重算；`financialPool.save` 明确提交新的期初定义后恢复。不得为消除提醒重复建立还款或账单。
