@@ -1,0 +1,2 @@
+<!-- Debug-only launcher background: orange instead of release green, so the .dev build is never mistaken for release. -->
+<resources><color name="launcher_background">#c25a24</color></resources>

@@ -62,7 +62,10 @@ data class EntryDraft(
     val cardPaymentChoice:String?=null,val cardPaymentPeriods:String="",val cardPaymentRecheck:Boolean=false,val cardPaymentMonth:String="",val cardPaymentFee:String="",
     // 普通草稿和云端命令沿用原来的 JSON。
     @OptIn(ExperimentalSerializationApi::class) @EncodeDefault(EncodeDefault.Mode.NEVER)
-    val merchantPlace:EntryMerchantPlace?=null
+    val merchantPlace:EntryMerchantPlace?=null,
+    /** Started from an entry template; the save does not become a remembered default. */
+    @OptIn(ExperimentalSerializationApi::class) @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val fromTemplate:Boolean=false
 )
 
 /** 勾选时绑定商户和位置，恢复草稿后可用新定位核对。 */

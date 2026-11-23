@@ -120,4 +120,17 @@ class TransferTransactionsTest {
         assertTrue(repo.previewEntry(book,first.copy(id=id,amount="50")).negativeBalanceChanges().isEmpty())
         assertTrue(snapshot().eventSaveTimes.getValue(id)>repo.clock.millis())
     }
+    @Test fun templateEntriesDoNotBecomeRememberedDefaultsUntilEditedManually()=runBlocking<Unit> {
+        val cash=repo.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,1000),"2026-09-01")
+        val category=repo.saveCategory(book,"交通",EntryKind.EXPENSE,null)
+        repo.saveEntry(book,EntryDraft(accountId=source,categoryId=category,amount="100"))
+        val template=repo.saveTemplate(book,TemplateInput("公交",EntryKind.EXPENSE,category,cash,Currency.JPY,200))
+        val fromTemplate=save(snapshot().let{s->s.templateDraft(s.templates.single{it.id==template})})
+        assertEquals(setOf(fromTemplate),snapshot().templateSavedEvents)
+        assertEquals(source,snapshot().defaultEntryAccount(EntryKind.EXPENSE))
+        val later=LedgerRepository(db,java.time.Clock.fixed(java.time.Instant.parse("2026-10-21T00:00:00Z"),java.time.ZoneOffset.UTC))
+        later.saveEntry(book,snapshot().let{s->s.editingEntryDraft(s.events.single{it.id==fromTemplate})}.copy(note="手动改过"))
+        assertTrue(snapshot().templateSavedEvents.isEmpty())
+        assertEquals(cash,snapshot().defaultEntryAccount(EntryKind.EXPENSE))
+    }
 }

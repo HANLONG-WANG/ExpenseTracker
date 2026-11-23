@@ -1,0 +1,13 @@
+<!-- Themed-icon silhouette for the debug build. Launchers tint by alpha only, so "DEV" is punched out of a solid sash;
+     the receipt outline (same paths as main ic_launcher_monochrome) is clipped away under the sash so no line shows through the letters. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group>
+        <!-- Canvas minus the sash: the sash is wound opposite to the canvas, so non-zero filling leaves it out. -->
+        <clip-path android:pathData="M0,0H108V108H0Z M27,97.7L38.3,109L109,38.3L97.7,27Z"/>
+        <path android:strokeColor="#ffffff" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M38,28h32a2,2 0 0,1 2,2V78l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3V30a2,2 0 0,1 2,-2z"/>
+        <path android:strokeColor="#ffffff" android:strokeWidth="3.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M47,35L54,44L61,35M54,44V57M48,47H60M48,52H60M42,64H66M42,69H58"/>
+    </group>
+    <group android:translateX="68" android:translateY="68" android:rotation="-45">
+        <path android:fillColor="#ffffff" android:fillType="evenOdd" android:pathData="M-50,-8H50V8H-50Z M-12,-5.5H-8A4.6,5.5 0 0,1 -8,5.5H-12Z M-10,-3.5H-8A2.6,3.5 0 0,1 -8,3.5H-10Z M-3.8,-5.5H3.8V-3.5H-1.8V-1H3V1H-1.8V3.5H3.8V5.5H-3.8Z M3.9,-5.5H6.1L8,1.2L9.9,-5.5H12.1L8.9,5.5H7.1Z"/>
+    </group>
+</vector>

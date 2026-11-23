@@ -74,7 +74,7 @@ fun BookSnapshot.templateDraft(template:EntryTemplateEntity,date:String=LocalDat
     val d=EntryDraft(kind=EntryKind.valueOf(template.kind),date=date,accountId=template.accountId,categoryId=template.categoryId,
         amount=template.amountMinor?.let{Money(Currency.valueOf(template.currency),it).decimal.toPlainString()}.orEmpty(),
         merchant=template.merchant,merchantId=template.merchantId,merchantManuallyEdited=template.merchant.isNotBlank()||template.merchantId!=null,
-        note=template.note,budgetExcluded=template.budgetExcluded,cardPaymentChoice=template.cardPaymentChoice,cardPaymentPeriods=template.cardPaymentPeriods?.toString().orEmpty(),activityId=template.activityId)
+        note=template.note,budgetExcluded=template.budgetExcluded,cardPaymentChoice=template.cardPaymentChoice,cardPaymentPeriods=template.cardPaymentPeriods?.toString().orEmpty(),activityId=template.activityId,fromTemplate=true)
     return if(template.cardPaymentChoice==null)withRememberedCardPayment(d)else d
 }
 fun BookSnapshot.templateInput(d:EntryDraft,name:String,includeAmount:Boolean):TemplateInput {

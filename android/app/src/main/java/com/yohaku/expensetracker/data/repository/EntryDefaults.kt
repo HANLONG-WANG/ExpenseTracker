@@ -4,7 +4,7 @@ import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.model.*
 
 fun EventEntity.isFinancialSource(account:AccountEntity)=accountId==account.id&&if(account.type==AccountType.CREDIT.name)kind in listOf(EntryKind.EXPENSE.name,EntryKind.TRANSFER.name)else kind==EntryKind.BORROWING.name
-fun BookSnapshot.lastSavedEntry(predicate:(EventEntity)->Boolean)=visibleEvents.filter(predicate).maxWithOrNull(compareBy<EventEntity>{eventSaveTimes[it.id]?:it.createdAt}.thenBy{it.createdAt})
+fun BookSnapshot.lastSavedEntry(predicate:(EventEntity)->Boolean)=visibleEvents.filter{it.id !in templateSavedEvents&&predicate(it)}.maxWithOrNull(compareBy<EventEntity>{eventSaveTimes[it.id]?:it.createdAt}.thenBy{it.createdAt})
 fun BookSnapshot.defaultEntryAccount(kind:EntryKind):String? {
     val eligible=entryAccounts(kind);val last=lastSavedEntry{it.kind==kind.name}
     return eligible.firstOrNull{it.id==last?.accountId}?.id?:eligible.firstOrNull()?.id

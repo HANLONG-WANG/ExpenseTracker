@@ -52,7 +52,9 @@ data class PostingEntity(val bookId: String,val id: String,val eventId: String,v
     val deltaMinor: Long,val currency: String,val date: String,val confirmed: Boolean=true)
 
 @Entity(tableName="revisions", primaryKeys=["bookId","id"], foreignKeys=[ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE)],indices=[Index(value=["bookId","eventId"])])
-data class RevisionEntity(val bookId:String,val id:String,val eventId:String,val version:Int,val timestamp:Long,val beforeJson:String?,val afterJson:String,val beforeDetailsJson:String?=null,val afterDetailsJson:String?=null)
+data class RevisionEntity(val bookId:String,val id:String,val eventId:String,val version:Int,val timestamp:Long,val beforeJson:String?,val afterJson:String,val beforeDetailsJson:String?=null,val afterDetailsJson:String?=null,
+    /** Saves started from an entry template never become remembered entry defaults. */
+    @ColumnInfo(defaultValue="0") val fromTemplate:Boolean=false)
 @Entity(tableName="drafts", foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"])])
 data class DraftEntity(@PrimaryKey val bookId:String,val json:String,val updatedAt:Long)
 @Entity(tableName="file_blobs",primaryKeys=["bookId","id"],foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"])],indices=[Index("bookId")])

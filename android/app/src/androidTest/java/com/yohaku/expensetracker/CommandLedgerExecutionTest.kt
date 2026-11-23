@@ -169,6 +169,7 @@ class CommandLedgerExecutionTest {
             step("template","template.save","""{"name":"旅行","kind":"EXPENSE","category":"$c","account":"$bank","currency":"JPY","amountMinor":200,"budgetExcluded":true}"""),
             step("entry","template.createEntry","""{"template":{"ref":"template","output":"template"}}"""))) {model,s->
             assertTrue(s.visibleEvents.all{it.budgetExcluded});assertTrue(s.templates.single().budgetExcluded)
+            assertEquals(setOf(s.visibleEvents.single{it.id!=e}.id),s.templateSavedEvents)
             assertEquals(0L,s.budgetProjection("2026-11").spentMinor);assertEquals(1400L,s.monthExpense("2026-11"))
             assertEquals(98600L,s.balance(s.accounts.single{it.id==bank}))
             assertTrue(model.net.any{it.type=="entry"&&it.after.jsonObject["budgetExcluded"]==JsonPrimitive(true)})

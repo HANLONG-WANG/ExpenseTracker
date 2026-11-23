@@ -1,0 +1,5 @@
+<!-- Release receipt with a "DEV" sash across the lower-right corner, kept inside the circular mask. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_foreground"/>
+    <item android:drawable="@drawable/ic_launcher_dev_sash"/>
+</layer-list>

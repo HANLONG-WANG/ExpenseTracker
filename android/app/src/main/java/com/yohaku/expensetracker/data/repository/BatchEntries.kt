@@ -30,6 +30,7 @@ internal suspend fun LedgerRepository.writeEntryBatchInTransaction(initial:BookS
         // Only the reserve/default/refund facts needed by the next preparation are projected here.
         val e=change.event
         snapshot=snapshot.copy(events=snapshot.events.filter{it.id!=e.id}+e,
+            templateSavedEvents=if(change.fromTemplate)snapshot.templateSavedEvents+e.id else snapshot.templateSavedEvents-e.id,
             storedPostings=snapshot.storedPostings.filter{it.eventId!=e.id}+change.postings,
             postings=snapshot.postings.filter{it.eventId!=e.id}+change.postings.filter{it.confirmed},
             settlements=snapshot.settlements.filter{it.eventId!=e.id}+change.settlement,

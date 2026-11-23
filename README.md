@@ -84,7 +84,7 @@
 | 安装包 | 包名 | 说明 |
 | --- | --- | --- |
 | [yohaku-release-0.5.0.apk](android/artifacts/yohaku-release-0.5.0.apk) | `com.yohaku.expensetracker` | 正式版，固定签名 |
-| [yohaku-dev-0.5.0.apk](android/artifacts/yohaku-dev-0.5.0.apk) | `com.yohaku.expensetracker.dev` | 开发版，可与正式版同时安装 |
+| [yohaku-dev-0.5.0.apk](android/artifacts/yohaku-dev-0.5.0.apk) | `com.yohaku.expensetracker.dev` | 开发版，可与正式版同时安装；图标为橙底并带 DEV 斜标 |
 
 ```sh
 adb install -r android/artifacts/yohaku-release-0.5.0.apk

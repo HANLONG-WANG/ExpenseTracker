@@ -9,7 +9,7 @@ import kotlinx.serialization.encodeToString
 /** The exact same prepared change drives both the impact preview and transaction. */
 data class PreparedLedgerChange internal constructor(val before:EventEntity?,val event:EventEntity,
     val settlement:SettlementEntity,val postings:List<PostingEntity>,val transfer:TransferEntity?=null,val components:List<ExpenseComponentEntity> = emptyList(),val activityId:String?=null,val occurrenceId:String?=null,val reserveUses:List<ReserveUseEntity> = emptyList(),val treat:PreparedTreat?=null,val merchantId:String?=null,val media:PreparedMedia?=null,val contract:DebtContractEntity?=null,val repayment:FinancialRepaymentEntity?=null,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val cardRuleChecked:Boolean=false,val eventPlace:EventPlaceEntity?=null,val merchantConflict:EntryMerchantConflict?=null,
-    val merchantLocation:MerchantLocationEntity?=null)
+    val merchantLocation:MerchantLocationEntity?=null,val fromTemplate:Boolean=false)
 data class LedgerChangeReview internal constructor(val snapshot:BookSnapshot,val change:PreparedLedgerChange,val impacts:List<EntryImpact>,val originalNetBefore:Long?,val originalNetAfter:Long?)
 
 @kotlinx.serialization.Serializable
@@ -60,7 +60,7 @@ internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,cl
         if(change.before!=null||e.cardPaymentChoice!=null)refreshCardEntryPrediction(e)
         refreshFinancialPools(change)
     }
-    dao.putRevision(RevisionEntity(e.bookId,id(),e.id,e.revision,savedAt,change.before?.let{json.encodeToString(it)},json.encodeToString(e),beforeDetails?.let{json.encodeToString(it)},json.encodeToString(LedgerDetails(change.settlement,change.transfer,change.components,change.activityId,change.occurrenceId,change.reserveUses,change.treat?.treat,change.treat?.allocations.orEmpty(),merchantId,dao.attachments(e.bookId,e.id).map{it.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=change.contract,repayment=change.repayment,repaymentAllocations=change.repaymentAllocations,postings=change.postings))))
+    dao.putRevision(RevisionEntity(e.bookId,id(),e.id,e.revision,savedAt,change.before?.let{json.encodeToString(it)},json.encodeToString(e),beforeDetails?.let{json.encodeToString(it)},json.encodeToString(LedgerDetails(change.settlement,change.transfer,change.components,change.activityId,change.occurrenceId,change.reserveUses,change.treat?.treat,change.treat?.allocations.orEmpty(),merchantId,dao.attachments(e.bookId,e.id).map{it.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=change.contract,repayment=change.repayment,repaymentAllocations=change.repaymentAllocations,postings=change.postings)),fromTemplate=change.fromTemplate))
     if(clearDraft)clearDraft(e.bookId)
     return e.id
 }

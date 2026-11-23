@@ -144,7 +144,7 @@ interface YohakuDao {
     @Upsert suspend fun putDraft(draft:DraftEntity)
     @Query("DELETE FROM drafts WHERE bookId=:bookId") suspend fun clearDraft(bookId:String)
 }
-const val DATABASE_VERSION=41
+const val DATABASE_VERSION=42
 
 @Database(entities=[MerchantOperationEntity::class,MerchantOperationImpactEntity::class,MonthlyPlanEntity::class,MonthlyReviewEntity::class,CommandPlanEntity::class,CommandEffectEntity::class,CsvBatchEntity::class,CsvBatchEventEntity::class,CsvProfileEntity::class,CloudTaskEntity::class,CloudTransferEntity::class,CloudImportEntity::class,CloudAckEntity::class,BookEntity::class,AccountEntity::class,CategoryEntity::class,EventEntity::class,PostingEntity::class,RevisionEntity::class,DraftEntity::class,FileBlobEntity::class,AttachmentLinkEntity::class,SettlementEntity::class,TransferEntity::class,ExpenseComponentEntity::class,BudgetEntity::class,ActivityEntity::class,BookFeaturesEntity::class,EventActivityEntity::class,RecurrenceEntity::class,EntryTemplateEntity::class,OccurrenceEntity::class,ActivityBudgetEntity::class,ActivityReserveEntity::class,ReserveUseEntity::class,FriendEntity::class,ActivityParticipantEntity::class,TreatEntity::class,TreatAllocationEntity::class,AnalysisPreferencesEntity::class,MerchantEntity::class,MerchantLocationEntity::class,EventMerchantEntity::class,EventPlaceEntity::class,DraftMediaEntity::class,ReceiptEntity::class,ReceiptImageEntity::class,FinancialRuleEntity::class,FinancialPlanEntity::class,FinancialBillEntity::class,FinancialRuleValidationEntity::class,DebtContractEntity::class,FinancialRepaymentEntity::class,FinancialRepaymentAllocationEntity::class,FinancialContractPlanEntity::class,FinancialPlanRevisionEntity::class,FinancialArrangementEntity::class,FinancialBillAdjustmentEntity::class,ExpectedIncomeEntity::class,CreditLimitConfigEntity::class,CreditLimitGroupEntity::class,CreditLimitGroupMemberEntity::class,CreditLimitGroupRevisionEntity::class,CreditLimitRecoveryEntity::class,CreditLimitObservationEntity::class,FinancialDraftEntity::class,StatementBatchEntity::class,ReceiptExportEntity::class,ReceiptItemDocumentEntity::class,StatementDecisionEntity::class,StatementReviewSkipEntity::class],version=DATABASE_VERSION,exportSchema=true)
 abstract class YohakuDatabase:RoomDatabase() {
@@ -163,7 +163,7 @@ val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
 /** Read all ledger projections from the same database transaction. */
 data class BookGraph(
     @Embedded val book:BookEntity,
-    @Relation(parentColumn="id",entityColumn="bookId",entity=RevisionEntity::class,projection=["eventId","timestamp"]) val savedRevisions:List<EventSaveTime>,
+    @Relation(parentColumn="id",entityColumn="bookId",entity=RevisionEntity::class,projection=["eventId","timestamp","fromTemplate"]) val savedRevisions:List<EventSaveTime>,
     @Relation(parentColumn="id",entityColumn="bookId") val accounts:List<AccountEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val categories:List<CategoryEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val events:List<EventEntity>,
@@ -443,6 +443,13 @@ val MIGRATION_21_22 = object : androidx.room.migration.Migration(21,22) {
 }
 
 /** Reconciliation is versioned with the plan; original applications and actual events remain intact. */
+/** Template-started saves are marked so remembered entry defaults skip them. */
+val MIGRATION_41_42 = object : androidx.room.migration.Migration(41,42) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE revisions ADD COLUMN fromTemplate INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 val MIGRATION_22_23 = object : androidx.room.migration.Migration(22,23) {
     override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE financial_plans ADD COLUMN reconciliationJson TEXT DEFAULT NULL")
@@ -452,7 +459,7 @@ val MIGRATION_22_23 = object : androidx.room.migration.Migration(22,23) {
 /** The only migration chain; production and tests open databases through it. */
 val ALL_MIGRATIONS:Array<androidx.room.migration.Migration> = arrayOf(
     MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,MIGRATION_9_10,MIGRATION_10_11,MIGRATION_11_12,MIGRATION_12_13,MIGRATION_13_14,MIGRATION_14_15,MIGRATION_15_16,MIGRATION_16_17,
-    MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,MIGRATION_23_24,MIGRATION_24_25,MIGRATION_25_26,MIGRATION_26_27,MIGRATION_27_28,MIGRATION_28_29,MIGRATION_29_30,MIGRATION_30_31,MIGRATION_31_32,MIGRATION_32_33,MIGRATION_33_34,MIGRATION_34_35,MIGRATION_35_36,MIGRATION_36_37,MIGRATION_37_38,MIGRATION_38_39,MIGRATION_39_40,MIGRATION_40_41
+    MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,MIGRATION_23_24,MIGRATION_24_25,MIGRATION_25_26,MIGRATION_26_27,MIGRATION_27_28,MIGRATION_28_29,MIGRATION_29_30,MIGRATION_30_31,MIGRATION_31_32,MIGRATION_32_33,MIGRATION_33_34,MIGRATION_34_35,MIGRATION_35_36,MIGRATION_36_37,MIGRATION_37_38,MIGRATION_38_39,MIGRATION_39_40,MIGRATION_40_41,MIGRATION_41_42
 )
 
-data class EventSaveTime(val eventId:String,val timestamp:Long)
+data class EventSaveTime(val eventId:String,val timestamp:Long,val fromTemplate:Boolean)

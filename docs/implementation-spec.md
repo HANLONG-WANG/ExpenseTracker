@@ -88,7 +88,7 @@
 ### 1.6 记账默认值、转账及保存确认（2026-10-31）
 
 - 账户编辑（含首次设置）保存待编辑 ID；Activity 重建后从当前账本快照解析账户，保留未提交字段并更新原账户。目标不存在时显示提示并禁止保存，不作为新增；仅明确新增入口使用空 ID。
-- `BookGraph.savedRevisions` 只投影 revision 的 eventId/timestamp，在同一 Room 快照构造 `BookSnapshot.eventSaveTimes`；按 max(timestamp)、createdAt 排序，删除记录不参与记忆，不新增数据库字段。新建收支按 kind 记忆账户，转账记忆两端。未指定账户时，不可用的记忆账户回退到合资格账户；显式收支账户必须通过当前种类的账户资格校验，失败时提示且不创建草稿、不回退。收入只允许启用的资金账户；风险处理与金融总览补记实际收入都携带指定账户，经过已有草稿确认和界面重建后仍保留。转账沿用原有回退策略且两端不同。
+- `BookGraph.savedRevisions` 只投影 revision 的 eventId/timestamp/fromTemplate，在同一 Room 快照构造 `BookSnapshot.eventSaveTimes`；按 max(timestamp)、createdAt 排序，删除记录不参与记忆。Room v42 `revisions.fromTemplate`（默认 0）标记从模板新建的保存（`EntryDraft.fromTemplate` 由 `templateDraft` 设置，本机与云端 `template.createEntry` 同路径）；最新一次保存来自模板的记录进入 `templateSavedEvents`，`lastSavedEntry` 跳过它们，因此模板记账不改变账户与信用卡付款方式记忆，之后手动编辑该记录则恢复参与。新建收支按 kind 记忆账户，转账记忆两端。未指定账户时，不可用的记忆账户回退到合资格账户；显式收支账户必须通过当前种类的账户资格校验，失败时提示且不创建草稿、不回退。收入只允许启用的资金账户；风险处理与金融总览补记实际收入都携带指定账户，经过已有草稿确认和界面重建后仍保留。转账沿用原有回退策略且两端不同。
 - 信用卡可作为转出账户，贷款不可；转入仍须资金账户。`prepareTransfer` 的 CREDIT source posting 为正数，含 INCLUDED_FROM 手续费的 source 总额作为账单本金；本金不计消费。复用 `cardPayment`、`cardRuleChecked`、提交时规则校验和 `refreshCardEntryPrediction`，金融预测/手动来源、未安排欠款及池刷新纳入信用卡转账。额度和对账已有 posting 方向口径，现金时间线只计资金端及实际扣款账户的账单，不再次扣除信用卡本金。
 - 新建信用卡支出/转账按卡记住最近保存 choice，INSTALLMENT 带期数，DEFERRED 不带月份/费用；编辑不重套记忆。信用卡对账漏记的转出行也可选择转账。
 - `saveEntry` 统一构建 `previewEntry`，复用其 AccountBalanceChange：非 debt 且 after < 0 且 after < before 时弹出确认；确认后普通记录提交同一份预览，需要影响审核的仍进入审核。提交时快照或规则变化则重新预览并重新检查负余额，不重复生成交易。

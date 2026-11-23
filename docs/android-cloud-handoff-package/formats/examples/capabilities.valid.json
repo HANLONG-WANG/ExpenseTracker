@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "4c0de39bea1e9203fe93b0045e29e9dfd6567f887412c77faac55bee73ce657d",
+    "catalogDigest": "78c69d71962d3f06b4631ca805fde04fb092dc650227fa1dcf102fadad359fa2",
     "commands": [
         {
             "comparisonFields": [
@@ -7140,7 +7140,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "set defaults empty; use current template defaults, editor date and remembered card choice. Missing amount or foreign base requires explicit set; no draft is saved.",
+            "defaults": "set defaults empty; use current template defaults, editor date and remembered card choice. Missing amount or foreign base requires explicit set; no draft is saved. Template-created entries never become the remembered account/card defaults for later entries.",
             "description": "Compile a template and overrides into ordinary entry.create execution; preview displays an ordinary record and includes the template basis for confirmation.",
             "example": {
                 "set": {
